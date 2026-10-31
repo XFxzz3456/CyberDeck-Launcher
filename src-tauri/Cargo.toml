@@ -1,0 +1,68 @@
+[package]
+name = "cyberdeck-launcher"
+version = "0.9.0"
+description = "A focused Cyberpunk 2077 mod launcher"
+authors = ["CyberDeck Launcher"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "cyberdeck_launcher_lib"
+crate-type = ["rlib"]
+
+[features]
+default = []
+# Enables Tauri's embedded asset protocol. Required for a standalone release
+# built directly with `cargo build --release` instead of `tauri build`.
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+sevenz-rust = "0.6"
+regex = "1"
+reqwest = { version = "0.13", default-features = false, features = [
+  "blocking",
+  "json",
+  "native-tls",
+  "charset",
+  "http2",
+  "system-proxy",
+] }
+walkdir = "2"
+# wolvenkit.rs 深度扫描：tokio::process 异步调用 CLI + 30s 超时 kill
+tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+winreg = "0.55"
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }
+# shellexecute-on-windows: that_detached 走 ShellExecuteW（与 Win+R 同机制）。
+# open 5.4 默认的 powershell/explorer 启动链在 Tauri 进程内会静默失败（2026-10-25 回归）。
+open = { version = "5", features = ["shellexecute-on-windows"] }
+rusty-leveldb = "3"
+rust-ini = { version = "0.21.3", features = ["inline-comment"] }
+toml = "0.8"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

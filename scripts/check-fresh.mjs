@@ -1,0 +1,15 @@
+﻿import { chromium } from "playwright-core";
+const edge = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const browser = await chromium.launch({ executablePath: edge, headless: true, args: ["--no-sandbox"] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const errs = [];
+page.on("pageerror", (e) => errs.push(String(e)));
+page.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text()); });
+await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
+await page.waitForTimeout(1500);
+const rootHtmlLen = (await page.locator("#root").innerHTML()).length;
+const cards = await page.locator(".mod-card").count();
+await page.screenshot({ path: "shots/audit/interaction-fresh.png" });
+console.log(`rootLen=${rootHtmlLen} cards=${cards} errors=${errs.length}`);
+if (errs.length) console.log(errs.slice(0,4).join(" || "));
+await browser.close();

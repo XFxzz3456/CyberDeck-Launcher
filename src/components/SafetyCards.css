@@ -1,0 +1,119 @@
+/* 安全模式 / 配置迁移 / 兼容角标（看板【12】【13】）。只用 tokens 变量。 */
+
+.safety-card .safety-intro,
+.safety-card .safety-foot {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.safety-card .safety-foot {
+  margin: 12px 0 0;
+  opacity: 0.75;
+}
+
+.safety-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.safety-note {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.safety-note code {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.safety-note em {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  color: var(--warn, var(--accent-text, var(--accent)));
+}
+
+.safety-confirm-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.compat-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compat-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.compat-list li.is-stale {
+  border-left: 2px solid var(--danger, #e5484d);
+}
+
+.compat-list li.is-warn {
+  border-left: 2px solid var(--warn, #d9a300);
+}
+
+.compat-list li strong {
+  font-weight: 600;
+}
+
+.compat-list li span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.compat-warn-block summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+
+.compat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.compat-badge-stale {
+  color: var(--danger, #e5484d);
+}
+
+.compat-badge-warn {
+  color: var(--warn, #d9a300);
+}

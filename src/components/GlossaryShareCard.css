@@ -1,0 +1,65 @@
+/* 汉化词表卡片（看板【7】）。只用全局 CSS 变量，深色/浅色主题共用。 */
+
+.glossary-panel .glossary-intro,
+.glossary-panel .glossary-foot {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.glossary-panel .glossary-foot {
+  margin: 12px 0 0;
+  opacity: 0.75;
+}
+
+.glossary-counts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.glossary-count-split {
+  opacity: 0.7;
+}
+
+.glossary-field {
+  margin-top: 14px;
+}
+
+.glossary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.glossary-note {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.glossary-panel .spin {
+  animation: glossary-spin 0.9s linear infinite;
+}
+
+@keyframes glossary-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glossary-panel .spin {
+    animation: none;
+  }
+}

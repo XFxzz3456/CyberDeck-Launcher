@@ -1,0 +1,315 @@
+/* ═══ tokens.css — E2 分层：设计变量层 ═══
+   从 styles.css 前移的全部 :root / :root[data-theme] 纯变量块，
+   级联顺序与原单文件一致（tokens 在前、组件在后）。改主题先来这里。 */
+
+:root {
+  color-scheme: dark;
+  --bg: #07090c;
+  --bg-rgb: 7, 9, 12;
+  --bg-2: #0a0d12;
+  --panel: #0d1117;
+  --panel-2: #10161e;
+  --panel-3: #141b24;
+  --line: #222b37;
+  --line-soft: #1a212b;
+  --line-hot: #3a4655;
+  --text: #e9eef5;
+  --text-2: #b8c1cd;
+  --muted: #93a0af;
+  --muted-2: #717e8d;
+  --accent: #fcee0a;
+  --accent-rgb: 252, 238, 10;
+  --accent-soft: #d8cd1a;
+  --accent-hover: #fff83d;
+  --accent-ink: #08090b;
+  --accent-ink-rgb: 8, 9, 11;
+  /* 文字/图标专用强调色。深色主题下与 --accent 同值；浅色主题会换成同色相
+     但更深的一档（亮黄、荧光青这类高亮色当正文色在白底上读不清）。
+     强调色当填充用（按钮底、边框、进度条）时仍然走 --accent，不受影响。 */
+  --accent-text: var(--accent);
+  --accent-text-rgb: var(--accent-rgb);
+  /* 文字 hover：浅色底上继续压深，深色底上继续提亮。 */
+  --accent-text-hover: var(--accent-text);
+  /* Cover-art palette. Cards derive their generated artwork from these so a
+     theme switch recolors the whole grid, not just controls. */
+  --cover-a: #fcee0a;
+  --cover-b: #31e6ff;
+  --cover-c: #ff3b5c;
+  --cover-ink: #08090b;
+  --yellow: var(--accent);
+  --yellow-soft: var(--accent-soft);
+  --cyan: #31e6ff;
+  --red: #ff3b5c;
+  --green: #5cff9d;
+  --orange: #ff9f2e;
+  /* Semantic state colors stay independent of --accent so "danger" never
+     collapses into the brand color. */
+  --ok: #5cff9d;
+  --ok-rgb: 92, 255, 157;
+  --warn: #ff9f2e;
+  --warn-rgb: 255, 159, 46;
+  --danger: #ff3b5c;
+  --danger-rgb: 255, 59, 92;
+  --font: "Inter", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --display: "Rajdhani", "Bahnschrift", "Segoe UI Variable", "Microsoft YaHei UI", sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --ui-scale: 1;
+  --scanline-opacity: 0.02;
+  --grid-opacity: 0.2; --corner-opacity: 1;
+}
+
+/* Theme palettes. Every accent alpha resolves through --accent-rgb, so a
+   data-theme switch recolors controls, focus rings and glow together. */
+:root[data-theme="netrunner"] {
+  --bg: #03070b;
+  --bg-rgb: 3, 7, 11;
+  --bg-2: #050d13;
+  --panel: #071018;
+  --panel-2: #09141d;
+  --panel-3: #0c1a24;
+  --line: #16303c;
+  --line-soft: #0c222b;
+  --line-hot: #245161;
+  --text: #e2fbff;
+  --text-2: #a8c6d2;
+  --muted: #8aa8b4;
+  --muted-2: #64808d;
+  --accent: #3df2ff;
+  --accent-rgb: 61, 242, 255;
+  --accent-soft: #93f8ff;
+  --accent-hover: #7ff7ff;
+  --accent-ink: #031014;
+  --accent-ink-rgb: 3, 16, 20;
+  --cover-a: #3df2ff;
+  --cover-b: #7a5cff;
+  --cover-c: #52ffc2;
+  --cover-ink: #031014;
+  --cyan: #7df9ff;
+  --red: #ff4d6d;
+  --green: #52ffc2;
+  --orange: #ffb454;
+  --ok: #52ffc2;
+  --ok-rgb: 82, 255, 194;
+  --warn: #ffb454;
+  --warn-rgb: 255, 180, 84;
+  --danger: #ff4d6d;
+  --danger-rgb: 255, 77, 109;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-theme="arasaka"] {
+  --bg: #0b0507;
+  --bg-rgb: 11, 5, 7;
+  --bg-2: #12070a;
+  --panel: #16090d;
+  --panel-2: #1c0b11;
+  --panel-3: #230e15;
+  --line: #2d151b;
+  --line-soft: #1e0c11;
+  --line-hot: #4a1f28; --corner-opacity: 0.45;
+  --text: #f8e9ec;
+  --text-2: #d2b4ba;
+  --muted: #b08b95;
+  --muted-2: #8a626c;
+  --accent: #ff4058;
+  --accent-rgb: 255, 64, 88;
+  --accent-soft: #ff8da0;
+  --accent-hover: #ff687d;
+  --accent-ink: #120306;
+  --accent-ink-rgb: 18, 3, 6;
+  --cover-a: #ff4058;
+  --cover-b: #ffd9d2;
+  --cover-c: #7a2430;
+  --cover-ink: #120306;
+  --cyan: #ff8a9b;
+  --red: #ff4058;
+  --green: #7dffb0;
+  --orange: #ffb454;
+  --ok: #7dffb0;
+  --ok-rgb: 125, 255, 176;
+  --warn: #ffb454;
+  --warn-rgb: 255, 180, 84;
+  --danger: #ff1f3d;
+  --danger-rgb: 255, 31, 61;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.58);
+}
+
+:root[data-theme="militech"] {
+  --bg: #080b08;
+  --bg-rgb: 8, 11, 8;
+  --bg-2: #0d110c;
+  --panel: #11150f;
+  --panel-2: #151a13;
+  --panel-3: #1b2118;
+  --line: #2b3527;
+  --line-soft: #20281d;
+  --line-hot: #44543a;
+  --text: #eef3e7;
+  --text-2: #c0c9b4;
+  --muted: #838d78;
+  --muted-2: #5d6754;
+  --accent: #b7f04b;
+  --accent-rgb: 183, 240, 75;
+  --accent-soft: #d3f78c;
+  --accent-hover: #c8f86b;
+  --accent-ink: #0b1006;
+  --accent-ink-rgb: 11, 16, 6;
+  --cover-a: #b7f04b;
+  --cover-b: #9ddcff;
+  --cover-c: #5d6b4a;
+  --cover-ink: #0b1006;
+  --cyan: #9ddcff;
+  --red: #ff5d5d;
+  --green: #9cff6a;
+  --orange: #ffc35c;
+  --ok: #9cff6a;
+  --ok-rgb: 156, 255, 106;
+  --warn: #ffc35c;
+  --warn-rgb: 255, 195, 92;
+  --danger: #ff5d5d;
+  --danger-rgb: 255, 93, 93;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="mono"] {
+  --bg: #000000;
+  --bg-rgb: 0, 0, 0;
+  --bg-2: #050505;
+  --panel: #0a0a0a;
+  --panel-2: #0f0f0f;
+  --panel-3: #141414;
+  --line: #2b2b2b;
+  --line-soft: #1e1e1e;
+  --line-hot: #4a4a4a;
+  --text: #f0f0f0;
+  --text-2: #c7c7c7;
+  --muted: #8a8a8a;
+  --muted-2: #5f5f5f;
+  --accent: #f2f2f2;
+  --accent-rgb: 242, 242, 242;
+  --accent-soft: #ffffff;
+  --accent-hover: #ffffff;
+  --accent-ink: #050505;
+  --accent-ink-rgb: 5, 5, 5;
+  --cover-a: #f2f2f2;
+  --cover-b: #8a8a8a;
+  --cover-c: #3a3a3a;
+  --cover-ink: #0a0a0a;
+  --cyan: #cfcfcf;
+  --red: #ff6b6b;
+  --green: #b8ffb8;
+  --orange: #ffce85;
+  --ok: #b8ffb8;
+  --ok-rgb: 184, 255, 184;
+  --warn: #cfcfcf;
+  --warn-rgb: 207, 207, 207;
+  --danger: #ff6b6b;
+  --danger-rgb: 255, 107, 107;
+  --shadow: 0 20px 40px rgba(0, 0, 0, 0.65);
+  --scanline-opacity: 0;
+  --grid-opacity: 0;
+}
+
+/* DAYLIGHT — 白昼纸面：亮色模式。纸白底 + 深墨字，强调色压到可读的暗橙，
+   阴影变浅、扫描线关闭、网格几乎不可见。 */
+:root[data-theme="daylight"] {
+  --bg-rgb: 238, 235, 228;
+  --bg: #eeebe4;
+  --bg-2: #e6e2d8;
+  --panel: #f8f6f1;
+  --panel-2: #fffdf9;
+  --panel-3: #f1ede5;
+  --line: #c6bfb2;
+  --line-soft: #dcd7cb;
+  --line-hot: #aaa294;
+  --text: #171614;
+  --text-2: #3b3733;
+  --muted: #5a554b;
+  --muted-2: #787266;
+  --accent: #b23a0e;
+  --accent-rgb: 178, 58, 14;
+  --accent-soft: #d9603a;
+  --accent-hover: #96300b;
+  --accent-ink: #fffdf9;
+  --accent-ink-rgb: 255, 253, 249;
+  --cover-a: #b23a0e;
+  --cover-b: #1c6b86;
+  --cover-c: #a8894f;
+  --cover-ink: #f8f6f1;
+  --cyan: #1c6b86;
+  --red: #a91d1d;
+  --green: #1f7a3d;
+  --orange: #8a4e06;
+  --ok: #1f7a3d;
+  --ok-rgb: 31, 122, 61;
+  --warn: #a8620a;
+  --warn-rgb: 168, 98, 10;
+  --danger: #a91d1d;
+  --danger-rgb: 169, 29, 29;
+  --shadow: 0 12px 32px rgba(60, 50, 35, 0.16);
+  --scanline-opacity: 0;
+  --grid-opacity: 0.05;
+  --corner-opacity: 0.7;
+}
+
+:root {
+  --cut-panel: 16px;
+  --cut-card: 12px;
+  --cut-tile: 9px;
+  --hazard: #ff3b5c;
+  --hazard-deep: #1b070b;
+}
+
+:root {
+  --btn-cut: 7px;
+  --nav-mark-width: 2px;
+  --nav-mark-glow: none;
+  --panel-rule-width: 58px;
+  --panel-rule-opacity: 1;
+}
+
+/* ARASAKA — 精密克制：细标记、短装饰、中等切角 */
+:root[data-theme="arasaka"] {
+  --btn-cut: 7px;
+  --nav-mark-width: 2px;
+  --nav-mark-glow: none;
+  --panel-rule-width: 46px;
+  --panel-rule-opacity: 0.42;
+}
+
+/* NCPD — 档案规整：直角、加粗标记、通栏细线 */
+:root[data-theme="ncpd"] {
+  --btn-cut: 0px;
+  --nav-mark-width: 3px;
+  --nav-mark-glow: none;
+  --panel-rule-width: calc(100% - 32px);
+  --panel-rule-opacity: 0.2;
+}
+
+/* NETRUNNER — 数据流：发光标记、渐变长线、大切角 */
+:root[data-theme="netrunner"] {
+  --btn-cut: 8px;
+  --nav-mark-width: 3px;
+  --nav-mark-glow: 0 0 10px rgba(var(--accent-rgb), 0.6);
+  --panel-rule-width: 72px;
+  --panel-rule-opacity: 0.55;
+}
+
+/* MILITECH — 工业模块：硬朗小切角、方块标记、刻度线 */
+:root[data-theme="militech"] {
+  --btn-cut: 3px;
+  --nav-mark-width: 4px;
+  --nav-mark-glow: none;
+  --panel-rule-width: 26px;
+  --panel-rule-opacity: 0.5;
+}
+
+/* MONO — 极简：全直角、无标记、无装饰线 */
+:root[data-theme="mono"] {
+  --btn-cut: 0px;
+  --nav-mark-width: 0px;
+  --nav-mark-glow: none;
+  --panel-rule-width: 0px;
+  --panel-rule-opacity: 0;
+}

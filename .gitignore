@@ -1,0 +1,40 @@
+node_modules
+dist
+dist-ssr
+*.local
+src-tauri/target
+src-tauri/gen
+core-tests/target
+core-tests/.test-tmp
+src-tauri/cyberdeck-data
+release/cyberdeck-data
+shots
+*.log
+.DS_Store
+._*
+*~
+
+# ── 打包/临时产物（每次构建都重建，不入库）────────────────────────
+.portable-build/
+.workbuddy/
+.workbuddy-tmp/
+.i18n-parts/tmp/
+
+# ── 二进制分发物（正式产物在仓库外的 release/ 与 发布产物/，别混进来）──
+*.exe
+*.zip
+*.msi
+*.7z
+# 测试夹具必须入库：它们是集成测试的输入，丢了测试就跑不起来
+!testpacks/*.zip
+
+# ── Playwright / 构建缓存 ────────────────────────────────────────
+test-results/
+playwright-report/
+.playwright/
+.vite/
+node_modules/.vite/
+
+# ── 测试临时目录（跑测试时生成，内含测试密钥与假游戏目录）──────────
+.test-tmp/
+*.test-tmp/

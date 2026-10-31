@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080a0d" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>CyberDeck Launcher</title>
+    <script>
+      // 首屏前套用已保存的外观，避免闪一帧旧配色。
+      // 键名沿用 ncl.ui.*（A3 决定：localStorage 键名暂不改动，避免主题/已读状态重置）。
+      (() => {
+        try {
+          const raw = localStorage.getItem("ncl.ui.theme.v2");
+          let style = "ncpd";
+          let mode = "dark";
+          if (raw) {
+            const saved = JSON.parse(raw);
+            const allowed = ["ncpd", "netrunner", "arasaka", "militech", "mono", "modern"];
+            style = allowed.includes(saved.styleTheme) ? saved.styleTheme : "ncpd";
+            if (saved.colorMode === "light" || saved.colorMode === "dark" || saved.colorMode === "system") {
+              mode = saved.colorMode;
+            }
+          } else {
+            // 旧版只有 theme 字段，做一次迁移（daylight → modern + light）。
+            const legacyRaw = localStorage.getItem("ncl.ui.preferences.v1");
+            if (legacyRaw) {
+              const legacy = JSON.parse(legacyRaw);
+              if (legacy.theme === "daylight") {
+                style = "modern";
+                mode = "light";
+              } else if (["ncpd", "netrunner", "arasaka", "militech", "mono"].includes(legacy.theme)) {
+                style = legacy.theme;
+              }
+            }
+          }
+          const modeCapable = style === "mono" || style === "modern";
+          if (mode === "system") {
+            mode = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          if (!modeCapable) mode = "dark";
+          const root = document.documentElement;
+          root.dataset.style = style;
+          root.dataset.mode = mode;
+          root.dataset.modeCapable = modeCapable ? "true" : "false";
+          // 旧版 data-theme 仍要写一份，现有赛博主题的 CSS 依赖它。
+          root.dataset.theme = style === "modern" ? "ncpd" : style;
+
+          const legacyPrefs = localStorage.getItem("ncl.ui.preferences.v1");
+          if (legacyPrefs) {
+            const prefs = JSON.parse(legacyPrefs);
+            if (prefs.scale === 0.9 || prefs.scale === 1 || prefs.scale === 1.1) {
+              root.style.setProperty("--ui-scale", String(prefs.scale));
+            }
+          }
+        } catch {
+          /* 首次运行或 localStorage 不可用 */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

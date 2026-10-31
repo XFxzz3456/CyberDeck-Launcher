@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#07090c"/>
+  <path d="M8 8h48v34L42 56H8z" fill="#fcee0a"/>
+  <path d="M38 46h12V34z" fill="#07090c"/>
+  <text x="13" y="45" font-family="Consolas, monospace" font-size="28" font-weight="700" fill="#07090c" letter-spacing="-4">NC</text>
+</svg>

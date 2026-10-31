@@ -1,0 +1,253 @@
+/* 帮助中心（看板【11】）。只用 tokens 变量，六套主题与明暗模式自动跟随。 */
+
+.help-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.help-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.help-search {
+  flex: 1 1 240px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: 34px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.help-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.help-segments {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.help-segment {
+  padding: 5px 12px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.help-segment:hover {
+  color: var(--text);
+}
+
+.help-segment.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.help-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-block-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.help-count {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.help-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.help-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 2px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.help-item.is-open {
+  border-left-color: var(--accent);
+}
+
+.help-trigger {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.help-trigger-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.help-trigger-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.help-trigger-text small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.help-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+
+.help-steps {
+  margin: 0;
+  padding: 2px 16px 14px 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-steps li {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.help-step-no {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-text, var(--accent));
+  padding-top: 2px;
+  opacity: 0.9;
+}
+
+.help-step-body {
+  min-width: 0;
+}
+
+.help-where {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--line-soft, var(--line));
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.help-answer {
+  margin: 0;
+  padding: 2px 16px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  opacity: 0.9;
+}
+
+.help-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--muted);
+}
+
+.help-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.help-foot {
+  margin: 6px 0 18px;
+  color: var(--muted);
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/* 窄窗口：分段控件换行，搜索框占满一行 */
+@media (max-width: 720px) {
+  .help-search {
+    flex-basis: 100%;
+  }
+  .help-segments {
+    width: 100%;
+  }
+  .help-segment {
+    flex: 1;
+  }
+}
+
+/* ── 嵌在「设置 → 帮助」里的形态（r22）────────────────────────────
+   设置页自己已经有标题和 Tab，这里不要再画一个整页头，
+   只保留一句说明 + 搜索 + 分段 + 折叠列表。 */
+.help-page.is-embedded {
+  padding: 4px 2px 8px;
+}
+
+.help-embedded-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.help-embedded-hint svg {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+}

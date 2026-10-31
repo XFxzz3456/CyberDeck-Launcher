@@ -1,0 +1,77 @@
+/* 启动 splash（看板【9】）。只用全局变量，六套主题自动跟随。 */
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--bg);
+  transition: opacity 0.2s ease;
+}
+
+.splash.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.splash-mark {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-ink, #08090b);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  overflow: hidden;
+}
+
+.splash-glyph {
+  font-family: var(--display, var(--sans, sans-serif));
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+/* 一条扫光：比旋转 spinner 更克制，也不会在 800ms 里显得杂乱。 */
+.splash-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  animation: splash-scan 0.62s ease-out forwards;
+}
+
+.splash-text {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+@keyframes splash-scan {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-scan {
+    animation: none;
+    opacity: 0.25;
+    transform: none;
+  }
+  .splash {
+    transition: none;
+  }
+}
