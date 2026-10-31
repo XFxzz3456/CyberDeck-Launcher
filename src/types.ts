@@ -72,7 +72,10 @@ export interface NexusRef {
 
 export interface ModEntry {
   id: string;
+  /** 展示名。来自文件名时后端已做过清洗（`!!!!_mime.archive` → `Mime`）。 */
   name: string;
+  /** 清洗前的原始文件名/文件夹名，只在后端清洗过 name 时有值。 */
+  rawName: string | null;
   version: string | null;
   author: string | null;
   category: string;

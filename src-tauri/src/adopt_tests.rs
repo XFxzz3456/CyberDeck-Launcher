@@ -227,6 +227,7 @@ fn adopt_copy_and_redeploy() {
     let (size, mtime) = file_stamp(&target);
     let entry = ModEntry {
         id: "adopt-0000000000000042".to_string(),
+        raw_name: None,
         name: "copy".to_string(),
         version: None,
         author: None,

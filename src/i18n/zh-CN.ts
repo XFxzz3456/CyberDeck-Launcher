@@ -1187,6 +1187,7 @@ export const zhCN = {
     translationOff: "未启用",
     translationUnbind: "解绑",
     prereqVersionLow: "版本过低（{installed} < {required}）",
+    rawName: "原始文件名",
     sourceLocal: "本地暂存（无原始压缩包记录）",
     sourceSection: "来源",
     staged: "STAGED",

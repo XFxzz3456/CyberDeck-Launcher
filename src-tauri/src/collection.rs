@@ -783,6 +783,7 @@ mod tests {
     fn local_mod(id: &str, mod_id: u64, file_id: u64, version: &str) -> ModEntry {
         ModEntry {
             id: id.to_string(),
+            raw_name: None,
             name: format!("本地 {id}"),
             version: Some(version.to_string()),
             author: None,

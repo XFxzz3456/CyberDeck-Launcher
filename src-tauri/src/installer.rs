@@ -598,14 +598,23 @@ fn finalize_install(
         .file_stem()
         .and_then(|v| v.to_str())
         .unwrap_or("Imported Mod");
-    let name = info
+    // info.json 给了名字就直接用（那是作者自己定的写法，不能再改）；否则退回
+    // 压缩包名，并走一遍展示名清洗 —— 玩家手里的包名普遍是 `!!!!_mime.archive`
+    // 这种把装饰符当排序键的写法，原样上列表没法读。
+    let info_name = info
         .as_ref()
         .and_then(|v| v.get("name"))
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|v| !v.is_empty())
-        .unwrap_or(fallback_name)
-        .to_string();
+        .map(str::to_string);
+    let name = info_name
+        .clone()
+        .unwrap_or_else(|| fallback_name.to_string());
+    let (display_name, raw_name) = match info_name {
+        Some(value) => (value, None),
+        None => (crate::modname::polish(&name), Some(name.clone())),
+    };
     let version = info
         .as_ref()
         .and_then(|v| v.get("version"))
@@ -670,7 +679,8 @@ fn finalize_install(
     });
     let mut entry = ModEntry {
         id: id.clone(),
-        name,
+        name: display_name,
+        raw_name,
         version,
         author,
         category: initial_category,

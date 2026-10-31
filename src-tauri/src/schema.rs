@@ -90,7 +90,13 @@ pub struct DeployedFile {
 #[serde(rename_all = "camelCase")]
 pub struct ModEntry {
     pub id: String,
+    /// 展示名。来自文件名时经过 `modname::polish` 清洗；来自 info.json / Nexus /
+    /// 用户手改时保持原样。
     pub name: String,
+    /// 清洗前的原始文件名 / 文件夹名。只有 `name` 被清洗过才有值，详情页用它
+    /// 告诉玩家「界面上的名字对应磁盘上哪个文件」，排错时不用回资源管理器翻。
+    #[serde(default)]
+    pub raw_name: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]

@@ -206,6 +206,18 @@ fn sanitize_loaded_state(state: &mut AppStateData) {
         if entry.enabled && entry.deployed_files.is_empty() {
             entry.enabled = false;
         }
+        // 展示名清洗是后加的能力，老库里的 name 还是 `!!!!_vbr_2.0_skin` 这种原始
+        // 文件名。只回填「名字来自文件名、且用户没手改过」的条目：info.json /
+        // Nexus / manual 三种来源一律不动，否则会把玩家改好的名字洗回机器名。
+        if entry.raw_name.is_none()
+            && matches!(entry.metadata_source.as_str(), "filename" | "adopted" | "")
+        {
+            let polished = crate::modname::polish(&entry.name);
+            if polished != entry.name {
+                entry.raw_name = Some(entry.name.clone());
+                entry.name = polished;
+            }
+        }
     }
     state.load_order.retain(|p| !p.trim().is_empty());
     state.load_order.dedup();
@@ -439,5 +451,82 @@ mod staging_dir_tests {
                 .filter(|item| item.parent_mod_id.is_some())
                 .count()
         );
+    }
+
+    /// 老库迁移：文件名来源的 name 会被清洗成展示名，人工命名 / info.json /
+    /// Nexus 标题一律不动。判定放在 sanitize_loaded_state 里，因为它在每次
+    /// Store::load 都会跑，天然幂等。
+    #[test]
+    fn legacy_file_names_are_polished_but_hand_set_names_are_kept() {
+        fn sample(name: &str, metadata_source: &str) -> crate::schema::ModEntry {
+            crate::schema::ModEntry {
+                id: format!("mod-{name}"),
+                raw_name: None,
+                name: name.to_string(),
+                version: None,
+                author: None,
+                category: "其他".to_string(),
+                category_locked: false,
+                description: String::new(),
+                source_zip: None,
+                nexus: None,
+                staging_path: "Z:/__cdl_test_missing__".to_string(),
+                cover_path: None,
+                enabled: false,
+                installed_at: "2026-10-01T00:00:00Z".to_string(),
+                updated_at: None,
+                size_bytes: 0,
+                file_count: 0,
+                layout: crate::schema::InstallLayout::Archive,
+                mod_folder: None,
+                metadata_source: metadata_source.to_string(),
+                planned_files: Vec::new(),
+                warnings: Vec::new(),
+                deployed_files: Vec::new(),
+                has_archive: false,
+                has_redmod: false,
+                has_cet: false,
+                translated_name: None,
+                translated_at: None,
+                translated_by: None,
+                managed: true,
+                origin: "cyberdeck".to_string(),
+                modpack_id: None,
+                nexus_cover_url: None,
+                is_translation: false,
+                parent_mod_id: None,
+                ai_loc: None,
+                ai_fix: Vec::new(),
+            }
+        }
+
+        let mut state = AppStateData::new("Z:/__cdl_test_staging__".to_string());
+        state.mods.push(sample("!!!!_mime.archive", "filename"));
+        state.mods.push(sample("#_scorpion_zenitex_core_dependency", "adopted"));
+        state.mods.push(sample("!!!!_vbr_2.0_skin", "manual"));
+        state.mods.push(sample("!!!!_redmod_name", "infoJson"));
+        state.mods.push(sample("!!!!_nexus_name", "nexus"));
+
+        sanitize_loaded_state(&mut state);
+
+        assert_eq!(state.mods[0].name, "Mime");
+        assert_eq!(
+            state.mods[0].raw_name.as_deref(),
+            Some("!!!!_mime.archive"),
+            "原始文件名必须留档，详情页要能对上磁盘上的文件"
+        );
+        assert_eq!(state.mods[1].name, "Scorpion Zenitex Core Dependency");
+        // 人工命名 / info.json / Nexus 标题是「真实标题」，绝不能被清洗覆盖。
+        for index in 2..5 {
+            assert_eq!(state.mods[index].raw_name, None);
+        }
+        assert_eq!(state.mods[2].name, "!!!!_vbr_2.0_skin");
+        assert_eq!(state.mods[3].name, "!!!!_redmod_name");
+        assert_eq!(state.mods[4].name, "!!!!_nexus_name");
+
+        // 二次加载必须幂等：已经清洗过的条目不再重复加工。
+        sanitize_loaded_state(&mut state);
+        assert_eq!(state.mods[0].name, "Mime");
+        assert_eq!(state.mods[2].name, "!!!!_vbr_2.0_skin");
     }
 }

@@ -634,6 +634,7 @@ mod tests {
     fn mod_entry(id: &str, name: &str, files: &[&str]) -> ModEntry {
         ModEntry {
             id: id.to_string(),
+            raw_name: None,
             name: name.to_string(),
             version: None,
             author: None,

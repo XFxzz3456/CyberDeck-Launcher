@@ -1117,6 +1117,7 @@ mod tests {
     fn mod_entry(name: &str) -> ModEntry {
         ModEntry {
             id: "mod-test".to_string(),
+            raw_name: None,
             name: name.to_string(),
             author: None,
             version: None,

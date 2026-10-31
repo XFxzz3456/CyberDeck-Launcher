@@ -23,6 +23,7 @@ fn temp_dir(tag: &str) -> PathBuf {
 fn entry(name: &str, description: &str) -> ModEntry {
     ModEntry {
         id: "adopt-0000000000000001".to_string(),
+        raw_name: None,
         name: name.to_string(),
         version: None,
         author: None,

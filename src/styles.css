@@ -4075,6 +4075,16 @@ pre {
   word-break: break-all;
 }
 
+/* 原始文件名：列表显示的是清洗后的展示名，这一行给要对照磁盘文件排错的人。 */
+.source-raw-name {
+  margin-top: 6px;
+  align-items: center;
+  border-style: dashed;
+  background: transparent;
+  font-size: 8.5px;
+  color: var(--muted-2);
+}
+
 .link-summary {
   display: flex;
   gap: 10px;

@@ -2256,6 +2256,7 @@ mod tests {
     fn sample_mod(id: &str, name: &str) -> ModEntry {
         ModEntry {
             id: id.to_string(),
+            raw_name: None,
             name: name.to_string(),
             version: Some("1.0.0".to_string()),
             author: None,

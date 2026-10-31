@@ -41,6 +41,8 @@ function normalizeMod(raw: unknown): ModEntry | null {
     ...(mod as unknown as ModEntry),
     id,
     name: text(mod.name, id),
+    // 老状态文件没有这个字段；后端把 name 清洗成展示名后，原名会存这里。
+    rawName: optionalText(mod.rawName),
     version: optionalText(mod.version),
     author: optionalText(mod.author),
     category: text(mod.category),

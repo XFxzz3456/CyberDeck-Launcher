@@ -19,6 +19,7 @@ mod logs;
 mod environment;
 mod profiles;
 mod safemode;
+mod modname;
 mod modsettings;
 mod nexus;
 mod nxm;

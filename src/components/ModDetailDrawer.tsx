@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FileText,
   FolderOpen,
   Link,
   Languages,
@@ -477,6 +478,14 @@ export function ModDetailDrawer({
               <Archive size={14} />
               <code>{mod.sourceZip ?? t("modDetail.sourceLocal")}</code>
             </div>
+            {/* 展示名会被清洗成人类可读的样子，原名留给要对照磁盘文件排错的人。 */}
+            {mod.rawName && mod.rawName !== mod.name ? (
+              <div className="source-box source-raw-name">
+                <FileText size={14} />
+                <span>{t("modDetail.rawName")}</span>
+                <code>{mod.rawName}</code>
+              </div>
+            ) : null}
             {mod.nexus ? (
               <button className="source-nexus" onClick={() => onOpenNexus(mod.nexus!.url)}>
                 <ExternalLink size={13} />

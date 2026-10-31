@@ -376,6 +376,7 @@ fn build_entry(
     }
     ModEntry {
         id: candidate.id.clone(),
+        raw_name: None,
         name: candidate.name.clone(),
         version: None,
         author: None,

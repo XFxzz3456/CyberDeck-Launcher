@@ -247,6 +247,7 @@ function baseMod(
   return {
     id,
     name,
+    rawName: null,
     version: "1.0.0",
     author: "CyberDeck",
     category,

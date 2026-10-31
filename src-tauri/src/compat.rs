@@ -249,6 +249,7 @@ mod tests {
         fs::create_dir_all(&staging).unwrap();
         ModEntry {
             id: id.to_string(),
+            raw_name: None,
             name: name.to_string(),
             version: None,
             author: None,
