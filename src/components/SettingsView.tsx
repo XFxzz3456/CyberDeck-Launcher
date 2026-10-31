@@ -33,7 +33,7 @@ import { ExternalToolsCard } from "./ExternalToolsCard";
 import type { HiddenViewsMap, HideableView } from "../lib/uiPrefs";
 import { NexusSettingsCard } from "./NexusSettingsCard";
 import { AiSettingsCard } from "./AiSettingsCard";
-import { AppearanceSettings } from "./AppearanceSettings";
+import { AppearanceSettings, type BackgroundFit } from "./AppearanceSettings";
 import type { CodeFontId, UiFontId } from "../lib/fonts";
 import { ConfigPackCard } from "./ConfigPackCard";
 import { GlossaryShareCard } from "./GlossaryShareCard";
@@ -259,14 +259,38 @@ export function SettingsView({
     }
   };
 
+  // 滑块的连续输入不需要在这里防抖：App 的 handleSettings 已经把落盘做成
+  // 「只保留最新值 + 250ms 合并窗口 + 串行写」，界面走的是乐观更新，拖动照样实时。
+  // 在这里再加一层 debounce 只会让滑块和画面不同步。
   const backgroundControl = {
     path: settings.backgroundImage ?? "",
     opacity: settings.backgroundOpacity ?? 45,
     blur: settings.backgroundBlur ?? 0,
+    dim: settings.backgroundDim ?? 50,
+    fit: settings.backgroundFit ?? "cover",
+    posX: settings.backgroundPosX ?? 50,
+    posY: settings.backgroundPosY ?? 50,
     onPick: () => void pickBackgroundImage(),
-    onClear: () => update({ backgroundImage: "", backgroundOpacity: 45, backgroundBlur: 0 }),
+    // 恢复默认连填充方式/焦点/遮罩一起复位，否则「清掉图再选一张」会带着上一张的
+    // 焦点位置，用户以为是新图自己偏了。
+    onClear: () =>
+      update({
+        backgroundImage: "",
+        backgroundOpacity: 45,
+        backgroundBlur: 0,
+        backgroundDim: 50,
+        backgroundFit: "cover",
+        backgroundPosX: 50,
+        backgroundPosY: 50,
+      }),
     onOpacity: (value: number) => update({ backgroundOpacity: value }),
     onBlur: (value: number) => update({ backgroundBlur: value }),
+    onDim: (value: number) => update({ backgroundDim: value }),
+    onFit: (value: BackgroundFit) => update({ backgroundFit: value }),
+    // 单轴更新：两个滑块各自只改自己那一轴，互不覆盖。
+    onPos: (axis: "x" | "y", value: number) =>
+      update(axis === "x" ? { backgroundPosX: value } : { backgroundPosY: value }),
+    onResetPos: () => update({ backgroundPosX: 50, backgroundPosY: 50 }),
   };
 
   // 更改暂存区：选目录 → 后端搬迁 + 重写路径 → 刷新快照。

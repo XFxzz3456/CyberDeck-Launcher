@@ -553,6 +553,21 @@ pub struct Settings {
     /// 背景图模糊半径 0–40 px（默认 0）。set_settings 会钳制。
     #[serde(default)]
     pub background_blur: u32,
+    /// 背景图填充模式（背景图焦点任务·一）："cover"（铺满，默认，等比裁切）/
+    /// "contain"（完整显示，等比留白）/ "stretch"（拉伸铺满，会变形）。
+    /// 非法值按 cover 兜底（set_settings 会在保存时拦住）。
+    #[serde(default = "default_background_fit")]
+    pub background_fit: String,
+    /// 背景图焦点横坐标 0–100（默认 50 = 居中）。cover / contain 下决定裁切重心。
+    #[serde(default = "default_background_pos")]
+    pub background_pos_x: u8,
+    /// 背景图焦点纵坐标 0–100（默认 50 = 居中）。
+    #[serde(default = "default_background_pos")]
+    pub background_pos_y: u8,
+    /// 背景暗化遮罩浓度 0–100（默认 50）。压在图片之上、界面之下，
+    /// 和 background_opacity 是两个维度：不透明度让图变淡，遮罩让图后面垫一层黑。
+    #[serde(default = "default_background_dim")]
+    pub background_dim: u8,
     /// 用户自定义启动参数（#6）：如 `-modded`。空格分隔，支持双引号包裹，
     /// 经 parse_launch_args 白名单校验后逐参传给游戏进程，绝不经过 shell。
     #[serde(default)]
@@ -627,6 +642,21 @@ fn default_background_opacity() -> u8 {
     45
 }
 
+fn default_background_fit() -> String {
+    // cover：绝大多数壁纸都是「宁可裁掉两边，也不要留白」。
+    "cover".to_string()
+}
+
+fn default_background_pos() -> u8 {
+    // 50 = 居中，符合直觉的默认焦点。
+    50
+}
+
+fn default_background_dim() -> u8 {
+    // 50：正好是看板要求的 rgba(0,0,0,0.5)。再淡正文对比度不够，再浓图就白放了。
+    50
+}
+
 fn default_deploy_mode() -> String {
     "hardlink".to_string()
 }
@@ -665,6 +695,10 @@ impl Default for Settings {
             background_image: String::new(),
             background_opacity: default_background_opacity(),
             background_blur: 0,
+            background_fit: default_background_fit(),
+            background_pos_x: default_background_pos(),
+            background_pos_y: default_background_pos(),
+            background_dim: default_background_dim(),
             deploy_mode: default_deploy_mode(),
             launch_gpu_pref: default_gpu_pref(),
             launch_priority: default_launch_priority(),

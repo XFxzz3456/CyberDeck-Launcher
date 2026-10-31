@@ -2113,6 +2113,28 @@ export default function App() {
       })()
     : [];
 
+  // ── 自定义背景层几何（背景图焦点任务）──────────────────────────────
+  // 三层分工必须分清，否则「滑块拖了没反应」：
+  //   .app-backdrop      只负责「图怎么摆」——size / position / blur；
+  //   .app-backdrop-dim  只负责「压多黑」——和图片完全解耦，铺满整个窗口；
+  //   .app-shell 的内容层照旧，靠半透明面板透出下面两层。
+  // 分开的直接理由：contain 模式会在左右或上下留白，如果压暗是画在图片元素上的
+  // （比如 inset box-shadow / 半透明底板），留白处就是全亮的——图与图之间两块亮度，
+  // 正文压在上面照样读不清。所以遮罩必须是独立的一层「不以图片尺寸为界」。
+  const bgSettings = snapshot?.state.settings;
+  const bgFit = bgSettings?.backgroundFit ?? "cover";
+  // stretch 用 100% 100% 强行铺满；cover / contain 直接把关键字交给 CSS。
+  const bgSize = bgFit === "stretch" ? "100% 100%" : bgFit;
+  const bgPosX = Math.min(100, Math.max(0, bgSettings?.backgroundPosX ?? 50));
+  const bgPosY = Math.min(100, Math.max(0, bgSettings?.backgroundPosY ?? 50));
+  const bgOpacity = Math.min(100, Math.max(0, bgSettings?.backgroundOpacity ?? 45));
+  const bgBlur = Math.min(40, Math.max(0, bgSettings?.backgroundBlur ?? 0));
+  const bgDim = Math.min(100, Math.max(0, bgSettings?.backgroundDim ?? 50));
+  // 模糊会在容器边界糊出一圈透明毛边，必须先把层放大再把溢出的部分裁掉（.app-shell
+  // 是 overflow:hidden）。补偿量跟着半径走：固定 28px 在 blur > 28 时就会露边，
+  // 而 blur = 0 时又白扩一圈——contain 模式下那一圈正好把图的上下边裁掉。
+  const bgBleed = bgBlur > 0 ? Math.min(Math.ceil(bgBlur * 1.2), 48) : 0;
+
   return (
     <MotionConfig reducedMotion={motionEnabled ? "user" : "always"}>
     <>
@@ -2125,18 +2147,31 @@ export default function App() {
       inert={eulaAccepted ? undefined : true}
     >
       {backgroundData.dataUrl ? (
-        <div
-          className="app-backdrop"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `url("${backgroundData.dataUrl}")`,
-            opacity: (snapshot?.state.settings.backgroundOpacity ?? 45) / 100,
-            filter:
-              (snapshot?.state.settings.backgroundBlur ?? 0) > 0
-                ? `blur(${snapshot?.state.settings.backgroundBlur}px)`
-                : undefined,
-          }}
-        />
+        <>
+          <div
+            className="app-backdrop"
+            aria-hidden="true"
+            data-bg-fit={bgFit}
+            style={{
+              backgroundImage: `url("${backgroundData.dataUrl}")`,
+              backgroundSize: bgSize,
+              backgroundPosition: `${bgPosX}% ${bgPosY}%`,
+              opacity: bgOpacity / 100,
+              filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+              // 模糊边缘补偿。写进 style 而不是 CSS：`contain` 在 blur=0 时不能外扩，
+              // 否则 28px 的旧固定值会把图上下各裁掉一截。
+              inset: bgBleed > 0 ? `-${bgBleed}px` : "0px",
+            }}
+          />
+          {/* 暗化遮罩：独立一层、铺满整个 shell，不以图片尺寸为界——
+              `contain` 模式上下留白的地方同样被压暗，正文才不会压在白边上。
+              浓度 0 时把 opacity 归零而不是不渲染，避免拖动滑块时节点反复挂载。 */}
+          <div
+            className="app-backdrop-dim"
+            aria-hidden="true"
+            style={{ opacity: bgDim / 100 }}
+          />
+        </>
       ) : null}
       <TitleBar demoMode={snapshot.demoMode} />
       <div className="app-body">

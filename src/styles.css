@@ -212,20 +212,83 @@ pre {
   mask-image: radial-gradient(circle at 50% 40%, black, transparent 70%);
 }
 
-/* ── 自定义背景图（看板【皮肤 UI 优化】P0 子项）────────────────────
+/* ── 自定义背景图（看板【皮肤 UI 优化】P0 子项 + 背景图焦点任务）────────
    背景层挂在 .app-shell 内、z-index:-1（shell 有 isolation:isolate，
    负 z 只盖住 shell 自己的背景，不会反噬面板内容）。启用时 shell 去掉
    不透明的 var(--bg) 底色、侧栏换半透明——面板本来就是 color-mix 半透明，
-   图片会从这些缝里透出来。inset 负值是 blur 边缘补偿：模糊会在边界露出
-   透明毛边，先放大 28px 再被 overflow:hidden 裁掉。 */
+   图片会从这些缝里透出来。
+
+   这一层只负责「图怎么摆」（size / position / blur），压暗交给下面独立的
+   .app-backdrop-dim。两者必须分开，理由见 .app-backdrop-dim 的注释。
+
+   inset 不再写死 -28px：App 会按模糊半径内联写入实际补偿量，blur=0 时为 0。
+   固定 -28px 在 contain 模式下会把图上下各裁掉一截（层比视口大 56px，
+   图按放大的层等比缩放），而 blur 超过 28px 时又会露出毛边。 */
 .app-backdrop {
   position: absolute;
-  inset: -28px;
+  inset: 0;
   z-index: -1;
+  /* 只做兜底：真正的值是 App 内联 style 里的 background-size/position。 */
   background-size: cover;
-  background-position: center;
+  background-position: center center;
   background-repeat: no-repeat;
   pointer-events: none;
+}
+
+/* 暗化遮罩（可读性任务·一）。
+
+   为什么是一条独立的全屏层，而不是画在图片元素上的 inset 阴影 / 半透明底板：
+   contain 模式会在左右或上下留白，那些留白**不在图片元素里**，压暗就压不到，
+   结果同一屏上「有图的地方暗、留白的地方亮」，压在图上的正文照样读不清。
+   本层 inset:0 铺满整个 shell，与图片的实际尺寸无关，所以留白处一样被压暗。
+
+   为什么不用 background-opacity 代替：不透明度是「图整体变淡」，调到能读字的时候
+   图已经没什么可看的了；遮罩是「图之上垫一层黑」，图该鲜艳还鲜艳，前景对比度却
+   靠这层黑拉开了。两个维度，滑块各自独立。
+
+   浓度由 backgroundDim（0–100，默认 50）通过内联 opacity 控制；这里只定颜色和
+   过渡。和 .app-backdrop 同为 z-index:-1，靠 DOM 顺序叠在图片之上。 */
+.app-backdrop-dim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #000;
+  transition: opacity 0.18s ease;
+}
+
+/* 亮色主题不能压黑：界面底色是浅的、正文是深色字，压黑只会让深色字陷进暗底里，
+   可读性反而更差。亮色改成等同浓度的白色薄纱——作用一样（把背景往界面底色方向
+   推，拉开前景与背景的距离），方向相反。 */
+:root[data-mode="light"] .app-backdrop-dim {
+  background: #fff;
+}
+
+/* 背景图启用时全局挂文字阴影。
+   text-shadow 是可继承属性，挂在 .app-shell 上就够了，不必逐个元素点名——
+   将来新增的文案自动获得保护，不会漏。深色主题用黑投影（压亮部），
+   亮色主题用白投影（反过来提亮暗部）。
+   界面缩放 90%–150%、字号 10.5–15px 之间，2px/4px 的偏移量不会糊掉笔画。 */
+:root {
+  --backdrop-text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+:root[data-mode="light"] {
+  --backdrop-text-shadow: 0 2px 4px rgba(255, 255, 255, 0.85);
+}
+
+[data-backdrop="on"] {
+  text-shadow: var(--backdrop-text-shadow);
+}
+
+/* 输入类控件里的字要精确看（尤其是 API Key、路径），阴影会让字形发虚；
+   code/pre 本来就靠等宽结构辨识，同样不吃阴影。 */
+[data-backdrop="on"] input,
+[data-backdrop="on"] textarea,
+[data-backdrop="on"] select,
+[data-backdrop="on"] code,
+[data-backdrop="on"] pre {
+  text-shadow: none;
 }
 
 [data-backdrop="on"] .app-shell {
@@ -240,6 +303,52 @@ pre {
     color-mix(in srgb, var(--bg-2) 88%, transparent),
     color-mix(in srgb, var(--bg) 84%, transparent)
   );
+}
+
+/* ── 毛玻璃底板（可读性任务·二）──────────────────────────────────
+   直接压在背景图上、本来又没有自带底色的那几块（标签页条 / 搜索框 /
+   右上角按钮组）统一垫一层半透明 + blur(8px)。
+   为什么不是纯色：纯色会把一张完整的图切成一块块补丁，边界硬、看着脏；
+   模糊能把底板边缘和背景图接上，是这块区域最省事的做法。
+   颜色走变量：深色 0.6 黑、亮色 0.66 白，两套主题共用同一份结构。 */
+[data-backdrop="on"] {
+  --frost-bg: rgba(15, 15, 17, 0.6);
+  --frost-blur: blur(8px);
+  --frost-radius: 8px;
+}
+
+:root[data-mode="light"] [data-backdrop="on"] {
+  --frost-bg: rgba(255, 255, 255, 0.66);
+}
+
+[data-backdrop="on"] .settings-tabs,
+[data-backdrop="on"] .nexus-tabs,
+[data-backdrop="on"] .topbar-search,
+[data-backdrop="on"] .topbar-actions > .btn-ghost,
+[data-backdrop="on"] .profile-picker {
+  background: var(--frost-bg);
+  backdrop-filter: var(--frost-blur);
+  -webkit-backdrop-filter: var(--frost-blur);
+}
+
+/* .btn 自带 clip-path 斜角，圆角对它无效；标签页条和搜索框是直角的，
+   补一档圆角让它们和毛玻璃的柔性观感一致。 */
+[data-backdrop="on"] .settings-tabs,
+[data-backdrop="on"] .nexus-tabs,
+[data-backdrop="on"] .topbar-search {
+  border-radius: var(--frost-radius);
+}
+
+/* 模组卡片列表容器：把整片列表压一层很淡的黑（默认 0.3 浓度），
+   卡片之间的缝不再是全亮的图，扫读时视线不会被背景细节拽走。
+   亮色用白，逻辑同上。只加底色不加内边距，卡片布局一分不动。 */
+[data-backdrop="on"] .grid-scroll {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--frost-radius);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .grid-scroll {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 /* 个性化页：自定义背景控制块。 */
@@ -274,6 +383,82 @@ pre {
 
 .bg-sliders.is-disabled {
   opacity: 0.45;
+}
+
+/* 填充方式三选一（背景图焦点任务）。
+   独立类名而不复用 .platform-chip：那套 chip 被 check-platform.mjs 按
+   `.platform-chip` 全局计数断言，混进来会让「启动卡片里有几组 chip」这条失准。
+   视觉指标与 .platform-chip 保持一致，只是同名字段一份、互不牵连。 */
+.bg-fit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bg-fit.is-disabled {
+  opacity: 0.45;
+}
+
+.bg-fit-label {
+  flex: 0 0 auto;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-label);
+  color: var(--text-2);
+}
+
+.bg-fit-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bg-fit-chip {
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: var(--fw-label);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.bg-fit-chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-hot);
+}
+
+.bg-fit-chip.selected {
+  color: var(--accent-ink, #fff);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.bg-fit-chip:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.65);
+  outline-offset: 2px;
+}
+
+/* 三个模式说明各有取舍，一行字说不清，单占一行小字。 */
+.bg-fit-hint {
+  margin-top: 0;
+}
+
+/* 焦点行：按钮 + 当前读数。读数用等宽，拖滑块时数字不跳宽。 */
+.bg-reset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bg-pos-readout {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: var(--fw-mono);
+  color: var(--muted-2);
 }
 
 .bg-slider {

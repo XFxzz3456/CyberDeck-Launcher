@@ -1334,6 +1334,21 @@ fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settin
     settings.background_image = settings.background_image.trim().to_string();
     settings.background_opacity = settings.background_opacity.clamp(0, 100);
     settings.background_blur = settings.background_blur.min(40);
+    // 背景图焦点（背景图焦点任务）：填充模式白名单 + 焦点百分比钳制。
+    // u8 已经天然 <= 255，但焦点是百分比语义，超过 100 会让 background-position
+    // 出现负数补边（CSS 允许 >100% 但要靠补边填充），前端算不出预期画面，直接钳死。
+    if !matches!(
+        settings.background_fit.as_str(),
+        "cover" | "contain" | "stretch"
+    ) {
+        return Err(CommandError::new(
+            "INVALID_SETTING",
+            "背景填充模式必须是 cover / contain / stretch。",
+        ));
+    }
+    settings.background_pos_x = settings.background_pos_x.min(100);
+    settings.background_pos_y = settings.background_pos_y.min(100);
+    settings.background_dim = settings.background_dim.min(100);
     // 存档管理：上限钳制；编辑器路径存在性校验（空 = 未配置，允许）。
     settings.snapshot_limit = settings.snapshot_limit.clamp(1, 100);
     settings.save_editor_path = settings.save_editor_path.trim().to_string();

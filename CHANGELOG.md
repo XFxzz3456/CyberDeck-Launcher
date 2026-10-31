@@ -10,6 +10,20 @@
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
 - 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
+### 0.9.0-r43（2026-10-31，待构建：背景图焦点/填充 + 全局可读性遮罩）
+
+| 项 | 内容 |
+|---|---|
+| 背景 | 自定义背景图此前只有 `cover` + 居中，长图/竖图会裁掉主体；且没有可读性兜底——亮色背景上正文、搜索框、Tab 标签直接糊成一片。本次拆成「图怎么摆」+「压多黑」两层分别解决。 |
+| 新增 | **背景图填充模式**：铺满（`cover`，等比放大盖住、多出部分按焦点裁掉）/ 完整显示（`contain`，整张可见、余白保留）/ 拉伸（`100% 100%`）。**焦点 X/Y 滑块** 0–100%（默认 50%）+「重置居中」按钮。持久化 `backgroundFit` / `backgroundPosX` / `backgroundPosY`。 |
+| 新增 | **全局暗化遮罩 `.app-backdrop-dim`**：独立一层、`inset:0` 铺满整个 shell，浓度 `backgroundDim`（0–100，默认 50）由滑块控制。仅自定义背景启用时渲染（`[data-backdrop="on"]`），无背景不出现；浅色模式换用独立底色。 |
+| 变更 | **遮罩与图片解耦**：暗化画在独立层而不是图片元素上，所以 `contain` 模式左右/上下留白处一样被压暗——正文不会压在一条全亮的白边上（若遮罩跟着图片尺寸走就会）。 |
+| 变更 | **背景层几何**：`backgroundSize` / `backgroundPosition` 由设置驱动；blur 边缘补偿从固定 `28px` 改为**跟随半径** `min(ceil(blur*1.2), 48)`——固定值在 `blur>28` 时露边、在 `blur=0` 时白扩一圈把 `contain` 图的上下边裁掉。 |
+| 变更 | **浮在背景上的文字**加 `text-shadow: 0 2px 4px rgba(0,0,0,.6)`（浅色模式改白色阴影），挂在 `[data-backdrop="on"]` 上靠继承生效；`input/textarea/select/code/pre` 例外不叠（避免把输入文字糊成一团）。 |
+| 变更 | **毛玻璃底板**：`.settings-tabs` / `.nexus-tabs` / `.topbar-search` / `.topbar-actions > .btn-ghost` / `.profile-picker` 统一 `backdrop-filter` + 半透明底；mod 卡片列表容器 `.grid-scroll` 加淡底板 `rgba(0,0,0,.3)`（浅色模式对应白底）。全部挂 `[data-backdrop="on"]`，无自定义背景时不生效。 |
+| 持久化 | `Settings` 新增 `backgroundFit` / `backgroundPosX` / `backgroundPosY` / `backgroundDim`：TS `types.ts` / `normalize.ts`（含非法值回退）/ `mock.ts`；Rust `schema.rs` 每个字段 `#[serde(default)]`（旧状态文件无这些键仍可读）+ `lib.rs` 钳制（pos/dim ≤100）与 fit 白名单校验（非法值返回 `INVALID_SETTING`）。 |
+| 验证 | `tsc --noEmit` exit 0 · `cargo test` 145 passed / 0 failed / 2 ignored（Rust 侧 schema 与钳制回归）。UI 断言与主题/对比度回归待全量门禁。 |
+
 ### 0.9.0-r42（2026-10-31，待构建：字重与排版层级重构）
 
 | 项 | 内容 |

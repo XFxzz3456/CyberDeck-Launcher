@@ -251,6 +251,25 @@ export interface Settings {
   backgroundOpacity: number;
   /** 背景图模糊半径 0–40 px。 */
   backgroundBlur: number;
+  /**
+   * 背景图填充模式：
+   * - `cover`   铺满（默认）：等比放大到盖住窗口，多出来的部分按焦点裁掉；
+   * - `contain` 完整显示：等比缩到整张图可见，不满的一侧留白（遮罩仍然生效）；
+   * - `stretch` 拉伸：强行铺满窗口，比例不对会变形。
+   */
+  backgroundFit: "cover" | "contain" | "stretch";
+  /** 背景图焦点横坐标 0–100（默认 50）。`stretch` 下无意义但保留值。 */
+  backgroundPosX: number;
+  /** 背景图焦点纵坐标 0–100（默认 50）。 */
+  backgroundPosY: number;
+  /**
+   * 背景暗化遮罩浓度 0–100（默认 50）。
+   *
+   * 和 `backgroundOpacity` 是**两个不同维度**：不透明度控制「图片整体多淡」（淡到
+   * 一定程度图片就没用了），遮罩控制「图片之上压多黑的一层」（图片照样鲜艳，但中间
+   * 隔一层黑，正文才有对比度）。只有后者能同时满足「图好看」和「字能读」。
+   */
+  backgroundDim: number;
   /** 部署方式（deepseek 任务·模块一）：hardlink / symlink / copy。 */
   deployMode: "hardlink" | "symlink" | "copy";
   /** 启动显卡偏好：auto / dedicated / integrated。 */

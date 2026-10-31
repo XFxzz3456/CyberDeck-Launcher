@@ -29,16 +29,37 @@ import { HIDEABLE_VIEWS, type HiddenViewsMap, type HideableView } from "../lib/u
 import { STYLE_PRESETS, useTheme, type ColorMode } from "../lib/theme";
 import { SwitchRow } from "./ui";
 
+/** 背景图填充模式（与 Settings.backgroundFit 同形）。 */
+export type BackgroundFit = "cover" | "contain" | "stretch";
+
 /** 自定义背景图控制块（看板【皮肤 UI 优化】P0 子项），由 SettingsView 组装。 */
 export interface BackgroundControl {
   path: string;
   opacity: number;
   blur: number;
+  /** 暗化遮罩浓度 0–100（可读性任务）。 */
+  dim: number;
+  fit: BackgroundFit;
+  /** 焦点横坐标 0–100，50 = 居中。 */
+  posX: number;
+  /** 焦点纵坐标 0–100。 */
+  posY: number;
   onPick: () => void;
   onClear: () => void;
   onOpacity: (value: number) => void;
   onBlur: (value: number) => void;
+  onDim: (value: number) => void;
+  onFit: (value: BackgroundFit) => void;
+  onPos: (axis: "x" | "y", value: number) => void;
+  onResetPos: () => void;
 }
+
+/** 填充方式三选一。顺序按「最常用 → 最少用」排，默认项排第一。 */
+const FIT_OPTIONS: { id: BackgroundFit; labelKey: MessageKey }[] = [
+  { id: "cover", labelKey: "appearance.backgroundFitCover" },
+  { id: "contain", labelKey: "appearance.backgroundFitContain" },
+  { id: "stretch", labelKey: "appearance.backgroundFitStretch" },
+];
 
 const MODE_OPTIONS: { id: ColorMode; label: string; icon: typeof Sun }[] = [
   { id: "light", label: t("appearance.modeLight"), icon: Sun },
@@ -444,7 +465,84 @@ export function AppearanceSettings({
                   : t("appearance.backgroundEmpty")}
               </span>
             </div>
+            {/* 填充方式：铺满 / 完整显示 / 拉伸。
+                三选一用按钮组而不是下拉框：只有三个互斥项，全部摊开点一下就换，
+                下拉框多两次点击还看不到当前布局逻辑。 */}
+            <div className={`bg-fit ${background.path ? "" : "is-disabled"}`}>
+              <span className="bg-fit-label">{t("appearance.backgroundFit")}</span>
+              <div
+                className="bg-fit-chips"
+                role="group"
+                aria-label={t("appearance.backgroundFitAria")}
+              >
+                {FIT_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`bg-fit-chip ${
+                      background.fit === option.id ? "selected" : ""
+                    }`}
+                    disabled={!background.path}
+                    aria-pressed={background.fit === option.id}
+                    onClick={() => background.onFit(option.id)}
+                  >
+                    {t(option.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="appearance-hint bg-fit-hint">{t("appearance.backgroundFitHint")}</p>
+
             <div className={`bg-sliders ${background.path ? "" : "is-disabled"}`}>
+              {/* 焦点双轴：0% 贴左/上，50% 居中，100% 贴右/下。
+                  cover 下决定裁掉哪一边，contain 下决定图靠哪边，stretch 下无视觉效果
+                  （但值照样存着，切回 cover 不会丢）。 */}
+              <label className="bg-slider">
+                <span>{t("appearance.backgroundPosX")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={background.posX}
+                  disabled={!background.path}
+                  onChange={(event) => background.onPos("x", Number(event.target.value))}
+                  aria-label={`${t("appearance.backgroundPosAria")} ${t(
+                    "appearance.backgroundPosX",
+                  )}`}
+                />
+                <code>{background.posX}%</code>
+              </label>
+              <label className="bg-slider">
+                <span>{t("appearance.backgroundPosY")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={background.posY}
+                  disabled={!background.path}
+                  onChange={(event) => background.onPos("y", Number(event.target.value))}
+                  aria-label={`${t("appearance.backgroundPosAria")} ${t(
+                    "appearance.backgroundPosY",
+                  )}`}
+                />
+                <code>{background.posY}%</code>
+              </label>
+              <div className="bg-reset-row">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={background.onResetPos}
+                  disabled={!background.path || (background.posX === 50 && background.posY === 50)}
+                  title={t("appearance.backgroundResetFocusTitle")}
+                >
+                  <RotateCcw size={12} /> {t("appearance.backgroundResetFocus")}
+                </button>
+                <span className="bg-pos-readout">
+                  {background.posX}% / {background.posY}%
+                </span>
+              </div>
               <label className="bg-slider">
                 <span>{t("appearance.backgroundOpacity")}</span>
                 <input
@@ -472,6 +570,23 @@ export function AppearanceSettings({
                   aria-label={t("appearance.backgroundBlur")}
                 />
                 <code>{background.blur}px</code>
+              </label>
+              {/* 暗化遮罩：这是「文字可读性」那条的浓度旋钮。和上面的不透明度
+                  不是一回事，所以两者挨着放、说明写在 title 上，免得同一张卡里
+                  堆三段长注释。 */}
+              <label className="bg-slider" title={t("appearance.backgroundDimHint")}>
+                <span>{t("appearance.backgroundDim")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={background.dim}
+                  disabled={!background.path}
+                  onChange={(event) => background.onDim(Number(event.target.value))}
+                  aria-label={t("appearance.backgroundDim")}
+                />
+                <code>{background.dim}%</code>
               </label>
             </div>
             <p className="appearance-hint">{t("appearance.backgroundHint")}</p>

@@ -123,8 +123,16 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     wolvenkitTimeoutSecs: num(settings.wolvenkitTimeoutSecs, fallback.wolvenkitTimeoutSecs),
     backgroundOpacity: num(settings.backgroundOpacity, fallback.backgroundOpacity),
     backgroundBlur: num(settings.backgroundBlur, fallback.backgroundBlur),
+    backgroundPosX: num(settings.backgroundPosX, fallback.backgroundPosX),
+    backgroundPosY: num(settings.backgroundPosY, fallback.backgroundPosY),
+    backgroundDim: num(settings.backgroundDim, fallback.backgroundDim),
     // 协议是字面量联合，非法值一律回退 openai，不进文本兜底通道。
     aiProtocol: settings.aiProtocol === "anthropic" ? "anthropic" : "openai",
+    // 填充模式同理：只认三个合法值，其余（含旧状态里缺字段）回退 cover。
+    backgroundFit:
+      settings.backgroundFit === "contain" || settings.backgroundFit === "stretch"
+        ? settings.backgroundFit
+        : "cover",
   } as Settings;
 }
 
@@ -170,6 +178,10 @@ export const FALLBACK_SETTINGS: Settings = {
   backgroundImage: "",
   backgroundOpacity: 45,
   backgroundBlur: 0,
+  backgroundFit: "cover",
+  backgroundPosX: 50,
+  backgroundPosY: 50,
+  backgroundDim: 50,
   deployMode: "hardlink",
   launchGpuPref: "auto",
   launchPriority: "normal",
