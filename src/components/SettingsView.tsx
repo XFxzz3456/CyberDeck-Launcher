@@ -41,8 +41,138 @@ import { HelpCenterView } from "./HelpCenterView";
 import { SafeModeCard } from "./SafeModeCard";
 import { SettingsTabs, type SettingsTabId } from "./SettingsTabs";
 import type { Preferences, ThemeId } from "../lib/preferences";
-import type { NotificationCategory, NotificationPrefs } from "../lib/notify";
+import type {
+  NotificationCategory,
+  NotificationDuration,
+  NotificationPrefs,
+} from "../lib/notify";
+import {
+  clampNotificationSeconds,
+  DEFAULT_NOTIFICATION_DURATION,
+  NOTIFICATION_DURATION_MAX,
+  NOTIFICATION_DURATION_MIN,
+  NOTIFICATION_DURATION_PRESETS,
+} from "../lib/notify";
 import { t } from "../i18n";
+
+/**
+ * 2D 通知停留时长分段控件：3 / 5 / 10 / 自定义（1–60 整数秒）/ 不自动隐藏。
+ *
+ * 复用外观页缩放控件的 `.scale-segmented` 一族样式（同一套分段视觉语言），
+ * 自定义档同样「原地变输入框」：非数字字符直接拦在 onChange，越界在提交时
+ * 自动修正并闪一条提示，不弹窗不打断。
+ */
+function NotificationDurationRow({
+  value,
+  onChange,
+}: {
+  value: NotificationDuration;
+  onChange: (value: NotificationDuration) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(DEFAULT_NOTIFICATION_DURATION));
+  const [hint, setHint] = useState("");
+  const hintTimer = useRef<number | null>(null);
+
+  const customActive = typeof value === "number" && !NOTIFICATION_DURATION_PRESETS.includes(value as 3 | 5 | 10);
+
+  const flash = (message: string) => {
+    setHint(message);
+    if (hintTimer.current !== null) window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setHint(""), 2400);
+  };
+
+  const commit = (raw: string) => {
+    const parsed = Number.parseInt(raw.replace(/[^\d]/g, ""), 10);
+    // 空输入 / 纯非法字符：安静回退到当前生效值，不报错。
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setDraft(String(typeof value === "number" ? value : DEFAULT_NOTIFICATION_DURATION));
+      setEditing(false);
+      return;
+    }
+    if (parsed < NOTIFICATION_DURATION_MIN) flash(t("settings.notifDurationMinHint"));
+    else if (parsed > NOTIFICATION_DURATION_MAX) flash(t("settings.notifDurationMaxHint"));
+    const clamped = clampNotificationSeconds(parsed);
+    onChange(clamped);
+    setDraft(String(clamped));
+    setEditing(false);
+  };
+
+  const startEditing = () => {
+    setDraft(String(typeof value === "number" ? value : DEFAULT_NOTIFICATION_DURATION));
+    setEditing(true);
+  };
+
+  return (
+    <div className="notif-duration-row">
+      <div className="notif-duration-copy">
+        <strong>{t("settings.notifDuration")}</strong>
+        <span>{t("settings.notifDurationDesc")}</span>
+      </div>
+      <div className="scale-segmented" role="group" aria-label={t("settings.notifDuration")}>
+        {NOTIFICATION_DURATION_PRESETS.map((seconds) => (
+          <button
+            key={seconds}
+            type="button"
+            className={`scale-seg ${value === seconds ? "selected" : ""}`}
+            aria-pressed={value === seconds}
+            onClick={() => onChange(seconds)}
+          >
+            {t("settings.notifDurationSeconds", { count: seconds })}
+          </button>
+        ))}
+        {editing ? (
+          <span className="scale-seg scale-seg-input">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={draft}
+              autoFocus
+              aria-label={t("settings.notifDurationCustom")}
+              onChange={(event) => setDraft(event.target.value.replace(/[^\d]/g, "").slice(0, 3))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commit(draft);
+                } else if (event.key === "Escape") {
+                  setEditing(false);
+                }
+              }}
+              onBlur={() => commit(draft)}
+            />
+            <i>{t("settings.notifDurationUnit")}</i>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={`scale-seg scale-seg-custom ${customActive ? "selected" : ""}`}
+            aria-pressed={customActive}
+            onClick={startEditing}
+            title={t("settings.notifDurationCustom")}
+          >
+            <Pencil size={11} />
+            {t("settings.notifDurationCustom")}
+            {customActive && typeof value === "number" ? (
+              <em className="notif-duration-current">
+                {value}
+                {t("settings.notifDurationUnit")}
+              </em>
+            ) : null}
+          </button>
+        )}
+        <button
+          type="button"
+          className={`scale-seg ${value === "never" ? "selected" : ""}`}
+          aria-pressed={value === "never"}
+          onClick={() => onChange("never")}
+        >
+          {t("settings.notifDurationNever")}
+        </button>
+      </div>
+      {hint ? <span className="scale-hint notif-duration-hint">{hint}</span> : null}
+    </div>
+  );
+}
 
 export function SettingsView({
   snapshot,
@@ -74,6 +204,8 @@ export function SettingsView({
   onAnimations,
   notificationPrefs,
   onNotificationPrefsChange,
+  notificationDuration,
+  onNotificationDurationChange,
   onTestNotification,
   onShowEula,
   initialTab = "appearance",
@@ -111,6 +243,9 @@ export function SettingsView({
   /** 通知分类偏好（r12）。 */
   notificationPrefs: NotificationPrefs;
   onNotificationPrefsChange: (prefs: NotificationPrefs) => void;
+  /** 2D 通知停留时长（秒或 "never"）。 */
+  notificationDuration: NotificationDuration;
+  onNotificationDurationChange: (value: NotificationDuration) => void;
   onTestNotification: (category: NotificationCategory) => void;
   /** 在「关于」里重新打开使用协议（只展示，不拦截）。 */
   onShowEula: () => void;
@@ -633,6 +768,8 @@ export function SettingsView({
                 }
               />
             </div>
+
+            <NotificationDurationRow value={notificationDuration} onChange={onNotificationDurationChange} />
           </section>
         </section>
 

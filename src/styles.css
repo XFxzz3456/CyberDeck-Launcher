@@ -11058,6 +11058,49 @@ body::before {
     display: none;
   }
 }
+/* ── 通知停留时长（设置 → 通知，2D）────────────────────────── */
+
+.notif-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.notif-duration-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  flex: 1 1 200px;
+}
+
+.notif-duration-copy strong {
+  font-size: 12.5px;
+  font-weight: var(--fw-label);
+  color: var(--text);
+}
+
+.notif-duration-copy span {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* 自定义档显示当前生效秒数：不展开输入框也能看出现在用的是几秒。 */
+.notif-duration-current {
+  font-style: normal;
+  font-family: var(--mono);
+  color: var(--accent-text);
+}
+
+.notif-duration-hint {
+  flex-basis: 100%;
+  font-size: 11px;
+}
 /* ── 播放集管理（设置页）────────────────────────────────────── */
 
 .profile-panel .profile-admin-actions {

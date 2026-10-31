@@ -292,6 +292,24 @@ const UI_SCRIPTS = [
     expect: ["saves=PASS", "pageerrors=0"],
   },
   {
+    // 2D：通知停留时长。warn/error 强制常驻的判定是 notify.ts::toastTtl 纯函数，
+    // 这里只卡「配置真的生效」：落盘、越界修正、字符拦截、never 常驻、5 秒自动消失。
+    name: "通知停留时长",
+    script: "check-notifications.mjs",
+    expect: [
+      "segs>=5",
+      "preset10=10",
+      "customClamped=60",
+      "digitsOnly=8",
+      "emptyRevert=8",
+      "never=never",
+      "stickyToast=1",
+      "normalToast=1",
+      "autoDismissed=1",
+      "pageErrors=0",
+    ],
+  },
+  {
     // 2026-10-31：「存档管理」页漏登记 overflow-y，整页被 .content 裁掉、滚不动。
     // 这里同时卡住「长内容滚不动」和「行盒比字号还矮」两类，别让它们再回归。
     name: "页面滚动与文本行高",

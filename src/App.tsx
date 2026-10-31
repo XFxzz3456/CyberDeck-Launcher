@@ -86,9 +86,13 @@ import { ConfirmDialog, ToastHost, type ToastItem } from "./components/ui";
 import { BootSkeletonGrid } from "./components/ModCardSkeleton";
 import {
   canNotify,
+  loadNotificationDuration,
   loadNotificationPrefs,
+  saveNotificationDuration,
   saveNotificationPrefs,
+  toastTtl,
   type NotificationCategory,
+  type NotificationDuration,
   type NotificationPrefs,
   type ToastCategory,
 } from "./lib/notify";
@@ -302,6 +306,16 @@ export default function App() {
     notifyPrefsRef.current = notificationPrefs;
   }, [notificationPrefs]);
 
+  // 2D 通知停留时长（秒 / "never"）：toast() 是零依赖回调，走 ref 读最新值，
+  // 保证改完时长后新弹出的通知立刻生效，不用重启也不用重新挂载。
+  const [notificationDuration, setNotificationDuration] = useState<NotificationDuration>(() =>
+    loadNotificationDuration(),
+  );
+  const notifyDurationRef = useRef(notificationDuration);
+  useEffect(() => {
+    notifyDurationRef.current = notificationDuration;
+  }, [notificationDuration]);
+
   /**
    * 通知门（r12）：category 缺省为 "system"（直接操作反馈，永远放行）；
    * 打扰型通知（download/deploy/conflict/update）先查用户偏好再弹。
@@ -312,20 +326,22 @@ export default function App() {
       title: string,
       message?: string,
       category: ToastCategory = "system",
-      /** ttl 覆盖默认存活时长；sticky = 常驻，只能手动关（冲突 / 权限不足 / 缺前置）。 */
+      /** ttl 覆盖一切时长规则；sticky = 常驻，只能手动关（冲突 / 权限不足 / 缺前置）。 */
       options?: { ttl?: number; sticky?: boolean },
     ) => {
       if (!canNotify(category, notifyPrefsRef.current)) return;
       toastCounter.current += 1;
       const id = toastCounter.current;
-      setToasts((items) => [...items.slice(-3), { id, tone, title, message, sticky: options?.sticky }]);
-      if (options?.sticky) return;
-      window.setTimeout(
-        () => {
-          setToasts((items) => items.filter((item) => item.id !== id));
-        },
-        options?.ttl ?? (tone === "error" ? 7200 : 4200),
-      );
+      // 2D：警告/错误强制常驻，普通提示走全局时长配置（默认 5 秒）。
+      const ttl = toastTtl(notifyDurationRef.current, tone, options?.ttl);
+      setToasts((items) => [
+        ...items.slice(-3),
+        { id, tone, title, message, sticky: options?.sticky || ttl === Infinity },
+      ]);
+      if (ttl === Infinity) return;
+      window.setTimeout(() => {
+        setToasts((items) => items.filter((item) => item.id !== id));
+      }, ttl);
     },
     [],
   );
@@ -334,6 +350,12 @@ export default function App() {
   const handleNotificationPrefsChange = useCallback((prefs: NotificationPrefs) => {
     setNotificationPrefs(prefs);
     saveNotificationPrefs(prefs);
+  }, []);
+
+  /** 2D 更新通知停留时长：写状态 + 落 localStorage（键 ncl.ui.notificationDuration.v1）。 */
+  const handleNotificationDurationChange = useCallback((value: NotificationDuration) => {
+    setNotificationDuration(value);
+    saveNotificationDuration(value);
   }, []);
 
   /** 设置页「测试」按钮：直接走通知门，关掉的类别点了也不弹（按钮在设置页已禁用）。 */
@@ -2471,6 +2493,8 @@ export default function App() {
             onSplash={setSplash}
                 notificationPrefs={notificationPrefs}
                 onNotificationPrefsChange={handleNotificationPrefsChange}
+                notificationDuration={notificationDuration}
+                onNotificationDurationChange={handleNotificationDurationChange}
                 onTestNotification={handleTestNotification}
                 onShowEula={() => setEulaViewerOpen(true)}
                 hiddenViews={hiddenViews}

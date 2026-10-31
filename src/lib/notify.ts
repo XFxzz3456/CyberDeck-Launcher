@@ -71,3 +71,69 @@ export function canNotify(category: ToastCategory, prefs: NotificationPrefs): bo
   if (category === "conflict") return true; // 强制开启，双保险
   return prefs[category];
 }
+
+/* ── 2D 通知停留时长 ────────────────────────────────────────────
+ * 存「秒」而不是毫秒：设置页的分段按钮与自定义输入都以秒为单位，
+ * 存秒可以让 localStorage 里的值直接对人可读（5 = 5 秒）。
+ * "never" 表示不自动隐藏，只能手动关。 */
+
+export type NotificationDuration = number | "never";
+
+export const NOTIFICATION_DURATION_KEY = "ncl.ui.notificationDuration.v1";
+export const NOTIFICATION_DURATION_MIN = 1;
+export const NOTIFICATION_DURATION_MAX = 60;
+export const DEFAULT_NOTIFICATION_DURATION: NotificationDuration = 5;
+
+/** 分段按钮的固定档位；自定义档不在其中。 */
+export const NOTIFICATION_DURATION_PRESETS = [3, 5, 10] as const;
+
+/** 越界自动修正到合法区间；非有限数按最小值处理。 */
+export function clampNotificationSeconds(value: number): number {
+  if (!Number.isFinite(value)) return NOTIFICATION_DURATION_MIN;
+  return Math.min(NOTIFICATION_DURATION_MAX, Math.max(NOTIFICATION_DURATION_MIN, Math.round(value)));
+}
+
+/** 任何来路不明的值（旧数据 / 手改 localStorage）都收编成合法配置。 */
+export function sanitizeNotificationDuration(raw: unknown): NotificationDuration {
+  if (raw === "never") return "never";
+  const parsed = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_NOTIFICATION_DURATION;
+  return clampNotificationSeconds(parsed);
+}
+
+export function loadNotificationDuration(): NotificationDuration {
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATION_DURATION_KEY);
+    if (raw === null) return DEFAULT_NOTIFICATION_DURATION;
+    return sanitizeNotificationDuration(JSON.parse(raw));
+  } catch {
+    return DEFAULT_NOTIFICATION_DURATION;
+  }
+}
+
+export function saveNotificationDuration(value: NotificationDuration): void {
+  try {
+    window.localStorage.setItem(NOTIFICATION_DURATION_KEY, JSON.stringify(value));
+  } catch {
+    // 存不进去就仅会话内生效，与通知开关同一策略。
+  }
+}
+
+/**
+ * 算一条 toast 的存活毫秒；返回 Infinity 表示常驻（只能手动关）。
+ *
+ * 优先级（2D 任务书第 5 点）：
+ * 1. 调用方显式传的 ttl 最高——那是「这条消息就是要活这么久」的明确意图；
+ * 2. 警告 / 错误强制常驻：用户还没看清报错原因它就没了，等于没报；
+ * 3. 其余按全局时长配置；"never" 同样常驻。
+ */
+export function toastTtl(
+  duration: NotificationDuration,
+  tone: "ok" | "error" | "info" | "warn",
+  explicitTtl?: number,
+): number {
+  if (explicitTtl !== undefined) return explicitTtl;
+  if (tone === "warn" || tone === "error") return Infinity;
+  if (duration === "never") return Infinity;
+  return duration * 1000;
+}
