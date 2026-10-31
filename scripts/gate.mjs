@@ -325,7 +325,8 @@ const UI_SCRIPTS = [
     ],
   },
   {
-    name: "窗口拖动（鼠标/触屏/手写笔）",
+    // r41：JS 拖拽整套删除，改由 data-tauri-drag-region 原生通路驱动。
+    name: "窗口拖动（data-tauri-drag-region 原生通路）",
     script: "check-window-drag.mjs",
     expect: ["checks_failed=0"],
   },

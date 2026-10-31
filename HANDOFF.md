@@ -223,6 +223,7 @@ AI 接入早已改成「任何兼容 OpenAI 协议的端点」，但界面还留
 
 **B. 触屏/手写笔不能拖动窗口**
 - `windowDrag.ts` 增 `beginWindowPointerDrag()`：`pointerType === "mouse"` 直接返回（避免与既有鼠标路径重复触发）、`preventDefault()` 阻断兼容鼠标事件、`INTERACTIVE` 选择器排除按钮/输入框；`.titlebar` / `.topbar` 加 `touch-action: none`。鼠标拖动与双击最大化保持原路径。`check-window-drag.mjs` 8 项断言纳入门禁。
+- ⚠️ **本条已被 r41 推翻**：JS 拖动通路与 `data-tauri-drag-region` 并存，同一次 `mousedown` 会各调一次 `start_dragging`，拖动时出现跟着鼠标跑的花白残影。r41 起 `windowDrag.ts` 整个删除，只留 `data-tauri-drag-region="deep"` / `"false"` 走 Tauri 原生路径（Tauri 2.12.5 的 `deep` 已覆盖「点在文字上」的场景），并给两条顶部栏补 `user-select: none` 消除选区白斑。详见 CHANGELOG `0.9.0-r41`。
 
 **C. T5 AI 汉化（`ailoc.rs`，新增）**
 - 流程：`ai_loc_plan`（只读，不联网）→ `ai_loc_apply`（词表命中优先 → 未命中走 `ai::translate_locale_strings` 真实 AI）→ 生成 WolvenKit 格式 JSON + `<id>-ai-loc.archive.xl` → **WolvenKit CLI 打包 `.archive`** → 只新增 `archive/pc/mod/<id>-ai-loc.archive(.xl)` → 登记 `ModEntry.ai_loc` → `ai_loc_revert` 按清单撕除。

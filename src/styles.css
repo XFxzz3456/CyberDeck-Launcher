@@ -264,18 +264,18 @@ pre {
   padding-left: 14px;
   background: var(--bg);
   border-bottom: 1px solid #1a2028;
+  /* r41：拖动时不能画文字选区。选区高亮在深色底上是一块白斑，
+     跟着鼠标跑就成了「花白残影」，必须彻底关掉（含双击选词）。 */
   user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
   position: relative;
   z-index: 20;
 }
 
-/* Tauri 的拖动判定只认「mousedown 命中的那个元素自带 data-tauri-drag-region」。
-   标题栏里的 span 文本会挡住判定——点在字上就拖不动窗口。统一穿透到带属性的容器，
-   这些 span 全是纯展示，不需要接收点击。 */
-.titlebar-brand > *,
-.titlebar-center > * {
-  pointer-events: none;
-}
+/* 拖动判定交给 Tauri 注入的 drag.js（data-tauri-drag-region="deep"）：
+   子树里任何非交互元素被点中都能拖，所以这里不再需要给文字 span 加
+   pointer-events:none 的旧补丁——那会让「点在字上」变成死区以外的问题源。 */
 
 .titlebar-brand {
   display: flex;
@@ -913,6 +913,10 @@ pre {
   border-bottom: 1px solid var(--line-soft);
   background: rgba(8, 11, 15, 0.78);
   backdrop-filter: blur(12px);
+  /* r41：与标题栏同一套拖动约束——这块区域也是拖动把手，同样不能起选区。 */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
   position: relative;
   z-index: 10;
 }
@@ -994,6 +998,10 @@ pre {
   outline: none;
   font-size: 11.5px;
   color: var(--text);
+  /* 顶栏整体 user-select:none，输入框要显式开回来，否则无法选中/拖选已输入的词。 */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .topbar-search input::placeholder {

@@ -3,7 +3,6 @@ import { Bell, ChevronDown, Layers, Play, Search, Square, Upload, X } from "luci
 import type { GameInfo, ProfileList } from "../types";
 import type { ActivityItem } from "../lib/tasks";
 import { Kbd, Spinner } from "./ui";
-import { beginWindowDrag, beginWindowPointerDrag } from "../lib/windowDrag";
 import { t } from "../i18n";
 
 /** 时间格式跟随显示语言；接多语言时把此处的 locale 换成当前 locale 即可。 */
@@ -105,16 +104,12 @@ export function TopBar({
     setBellOpen((value) => !value);
   };
 
-  // 搜索行也当拖动把手的第二选择：用户从标题栏往下摸到这一行时不该有「死区」。
-  // 但这里不做双击最大化——搜索框附近双击通常是选词。
+  // 拖动把手只靠 data-tauri-drag-region="deep"（r41 重构，原因见 TitleBar）。
+  // 搜索框 / 档案选择器 / 右侧按钮组都标 "false"：点它们的边缘要聚焦或展开，
+  // 不能被窗口拖动吃掉；左内边距、搜索框与档案选择器之间的空档仍可拖。
   return (
-    <header
-      className="topbar"
-      data-tauri-drag-region
-      onMouseDown={(event) => beginWindowDrag(event, false)}
-      onPointerDown={beginWindowPointerDrag}
-    >
-      <div className="topbar-search">
+    <header className="topbar" data-tauri-drag-region="deep">
+      <div className="topbar-search" data-tauri-drag-region="false">
         <Search size={15} className="search-icon" />
         <input
           ref={searchRef}
@@ -140,7 +135,7 @@ export function TopBar({
         )}
       </div>
 
-      <div className="profile-picker" data-switching={switchingProfile ? "true" : "false"}>
+      <div className="profile-picker" data-switching={switchingProfile ? "true" : "false"} data-tauri-drag-region="false">
         <Layers size={14} className="profile-icon" />
         <select
           className="profile-select"
@@ -163,7 +158,7 @@ export function TopBar({
         )}
       </div>
 
-      <div className="topbar-actions">
+      <div className="topbar-actions" data-tauri-drag-region="false">
         <div className="bell-wrap" ref={bellRef}>
           <button
             className="btn btn-ghost btn-bell"

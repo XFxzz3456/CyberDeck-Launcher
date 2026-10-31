@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "../lib/api";
-import { beginWindowDrag, beginWindowPointerDrag } from "../lib/windowDrag";
 import { t } from "../i18n";
 import { useAppVersion } from "../lib/appVersion";
 
@@ -58,30 +57,33 @@ export function TitleBar({ demoMode }: { demoMode: boolean }) {
     };
   }, []);
 
-  // 拖动交给 onMouseDown 主动调 startDragging：Tauri 自带的
-  // data-tauri-drag-region 只认「按下的元素自带属性」，标题栏是文字套文字，
-  // 点在字上就拖不动（2026-10-30 用户实测两轮）。双击最大化也在
-  // beginWindowDrag 里判掉——一旦 startDragging 进入系统拖动循环，
-  // onDoubleClick 就收不到了，留着会和它打架。
+  /**
+   * 拖动/双击最大化全部交给 Tauri 注入的 drag.js（r41 重构）。
+   *
+   * 之前这里是 React onMouseDown + onPointerDown 主动调 startDragging()，同时容器上
+   * 还留着 data-tauri-drag-region——两条通路在同一次 mousedown 里各调一次
+   * `plugin:window|start_dragging`，第二次落进第一次已开启的系统模态拖动循环，
+   * 窗口位移叠加成一块跟着鼠标跑的花白残影。
+   *
+   * 现在只留属性。Tauri 2.12.5 的 drag.js 支持 `data-tauri-drag-region="deep"`：
+   * 子树内任意位置（含文字 span）都能拖，BUTTON/INPUT/SELECT/TEXTAREA/A 等可交互
+   * 标签自动阻断，双击由它内部发 internal_toggle_maximize。
+   */
   return (
-    <header
-      className="titlebar"
-      data-tauri-drag-region
-      onMouseDown={(event) => beginWindowDrag(event, true)}
-      onPointerDown={beginWindowPointerDrag}
-    >
-      <div className="titlebar-brand" data-tauri-drag-region>
+    <header className="titlebar" data-tauri-drag-region="deep">
+      <div className="titlebar-brand">
         <span className="brand-slash">///</span>
         <span className="brand-name">{t("titleBar.brandName")}</span>
         <span className="brand-divider">//</span>
         <span className="brand-sub">{t("titleBar.brandSub")}</span>
       </div>
-      <div className="titlebar-center" data-tauri-drag-region>
+      <div className="titlebar-center">
         <span className="titlebar-game">{t("titleBar.game")}</span>
         <span className="titlebar-build">{t("titleBar.build", { version: appVersion })}</span>
         {demoMode ? <span className="titlebar-demo">{t("titleBar.demo")}</span> : null}
       </div>
-      <div className="titlebar-controls">
+      {/* "false" = 该子树禁拖：按钮之间没有缝隙也绝不会被当成标题栏把手。 */}
+      <div className="titlebar-controls" data-tauri-drag-region="false">
         <button
           className="window-btn"
           aria-label={t("titleBar.minimize")}

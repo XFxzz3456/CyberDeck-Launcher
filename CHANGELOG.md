@@ -10,6 +10,18 @@
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
 - 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
+### 0.9.0-r41（2026-10-31，待构建：标题栏拖动残影修复）
+
+| 项 | 内容 |
+|---|---|
+| 修复 | **拖动标题栏出现跟着鼠标跑的花白残影**：同一次 `mousedown` 里有两条拖动通路各调一次 `plugin:window|start_dragging`——React 的 `onMouseDown`/`onPointerDown`（`beginWindowDrag`）与容器上的 `data-tauri-drag-region`（Tauri 注入的 `drag.js` 在 `document` 上监听）。第二次调用发生在第一次已开启的系统模态拖动循环内，两套位移叠加 + WebView2 拖动期间不重绘，表现为花白残影。 |
+| 变更 | **整套 JS 拖动逻辑删除**：`src/lib/windowDrag.ts`（`beginWindowDrag` / `beginWindowPointerDrag` / `INTERACTIVE` 选择器）移除，`TitleBar` / `TopBar` 不再挂任何鼠标/指针事件，拖动与双击最大化全部交给 Tauri 原生路径。 |
+| 变更 | 拖动区改用 `data-tauri-drag-region="deep"`（Tauri 2.12.5 起支持）：子树内任意元素被点中都能拖，`BUTTON/INPUT/SELECT/TEXTAREA/A/LABEL` 等可交互标签自动阻断。当年「点在文字 span 上拖不动」的补丁前提已不成立，一并删掉 `.titlebar-brand > * { pointer-events: none }` 的绕行规则。 |
+| 新增 | 三档属性语义落地：`.titlebar` / `.topbar` = `deep`（整条可拖）；`.topbar-search` / `.profile-picker` / `.topbar-actions` / `.titlebar-controls` = `false`（点搜索框边缘要聚焦输入框、点档案选择器要展开下拉，不能被拖动吃掉）。 |
+| 修复 | `.topbar` 缺 `user-select: none`：拖动时会把整片内容刷成文字选区，选区高亮在深色底上是一块白斑——残影的第二个来源。两条顶部栏统一关掉选区（`user-select` + `-webkit-user-select` + `cursor: default`），并给 `.topbar-search input` 显式开回 `user-select: text`，否则已输入的词无法拖选。 |
+| 重写 | `scripts/check-window-drag.mjs` 契约整体换轨：旧脚本数的是 JS 发起的 `start_dragging` 次数，新实现下必须为 0。现在断言 12 项——静态（`windowDrag.ts` 已删、TSX 剥离注释后无 `startDragging`）、属性（`deep` × 2 + `false` × 4）、运行期（点拖动区不产生任何 invoke）、以及按 `tauri-2.12.5/src/window/scripts/drag.js` 的 `isDragRegion` 复算判定矩阵（文字可拖 / 输入框·下拉框·按钮不可拖）。 |
+| 验证 | 12/12 PASS（`checks_failed=0`）· `tsc --noEmit` 通过 · 命令契约 131/131（missing=0）· i18n 缺口 0 / 死条目 0 · `gate.mjs` UI 脚本清单名称同步为「窗口拖动（data-tauri-drag-region 原生通路）」。 |
+
 ### 0.9.0-r40（2026-10-31，已构建：通知降噪 P1）
 
 | 项 | 内容 |
