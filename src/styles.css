@@ -328,7 +328,6 @@ pre {
 [data-backdrop="on"] .profile-picker {
   background: var(--frost-bg);
   backdrop-filter: var(--frost-blur);
-  -webkit-backdrop-filter: var(--frost-blur);
 }
 
 /* .btn 自带 clip-path 斜角，圆角对它无效；标签页条和搜索框是直角的，
@@ -339,16 +338,59 @@ pre {
   border-radius: var(--frost-radius);
 }
 
-/* 模组卡片列表容器：把整片列表压一层很淡的黑（默认 0.3 浓度），
-   卡片之间的缝不再是全亮的图，扫读时视线不会被背景细节拽走。
-   亮色用白，逻辑同上。只加底色不加内边距，卡片布局一分不动。 */
-[data-backdrop="on"] .grid-scroll {
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: var(--frost-radius);
+/* ── 主内容区毛玻璃底板（7b1db5，2026-10-31）────────────────────────
+   问题：侧栏 / 顶栏是半透明毛玻璃，中间主内容区却全透明，背景图在中段过于
+   清晰，视觉割裂。
+   做法：只给 `.content`（顶栏之下、包裹设置卡片与模组网格的大盒子）这**一层**
+   加 backdrop-filter。性能红线：里面的每张小卡片绝不加，否则滚动时每帧要重
+   采样几百块，帧率暴跌。
+   原来那块「.grid-scroll 压 0.3 黑」是主内容区还没有底板时的补丁；现在 .content
+   已统一压暗，再叠一层会在网格区留下一条比周围更暗的接缝，故一并移除。 */
+[data-backdrop="on"] {
+  --content-frost-bg: rgba(15, 15, 17, 0.6);
+  --content-frost-blur: blur(20px);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .grid-scroll {
-  background: rgba(255, 255, 255, 0.35);
+:root[data-mode="light"] [data-backdrop="on"] {
+  --content-frost-bg: rgba(255, 255, 255, 0.62);
+}
+
+/* 赛博主题（ncpd / netrunner / arasaka / militech）：不要重模糊——
+   用带黑黄倾向的深遮罩 + 较轻的模糊，让底下的页面网格透出来（透视感）。
+   modern 是「现代 UI」那套，不吃赛博滤镜，保留中性毛玻璃。 */
+:root[data-style="ncpd"] [data-backdrop="on"],
+:root[data-style="netrunner"] [data-backdrop="on"],
+:root[data-style="arasaka"] [data-backdrop="on"],
+:root[data-style="militech"] [data-backdrop="on"] {
+  --content-frost-bg: rgba(5, 5, 5, 0.7);
+  --content-frost-blur: blur(10px);
+}
+
+/* ⚠️ 不要给 backdrop-filter 再加 -webkit- 前缀：Vite 8 的 Lightning CSS 会把
+   两条当成同一属性的重复声明、只保留最后一条，产物里就只剩 -webkit-，而
+   WebView2(Chromium) 不认前缀 ⇒ 毛玻璃整条失效。（H 阶段的 tabs/搜索玻璃就是
+   这样在构建后被静默干掉的，源码里看着有、跑起来没有。）本项目只跑 Chromium，
+   只用标准属性。 */
+[data-backdrop="on"] .content {
+  background: var(--content-frost-bg);
+  backdrop-filter: var(--content-frost-blur);
+}
+
+/* 主内容区里的卡片：不再叠毛玻璃，改成「较高不透明度 + 极细高光边框」，
+   让它们像浮在毛玻璃底座上，而不是和底座糊成一片。 */
+[data-backdrop="on"] .content .panel,
+[data-backdrop="on"] .content .mod-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-2) 92%, transparent),
+    color-mix(in srgb, var(--panel) 94%, transparent)
+  );
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .content .panel,
+:root[data-mode="light"] [data-backdrop="on"] .content .mod-card {
+  border-color: rgba(0, 0, 0, 0.07);
 }
 
 /* 个性化页：自定义背景控制块。 */
@@ -12364,7 +12406,6 @@ body::before {
 :root[data-style="modern"] .sidebar {
   background: var(--glass-sidebar);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   border-right: 1px solid var(--hairline);
 }
 
@@ -12376,20 +12417,17 @@ body::before {
 :root[data-style="modern"] .topbar {
   background: var(--glass-bar);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   border-bottom: 1px solid var(--hairline);
 }
 
 :root[data-style="modern"] .modal-backdrop {
   background: var(--scrim);
   backdrop-filter: blur(8px) saturate(120%);
-  -webkit-backdrop-filter: blur(8px) saturate(120%);
 }
 
 :root[data-style="modern"] .modal {
   background: var(--glass-pop);
   backdrop-filter: blur(var(--glass-blur-pop));
-  -webkit-backdrop-filter: blur(var(--glass-blur-pop));
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--elev-pop);
 }
@@ -12397,7 +12435,6 @@ body::before {
 :root[data-style="modern"] .mod-context-menu {
   background: var(--glass-pop);
   backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--elev-pop);
 }
@@ -12857,7 +12894,6 @@ body::before {
   /* 模糊 + 压暗底层主界面：既挡住操作，又保留界面的空间记忆。 */
   background: rgba(4, 6, 9, 0.42);
   backdrop-filter: blur(8px) brightness(0.6);
-  -webkit-backdrop-filter: blur(8px) brightness(0.6);
 }
 
 /* 赛博朋克系主题：在最上层再叠一层极淡的主题色（NCPD 黄 / ARASAKA 红等）。 */
