@@ -7,6 +7,7 @@ import {
   Download,
   FolderOpen,
   FolderSearch,
+  ExternalLink,
   Gamepad2,
   HardDrive,
   Info,
@@ -1703,7 +1704,8 @@ export function SettingsView({
           <section className="panel settings-card about-card">
             <div className="panel-head">
               <div>
-                <div className="panel-eyebrow">// ABOUT</div>
+                {/* 4B：v1.0 起是正式版，极客标签带上稳定版标记。 */}
+                <div className="panel-eyebrow">// ABOUT / STABLE RELEASE</div>
                 <h2>{t("settings.aboutTitle")}</h2>
               </div>
               <span className="about-version">{appVersion}</span>
@@ -1722,6 +1724,18 @@ export function SettingsView({
             <div className="about-actions">
               <button className="btn btn-ghost btn-sm" onClick={onShowEula}>
                 <ScrollText size={13} /> {t("eula.showInAbout")}
+              </button>
+              {/* 4B：开源协议与仓库入口（v1.0 起开源在 GitHub）。 */}
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  void api
+                    .openUrl("https://github.com/XFxzz3456/CyberDeck-Launcher")
+                    .catch((error) => onError(error, t("err.openPath")));
+                }}
+                title={t("settings.aboutRepoTitle")}
+              >
+                <ExternalLink size={13} /> {t("settings.aboutRepo")}
               </button>
             </div>
             {demoMode ? (

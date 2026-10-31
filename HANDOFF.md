@@ -6,13 +6,13 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `0.9.0`。**
+**本仓库的实际版本是 `1.0.0`（2026-10-31 起，首个正式版）。**
 
-以下三处互相一致（2026-10-29 02:10 随 0.9.0 正式发布统一）：
+以下三处互相一致（2026-10-31 随 1.0.0 发布准备统一）：
 
-- `package.json` → `"version": "0.9.0"`
-- `src-tauri/Cargo.toml` → `version = "0.9.0"`
-- `src-tauri/tauri.conf.json` → `"version": "0.9.0"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
+- `package.json` → `"version": "1.0.0"`
+- `src-tauri/Cargo.toml` → `version = "1.0.0"`
+- `src-tauri/tauri.conf.json` → `"version": "1.0.0"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。

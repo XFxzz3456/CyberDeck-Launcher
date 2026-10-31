@@ -1506,6 +1506,8 @@ export const zhCN = {
     aboutNexus: "Nexus 浏览使用官方 API；免费账号用浏览器下载，Premium 可直接下载并导入。",
     aboutNoInject: "不随游戏启动，不注入进程，不做 overlay。",
     aboutTitle: "关于 CyberDeck Launcher",
+    aboutRepo: "GitHub 仓库（MIT 开源）",
+    aboutRepoTitle: "源码、问题反馈与更新发布都在 GitHub：github.com/XFxzz3456/CyberDeck-Launcher",
     aboutZip: "支持 ZIP / 7z / rar 导入；rar 需要本机 7-Zip 或 WinRAR。",
     appDataLabel: "启动器数据",
     archiveAutoTip: "在常见安装位置与 PATH 里查找 7z.exe / UnRAR.exe",
