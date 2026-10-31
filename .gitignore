@@ -38,3 +38,7 @@ node_modules/.vite/
 # ── 测试临时目录（跑测试时生成，内含测试密钥与假游戏目录）──────────
 .test-tmp/
 *.test-tmp/
+
+# ── CodeBuddy 本地私有配置（团队共享的 .codebuddy/rules 要提交）──────
+.codebuddy/settings.local.json
+CODEBUDDY.local.md
