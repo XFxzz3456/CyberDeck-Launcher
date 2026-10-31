@@ -843,7 +843,10 @@ ZIP/7z/RAR
 
 ### 5.0 版本控制（2026-10-31 起）
 
-`src/` **已是 git 仓库**（`main` 分支，首提交 `fbce883`「初始化仓库，纳入 0.9.0-r35 源码基线」，309 文件 / 13.34 MiB）。
+`src/` **已是 git 仓库并开源于 GitHub**（`main` 分支，309 文件，tag `v0.9.0-r35`）。
+
+- 公开地址：**https://github.com/XFxzz3456/CyberDeck-Launcher** （public / MIT / 默认分支 `main`）
+- 首提交 `939fe80`「初始化仓库，纳入 0.9.0-r35 源码基线」。2026-10-31 用 `git filter-branch --env-filter` 改写提交者为 `XFxzz3456`，**哈希由 `fbce883` 变为 `939fe80`**；查旧文档看到 `fbce883` 属正常，不要误判成仓库被重置。
 
 | 项 | 值 | 说明 |
 |---|---|---|
@@ -851,8 +854,20 @@ ZIP/7z/RAR
 | `core.autocrlf` | `false` | 源码 CRLF/LF 混存（`core-tests/src/lib.rs` 是 CRLF）。设 true 会让首提交后满屏假变更 |
 | `core.quotepath` | `false` | 中文文件名正常显示，不转成 `\344\275\240` |
 | `core.longpaths` | `true` | `src-tauri/target` 深路径超 260 字符 |
-| 局部身份 | `user.name=Arol` / `user.email=arol@localhost` | **只为本地提交临时设的**，接远端前改成真实邮箱 |
-| 远端 | 无 | 尚未配置 |
+| 身份 | `user.name=XFxzz3456` / `user.email=mc2364694314@163.com` | **必须与 GitHub 账号一致**，否则提交不计入贡献 |
+| 远端 | `origin` = `https://github.com/XFxzz3456/CyberDeck-Launcher.git` | URL 内**不含** token |
+| 代理 | `http.proxy` / `https.proxy` = `http://127.0.0.1:7897` | 仅本仓库局部配置，见下方 DNS 污染说明 |
+
+**网络坑（2026-10-31 实测，重装或换网络后必查）**：本机对 `github.com` 存在 **DNS 污染**——路由器 `192.168.0.1`、阿里 `223.5.5.5`、腾讯 `119.29.29.29` 全部把 `github.com` 解析成 `::1` / `127.0.0.1`，直连等于打自己。真实 A 记录（DoH 查到）是 `20.205.243.166`。本机 `127.0.0.1:7897`（verge-mihomo / Clash Verge）可正常出网，故 git 走代理。**不要**去改 hosts 或系统 DNS，换 IP 就会失效；也不要认定「代理坏了」——`api.github.com` 一直是通的，只有 `github.com` 被污染。
+
+**推送凭据约定**：不要把 PAT 写进 remote URL 或 `.git/config`。用一次性请求头：
+
+```bash
+B64=$(printf "用户名:%s" "$TOKEN" | base64 -w0)
+git -c credential.helper= -c http.extraHeader="AUTHORIZATION: basic $B64" push -u origin main
+```
+
+推完 `grep -c ghp_ .git/config` 必须为 `0`。PAT 用完可在 GitHub 吊销（push 的授权关系不受影响，下次推送重新认证即可）。
 
 `.gitignore` 关键约定（改之前先想清楚）：
 

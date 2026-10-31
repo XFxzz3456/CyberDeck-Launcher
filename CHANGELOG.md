@@ -1,13 +1,25 @@
 # CHANGELOG — CyberDeck Launcher（原 NightCity Loader）
 
 > 本文件记录每一次迭代的主要变更、时间与涉及模块，供快速回查。
-> 项目不是 git 仓库，**本文件 + `HANDOFF.md` + `docs/` 是唯一的版本追踪依据**，因此每次迭代收尾必须追加。
+> 项目自 2026-10-31 起已是 git 仓库并以 MIT 开源：https://github.com/XFxzz3456/CyberDeck-Launcher 。**本文件 + `HANDOFF.md` + `docs/` + git 历史共同构成版本追踪依据**，因此每次迭代收尾必须追加。
 
 - 维护约定：新迭代**插入在「版本总览」之后的最前面**（最新的在上），不改历史条目；未构建/未部署的批次在标题里明确标注，构建发布后再去掉标注。
 - 版本标记：`rN` 为构建批次号（同日多次重建时区分），沿用 `HANDOFF.md` 原有标号，未擅自重命名。
 - ⚠️ 标号冲突（待裁决）：`0.7.0-r4`（21:45 界面/交互批次）与 `0.8.0-r4`（22:58 回归门禁 + NXM 批次）同为 `r4`，本文件按**实际时间顺序**排列，标号原样保留；建议后续统一改为「按日期递增的 build 号」。
 - ✅ 版本号口径（2026-10-28 已执行）：`package.json` / `Cargo.toml` / `tauri.conf.json` 三处已统一升到 **0.8.0**。
 - 事故复盘单独成篇，见 `docs/INCIDENT-*.md`；本文件只留摘要与链接。
+
+### 0.9.0-r36（2026-10-31，**未构建**：仅版本控制与仓库对外发布）
+
+| 项 | 内容 |
+|---|---|
+| 新增 | **GitHub 开源**：仓库 https://github.com/XFxzz3456/CyberDeck-Launcher （public，MIT，默认分支 `main`，tag `v0.9.0-r35`）；远端 309 个 blob 与本地 `git ls-files` 数量一致，远端 HEAD 与本地 `065a192` 哈希一致；仓库 topics 设为 `cyberpunk-2077 / mod-launcher / mod-manager / tauri / react / rust / typescript / windows` |
+| 变更 | 提交身份由 `Arol <arol@localhost>` 改写为 `XFxzz3456 <mc2364694314@163.com>`（`git filter-branch --env-filter`，仅改作者/提交者，不改内容与日期），否则旧提交不计入账号贡献；本仓库局部配置 `http.proxy` / `https.proxy` = `http://127.0.0.1:7897`（本机 verge-mihomo） |
+| 修复 | **README 破图**：主题表格里 NCPD 截图写成 `docs/screenshots/cpd.png`，实际文件为 `ncpd.png`（少一个 `n`），公开后首页会显示裂图；已改正，全量复检 README 引用图片缺失数 0 |
+| 验证 | 公开前安全扫描：`git grep` 全历史匹配 `sk-真实值` / `ghp_` / 私钥头 / `AKIA` 均无命中；`src-tauri/src/secret.rs` 仅含单元测试假值 `sk-test-secret-value`；`tokens.css` 为 CSS 设计变量；无 `.env` / `.pem` / `.key` / `secrets/` 被跟踪。推送全程用一次性 `http.extraHeader` 携带凭据，`.git/config` 内 `ghp_` 残留数 **0**，`origin` URL 不含 token |
+| 边界 | 该批次**未构建 exe、未替换 release**，前端与 Rust 代码零改动；公开仓库意味着全部源码与提交历史对任何人可读，需持续避免把本机路径之外的隐私与密钥写入仓库 |
+
+---
 
 ### 0.9.0-r35（2026-10-31，已构建部署 + 便携版）
 
