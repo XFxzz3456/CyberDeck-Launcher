@@ -113,11 +113,11 @@ export const zhCN = {
       label: "Anthropic（Claude 原生）",
     },
     deepseek: {
-      keyHint: "在 DeepSeek 开放平台创建 API Key（sk-...）；重推理任务可手改 deepseek-v4-pro",
+      keyHint: "在 DeepSeek 开放平台创建 API Key（sk-...）；默认推荐 deepseek-flash，重推理任务可手改 deepseek-v4-pro",
       label: "DeepSeek",
     },
     deprecated: {
-      deepseek: "deepseek-chat / deepseek-reasoner 已于 2026-07-24 弃用，改用 deepseek-v4-flash 或 deepseek-v4-pro。",
+      deepseek: "deepseek-chat / deepseek-reasoner 已于 2026-07-24 弃用，改用 deepseek-flash 或 deepseek-v4-pro。",
       gpt4o: "gpt-4o 已是旧一代模型，建议改用 gpt-5.4-nano / gpt-5-nano 或联网获取最新列表。",
       kimiK2: "kimi-k2 系列即将停新，改用 kimi-k3.1-pro。",
       moonshotV1: "moonshot-v1 系列已于 2026-08-31 下线，改用 kimi-k3.1-pro。",
@@ -185,6 +185,7 @@ export const zhCN = {
       "Anthropic 官方地址通常为 https://api.anthropic.com/v1；模型名填 claude-sonnet-4-5、claude-opus-4-1 等官方 ID，也可联网获取列表。",
     baseUrlLabel: "接口地址（Base URL）",
     baseUrlSuggestion: "该服务商常用地址：{url}（只作提示，不会覆盖你已填的内容）",
+    emptyModelList: "该服务商未返回模型，请手动输入模型名称",
     errorClearKey: "移除 Key 失败",
     errorListModels: "获取模型列表失败",
     errorLoadConfig: "无法读取 AI 配置",

@@ -319,6 +319,9 @@ export function AiSettingsCard({
             </select>
           </div>
         ) : null}
+        {models && models.length === 0 ? (
+          <small>{t("aiSettings.emptyModelList")}</small>
+        ) : null}
         {deprecationKey ? <small className="danger-text">{t(deprecationKey)}</small> : null}
         {active?.local ? (
           <small>{t("aiSettings.localModelFreeHint")}</small>

@@ -102,6 +102,18 @@ const SETTING_BOOL_KEYS = [
   "nxmAutoDownload",
 ] as const;
 
+/**
+ * 旧模型名的静默迁移表。
+ *
+ * DeepSeek 把一度出现在预设里的预览名 `deepseek-v4.1-flash-1017` 收敛成了
+ * `deepseek-flash`。老用户状态文件里存的还是旧名，而旧名请求会直接被服务商
+ * 判「模型不存在」——不迁移的话，「AI 用不了」会变成一桩无头悬案。这里在
+ * 归一化时直接改写，不弹提示、不动地址（地址一直是对的）。
+ */
+const AI_MODEL_ALIASES: Record<string, string> = {
+  "deepseek-v4.1-flash-1017": "deepseek-flash",
+};
+
 /** 设置只做类型兜底，不做业务校验（范围钳制是后端 set_settings 的职责）。 */
 export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
   if (!raw || typeof raw !== "object") return fallback;
@@ -111,6 +123,10 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
   const textPatch: Partial<Record<(typeof SETTING_TEXT_KEYS)[number], string>> = {};
   for (const key of SETTING_TEXT_KEYS) {
     if (key in settings) textPatch[key] = text(settings[key], fallback[key]);
+  }
+  // 静默迁移旧模型名（只在这一处做，避免各调用点各写一份别名表）。
+  if (textPatch.aiModel && AI_MODEL_ALIASES[textPatch.aiModel]) {
+    textPatch.aiModel = AI_MODEL_ALIASES[textPatch.aiModel];
   }
   const boolPatch: Partial<Record<(typeof SETTING_BOOL_KEYS)[number], boolean>> = {};
   for (const key of SETTING_BOOL_KEYS) {

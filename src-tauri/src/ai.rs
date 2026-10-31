@@ -604,7 +604,20 @@ fn anthropic_system_prompt(messages: &[ChatMessage]) -> Option<String> {
 fn models_endpoint(base: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
     let trimmed = trimmed.strip_suffix("/chat/completions").unwrap_or(trimmed);
-    format!("{trimmed}/models")
+    if trimmed.ends_with("/models") {
+        return trimmed.to_string();
+    }
+    // 裸域名（`scheme://host` 之后没有路径）要补 `/v1`：DeepSeek 的模型清单在
+    // `/v1/models`，直接拼 `/models` 会 404；Ollama / LM Studio 的 OpenAI 兼容
+    // 端点同样在 `/v1` 下。已有路径段（`/v1`、`/v1beta/openai` 或第三方自定义
+    // 路径）时原样拼 `/models`，避免把 `/api` 这类前缀又套一层 `/v1`。
+    let after_scheme = trimmed.split("://").nth(1).unwrap_or(trimmed);
+    let has_path = after_scheme.contains('/');
+    if has_path {
+        format!("{trimmed}/models")
+    } else {
+        format!("{trimmed}/v1/models")
+    }
 }
 
 /// 拉取服务商的模型 ID 列表。
@@ -627,7 +640,7 @@ pub fn list_models(store: &Store, base_url: &str, protocol: Option<&str>) -> App
         ApiProtocol::OpenAi => models_endpoint(base_url),
         ApiProtocol::Anthropic => anthropic_models_endpoint(base_url),
     };
-    let client = build_client("Models")?;
+    let client = build_client_with_timeout("Models", 15, 10)?;
     let mut request = client.get(&url);
     if let Some(key) = load_key(store)? {
         request = match protocol {
@@ -645,7 +658,7 @@ pub fn list_models(store: &Store, base_url: &str, protocol: Option<&str>) -> App
         let body = response.text().unwrap_or_default();
         return Err(CommandError::new(
             "AI_HTTP",
-            http_error_message(status.as_u16(), &body),
+            http_error_message(status.as_u16(), &body, ErrorContext::Models),
         ));
     }
     let body = response
@@ -693,9 +706,22 @@ fn parse_models_json(body: &str) -> Vec<String> {
 /// 诊断和翻译共用同一套超时策略：大模型服务普遍在 60s 左右断开长请求，75s 只是兜底，
 /// 太短会把「模型在长排队」误判成网络故障。
 fn build_client(purpose: &str) -> AppResult<Client> {
+    build_client_with_timeout(purpose, 75, 15)
+}
+
+/// 与 `build_client` 同构，但总超时可按用途单独指定。
+///
+/// 拉取模型列表固定走 15s：它只是 GET 一份静态清单，不该像对话那样等 75s。
+/// 用户点了「获取模型」迟迟不回来，会以为按钮坏了（Ollama / LM Studio 没起时
+/// 尤其明显）。连接超时再压到 10s，让「服务没开」在 10s 内就给出结论。
+fn build_client_with_timeout(
+    purpose: &str,
+    request_secs: u64,
+    connect_secs: u64,
+) -> AppResult<Client> {
     Client::builder()
-        .timeout(Duration::from_secs(75))
-        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(request_secs))
+        .connect_timeout(Duration::from_secs(connect_secs))
         .user_agent(format!(
             "CyberDeckLauncher/{} {purpose}",
             env!("CARGO_PKG_VERSION")
@@ -738,13 +764,31 @@ fn error_body_message(body: &str) -> String {
 /// 单独抽出来是为了让诊断和翻译的报错一字不差：同一个 401 在两处显示不同文案，
 /// 用户会以为是两个不同的问题。401/429 这类高频错误直接给结论（Anthropic
 /// 与 OpenAI 语义相同），其余状态附上服务商错误正文里的一句话。
-fn http_error_message(status: u16, body: &str) -> String {
+/// 错误文案的上下文：同一个 HTTP 状态在「对话」与「拉模型列表」下含义不同。
+/// 400 在对话里几乎总是模型名不对（模型已下线 / 拼错），要直接把人引到
+/// 「获取模型」；在拉列表时则更像地址写错，笼统给正文即可。
+#[derive(Clone, Copy)]
+enum ErrorContext {
+    Chat,
+    Models,
+}
+
+fn http_error_message(status: u16, body: &str, context: ErrorContext) -> String {
     match status {
         401 => "AI 服务的 API Key 无效或已过期。".to_string(),
         402 => "AI 服务账户余额不足。".to_string(),
         403 => "AI 服务拒绝了本次请求：Key 没有对应模型的权限，或区域/风控受限。".to_string(),
         429 => "AI 服务请求过于频繁或额度受限，请稍后再试。".to_string(),
-        400 => format!("AI 服务拒绝了请求内容（HTTP 400）：{}", error_body_message(body)),
+        400 => match context {
+            ErrorContext::Chat => format!(
+                "模型名称可能不匹配，建议点击 [获取模型] 刷新列表。\n{}",
+                error_body_message(body)
+            ),
+            ErrorContext::Models => format!(
+                "AI 服务拒绝了请求（HTTP 400）：请检查接口地址（Base URL）是否正确。\n{}",
+                error_body_message(body)
+            ),
+        },
         529 => "AI 服务过载，请稍后再试。".to_string(),
         _ => format!("AI 服务返回 HTTP {status}。\n{}", error_body_message(body)),
     }
@@ -799,7 +843,7 @@ fn chat_completion(
         let body = response.text().unwrap_or_default();
         return Err(CommandError::new(
             "AI_HTTP",
-            http_error_message(status.as_u16(), &body),
+            http_error_message(status.as_u16(), &body, ErrorContext::Chat),
         ));
     }
     // Anthropic 的 content 是分块数组（text 块可能多段，thinking 等类型直接跳过）；
@@ -1816,6 +1860,20 @@ mod tests {
         assert_eq!(
             models_endpoint("https://x.example/api/chat/completions"),
             "https://x.example/api/models"
+        );
+        // 裸域名补 /v1（DeepSeek / Ollama / LM Studio 的 OpenAI 兼容端点都在 /v1 下）。
+        assert_eq!(
+            models_endpoint("https://api.deepseek.com"),
+            "https://api.deepseek.com/v1/models"
+        );
+        assert_eq!(
+            models_endpoint("http://localhost:11434"),
+            "http://localhost:11434/v1/models"
+        );
+        // 已经指到 /models 的地址不再重复拼接。
+        assert_eq!(
+            models_endpoint("https://api.example.com/v1/models"),
+            "https://api.example.com/v1/models"
         );
     }
 

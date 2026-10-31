@@ -10,6 +10,19 @@
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
 - 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
+### 0.9.0-r44（2026-10-31，待构建：AI 模型配置修正）
+
+| 项 | 内容 |
+|---|---|
+| 修复 | **DeepSeek 预设填的是不存在的模型名**：`deepseek-v4.1-flash-1017` → `deepseek-flash`。Base URL 本来就是 `https://api.deepseek.com/v1`，未动；预设模型条目同步改名（label `DeepSeek Flash`）。 |
+| 新增 | **旧数据静默迁移**：`normalize.ts` 的 `AI_MODEL_ALIASES` 在归一化时把 `deepseek-v4.1-flash-1017` 直接改写成 `deepseek-flash`，不弹提示、不动地址——旧名请求会被服务商判「模型不存在」，留着只会让「AI 用不了」变成悬案。 |
+| 变更 | **「获取模型」改 15s 超时**：`list_models` 从复用 75s 的 `build_client` 改为 `build_client_with_timeout("Models", 15, 10)`。拉模型列表只是 GET 一份静态清单，不该等 75s；Ollama / LM Studio 没起时 10s 内就能给结论，不会让人以为按钮坏了。 |
+| 修复 | **裸域名获取模型 404**：`models_endpoint` 原来只拼 `/models`，`https://api.deepseek.com` 会拼成 `/models`（404）。现在无路径段时自动补 `/v1`（DeepSeek / Ollama / LM Studio 的 OpenAI 兼容端点都在 `/v1` 下）；已有 `/v1` 或自定义路径时保持原样。补 3 条单测（裸域名 / localhost / 已指到 `/models` 不重复拼）。 |
+| 新增 | **空列表提示**：服务商返回空数组时，设置页显示「该服务商未返回模型，请手动输入模型名称」；手动输入框一直可用（`<input value={model}>` 本就是自由文本，无需改造）。 |
+| 变更 | **HTTP 400 区分场景**：`http_error_message` 加 `ErrorContext` 参数。对话 / 诊断 / 翻译的 400 → 「模型名称可能不匹配，建议点击 [获取模型] 刷新列表」；拉模型列表的 400 → 「请检查接口地址（Base URL）是否正确」。401 文案沿用既有的「API Key 无效或已过期」。 |
+| 变更 | i18n：DeepSeek `keyHint` 补「默认推荐 deepseek-flash」；`deprecated.deepseek` 的替代模型由 `deepseek-v4-flash` 更正为 `deepseek-flash`；新增 `aiSettings.emptyModelList`。 |
+| 验证 | `tsc --noEmit` exit 0 · `cargo test` 145 passed / 0 failed / 2 ignored（含新增的 `models_endpoint` 裸域名断言）。UI 交互待 localhost 验收。 |
+
 ### 0.9.0-r43（2026-10-31，待构建：背景图焦点/填充 + 全局可读性遮罩）
 
 | 项 | 内容 |
