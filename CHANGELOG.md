@@ -9,6 +9,31 @@
 - ✅ 版本号口径（2026-10-28 已执行）：`package.json` / `Cargo.toml` / `tauri.conf.json` 三处已统一升到 **0.8.0**。
 - 事故复盘单独成篇，见 `docs/INCIDENT-*.md`；本文件只留摘要与链接。
 
+### 0.9.0-r38（2026-10-31，未构建：个性化页卡片化）
+
+| 项 | 内容 |
+|---|---|
+| 变更 | **个性化页从「一张大卡 + 四段虚线」拆成 6 张独立卡片**：01 主题与配色 / 02 左侧导航栏 / 03 窗口与侧边栏 / 04 字体与排版 / 05 背景图 / 06 动效与启动。01·04·05·06 满宽，02·03 半宽并排；窄窗（<1120px）自动落单列。改因：原结构把 12 个设置项混在一张卡里，只靠 `01–04` 编号和虚线分隔，是 10-30 治「坨在一起」的补丁式做法，没有真正分类。 |
+| 变更 | **两处功能归位**：①「关闭窗口时（最小化到托盘 / 直接退出）」原本是卡片外的独立 `panel`，现并入「03 窗口与侧边栏」，与「收起侧边栏」同卡；②「导航显示管理」5 个开关从「界面元素」右列拆出，独立成「02 左侧导航栏」；③「实况预览 LIVE PREVIEW」从背景段移到主题卡底部——它预览的是配色，不是底图。 |
+| 新增 | `.setting-list` / `.setting-item` 作用域样式：卡片内每个开关/字段自成一个圆角小块（`--panel-2` 底 + `--line-soft` 描边 + 10px 圆角），开关行改 `grid-template-columns: minmax(0,1fr) auto` 左对齐，替代原来 `space-between` 把文字顶到卡片两端的做法。`.settings-grid` 的 `align-items` 由 `start` 改 `stretch`，同排两卡等高、右侧不再留洞。 |
+| 不变 | **零存储键变更**：`ncl.ui.*` 一个没动，用户现有主题 / 字体 / 缩放 / 侧栏状态不会重置；`settings.closeBehavior` 的读写路径原样保留（只换 UI 位置）。`SwitchRow` 组件本身未改，`CollectionWizard` / `NexusSettingsCard` / `GlossaryShareCard` 三处复用外观零变化。 |
+| 验证 | `tsc --noEmit` 通过；`check-i18n --fail` 0 处、`check-commands` `missing=0`；实测 6 张卡、`01–06` 序号齐全、卡内 9 个设置项；1280 与 150% 缩放横向溢出均 **0**；1040 宽下单列（805px）、`ultraContentW=1680`、`contrastFails=0`、`hoverRules=10`、`pageErrors=0`。 |
+
+---
+
+### 0.9.0-r37（2026-10-31，未构建：纯前端样式与文档）
+
+| 项 | 内容 |
+|---|---|
+| 修复 | **超宽屏无最大宽度**：`.page` 原本直接铺满 `.content`，2560×1440 下内容实测宽 **2300px**（一行塞 8 张卡片、正文行超百字），加 `max-width: 1680px` + `margin-inline: auto` 后收窄居中、两侧各留 310px；**1680 是「1920 屏不触发」的临界值**，1920 及以下零回归。**次要文字对比度不足**：`--muted-2` `#767a83` 在 `--bg #161617` 上实测 4.2:1、`.mod-meta` 硬编码 `#687483` 实测 3.8:1，均低于 WCAG AA 的 4.5:1，且都用在 8-10px 小字上；`--muted-2` 提到 `#82868f`（5.0:1）、`.mod-meta` 改走该变量，两套主题对比度失败项 **5 → 0**。**四类控件无按下反馈**：`.nav-item` / `.mod-card` / `.settings-tab` / `.nexus-tab` 只有 hover 没有 `:active`，点下去界面无任何变化，触屏易误判「没点上」而重复点击；补齐后 hover/active 规则覆盖 **6/10 → 10/10**。**中文说明字号过小**：`.switch-desc` 9.5→11px、`.platform-label` 9→11px、`.link-btn` 8.5→10.5px（按钮文字看不清是高成本错误） |
+| 新增 | **UI 量化审查进 门禁**（`check-ui-audit.mjs`，九项断言：四档分辨率内容宽度 / 长文本溢出 / 80·125·150% 缩放 / 两套主题对比度 / 字号离群 / 表单对齐 / hover-active 规则 / 页面报错），门禁项数 26 → **27**，耗时约 31s；`make-readme-shots.mjs` 按 README 语义文件名批量出图；`docs/UI-AUDIT-2026-10-31.md` 量化审查报告 |
+| 变更 | **README 事实错误修正**：原文写「六套主题（含 Mono / Daylight）」——`mono` 在 r20 已删除（老配置迁到 `modern`）、`daylight` 更早下线，实际只有 **5 套**且仅 Modern 支持明暗；ARASAKA 那格贴的其实是 NCPD 的图；「原生 0.7.0」引用 0.7.0 时代截图已无意义。主题段落整段重写为五套（Modern 明暗各一张），删除 `mono.png` / `daylight.png`。**补齐从未写过的「存档管理」**：r30 新增的侧栏第六项，README 功能表与截图都没有，现补功能行 + 截图。**重拍 23 张截图**（原图全部是 10-22~25 的旧界面，未体现 T8 自定义字体、主题改版、存档管理页） |
+| 修复（工具） | **审查脚本自身两处假阳性**：① 塌陷判定只查元素自身 `display`，把 `[data-vh-tight] .sidebar-storage { display:none }` 这类**有意的让位设计**的子元素全算成塌陷，每档缩放稳定报 2-11 个（改用 `checkVisibility` 后可识别祖先隐藏）；② `<option>` 本就不生成布局盒，被误判。修正后 `scaleBroken 3 → 0`——**缩放布局本来就没坏**，差点照着假阳性去改正常代码 |
+| 验证 | 门禁 **27/27 全绿**（新增项 9 个断言全通过）；UI 实测 `viewports=4 · hScrollMax=0 · overflowTotal=0 · scaleBroken=0 · contrastFails=0 · alignSpread=0 · hoverRules=10 · pageErrors=0`；README 图片引用缺失 **0**；git 4 个提交已推送 `eeaae0f` |
+| 边界 | 8 张特殊状态截图（`warning-strip` / `game-root-warning` / `update-lock` / `missing-prereq` / `danger-hold` / `import-review` / `task-center` / `log-extract`）**仍是旧图**——它们依赖 mock 未提供的后端状态（未链接游戏目录、版本变化熔断、缺前置、导入中、长按确认态），硬凑只能造假，已单独立项。装饰性小字（版本号 9.5px、`logo-sys` 7.5px、`kbd` 8.5px 等 27 处）保留原尺寸，属 HUD 风格视觉语言 |
+
+---
+
 ### 0.9.0-r36（2026-10-31，**未构建**：仅版本控制与仓库对外发布）
 
 | 项 | 内容 |
