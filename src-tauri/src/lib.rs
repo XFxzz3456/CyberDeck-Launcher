@@ -1403,32 +1403,50 @@ fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settin
     Ok(data.settings.clone())
 }
 
-/// 背景图读取结果：data URL 让 CSP（img-src data:）原样放行，不必放宽 asset 协议
-/// 白名单——用户可以把图放在磁盘任何位置，asset scope 只开了 AppData。
+/// 背景图读取结果。
+///
+/// 返回 data URL 而不是文件路径：CSP 只放行 `img-src data:`，而资产协议的白名单
+/// 只覆盖 `$APPDATA`——便携版的数据目录在 exe 同级，走 asset:// 会读不到。
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundImageData {
     pub data_url: String,
+    /// 实际交给前端的字节数（压缩后）。
     pub size: u64,
+    /// 原图的字节数，用来告诉用户「省了多少」。
+    pub source_size: u64,
+    /// 原图被缩过或转码过。
+    pub compressed: bool,
 }
 
-/// 背景图体积上限：20 MiB。再大的图当全屏背景没有意义，只会拖慢 WebView 解码。
-const BACKGROUND_MAX_BYTES: u64 = 20 * 1024 * 1024;
-
-/// 允许的图片扩展名 → MIME。data URL 的 mime 必须写对，否则 WebView 拒绝解码。
-const BACKGROUND_TYPES: &[(&str, &str)] = &[
-    ("png", "image/png"),
-    ("jpg", "image/jpeg"),
-    ("jpeg", "image/jpeg"),
-    ("webp", "image/webp"),
-    ("bmp", "image/bmp"),
-    ("gif", "image/gif"),
-];
+/// 缓存图最长边。1920 在 4K 屏上按 CSS 像素铺满也够看（还压着一层暗化遮罩和
+/// 模糊），再高只是白烧显存。
+const BACKGROUND_MAX_EDGE: u32 = 1920;
+/// 转码质量。80 是「看不出块效应」的起点，1920 宽的街景大约 400 KB。
+const BACKGROUND_JPEG_QUALITY: u8 = 80;
+/// 源图硬上限。压缩是异步的，但几百 MB 的图光解码就要吃掉大块内存，
+/// 与其让用户干等十几秒，不如直接说清楚。
+const BACKGROUND_MAX_SOURCE: u64 = 200 * 1024 * 1024;
 
 #[tauri::command]
-fn read_background_image(path: String) -> AppResult<BackgroundImageData> {
-    use std::path::Path;
-    let trimmed = path.trim();
+async fn read_background_image(
+    app: tauri::AppHandle,
+    path: String,
+) -> AppResult<BackgroundImageData> {
+    let data_dir = app.state::<Store>().data_dir.clone();
+    // 解码 + 缩放 + 转码全在阻塞线程里：一张 4K 原图要几百毫秒，放主线程会卡住窗口。
+    tauri::async_runtime::spawn_blocking(move || prepare_background(&data_dir, &path))
+        .await
+        .map_err(|err| CommandError::new("BACKGROUND_TASK", format!("背景图处理线程异常：{err}")))?
+}
+
+/// 把任意尺寸的图片压成一张最长边 1920 的 JPEG，写进缓存目录后返回 data URL。
+///
+/// 以前这里是把原图直接 base64 塞给前端、超过 20 MiB 就拦下。拦下来用户没法用，
+/// 不拦则会一次性把几十 MB 字符串推进 WebView——两头都不对，所以改成后端压一次、
+/// 按源文件指纹缓存，换图时顺手清掉旧缓存。
+fn prepare_background(data_dir: &Path, raw_path: &str) -> AppResult<BackgroundImageData> {
+    let trimmed = raw_path.trim();
     if trimmed.is_empty() {
         return Err(CommandError::new(
             "BACKGROUND_EMPTY",
@@ -1436,21 +1454,6 @@ fn read_background_image(path: String) -> AppResult<BackgroundImageData> {
         ));
     }
     let file = Path::new(trimmed);
-    let ext = file
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
-    let Some(mime) = BACKGROUND_TYPES
-        .iter()
-        .find(|(known, _)| *known == ext)
-        .map(|(_, mime)| *mime)
-    else {
-        return Err(CommandError::new(
-            "BACKGROUND_BAD_TYPE",
-            "背景图仅支持 png / jpg / webp / bmp / gif。",
-        ));
-    };
     let meta = std::fs::metadata(file).map_err(|error| {
         CommandError::new(
             "BACKGROUND_NOT_FOUND",
@@ -1463,25 +1466,126 @@ fn read_background_image(path: String) -> AppResult<BackgroundImageData> {
             "背景图路径指向的不是文件。",
         ));
     }
-    if meta.len() > BACKGROUND_MAX_BYTES {
+    if meta.len() > BACKGROUND_MAX_SOURCE {
         return Err(CommandError::new(
             "BACKGROUND_TOO_LARGE",
             format!(
-                "背景图超过 20 MiB 上限（当前 {:.1} MiB），请压缩后再选。",
+                "背景图超过 200 MiB（当前 {:.0} MiB），这个尺寸已经不适合当壁纸了。",
                 meta.len() as f64 / 1024.0 / 1024.0
             ),
         ));
     }
-    let bytes = std::fs::read(file).map_err(|error| {
-        CommandError::new(
-            "BACKGROUND_READ_FAILED",
-            format!("背景图读取失败：{}", error),
-        )
-    })?;
+    let source_size = meta.len();
+    let cache_dir = data_dir.join("background-cache");
+    let cache_file = cache_dir.join(format!("bg-{}.jpg", fingerprint(file, &meta)));
+
+    // 指纹没变就直接吃缓存：同一张图在每次启动时都要读一遍，没必要反复解码。
+    let bytes = match std::fs::read(&cache_file) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let bytes = encode_background(file, source_size)?;
+            std::fs::create_dir_all(&cache_dir).map_err(|error| {
+                CommandError::new(
+                    "BACKGROUND_CACHE",
+                    format!("无法创建背景图缓存目录 {}：{error}", cache_dir.display()),
+                )
+            })?;
+            // 先写临时文件再改名：中途失败不会在缓存目录里留半张图。
+            let temp = cache_file.with_extension("jpg.tmp");
+            std::fs::write(&temp, &bytes).map_err(|error| {
+                CommandError::new(
+                    "BACKGROUND_CACHE",
+                    format!("无法写入背景图缓存 {}：{error}", temp.display()),
+                )
+            })?;
+            if std::fs::rename(&temp, &cache_file).is_err() {
+                std::fs::copy(&temp, &cache_file).map_err(|error| {
+                    CommandError::new(
+                        "BACKGROUND_CACHE",
+                        format!("无法写入背景图缓存 {}：{error}", cache_file.display()),
+                    )
+                })?;
+                let _ = std::fs::remove_file(&temp);
+            }
+            // 换图之后旧的缓存就没人引用了，顺手删掉，别让目录越滚越大。
+            prune_background_cache(&cache_dir, &cache_file);
+            bytes
+        }
+    };
+
+    let size = bytes.len() as u64;
     Ok(BackgroundImageData {
-        data_url: format!("data:{};base64,{}", mime, base64_encode(&bytes)),
-        size: meta.len(),
+        data_url: format!("data:image/jpeg;base64,{}", base64_encode(&bytes)),
+        size,
+        source_size,
+        compressed: size < source_size,
     })
+}
+
+/// 解码 → 按比例缩到最长边 1920 → 编码成 JPEG。
+fn encode_background(file: &Path, _source_size: u64) -> AppResult<Vec<u8>> {
+    let image = image::open(file).map_err(|_| {
+        CommandError::new("BACKGROUND_DECODE", "图片格式不支持或已损坏。")
+    })?;
+    let image = if image.width().max(image.height()) > BACKGROUND_MAX_EDGE {
+        image.resize(
+            BACKGROUND_MAX_EDGE,
+            BACKGROUND_MAX_EDGE,
+            image::imageops::FilterType::Lanczos3,
+        )
+    } else {
+        image
+    };
+    let mut out = Vec::new();
+    let mut encoder =
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, BACKGROUND_JPEG_QUALITY);
+    encoder
+        .encode_image(&image.to_rgb8())
+        .map_err(|error| CommandError::new("BACKGROUND_ENCODE", format!("背景图转码失败：{error}")))?;
+    Ok(out)
+}
+
+/// 缓存键：源文件路径 + 大小 + 修改时间。三者任一变化就重新压一次。
+fn fingerprint(path: &Path, meta: &std::fs::Metadata) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = OFFSET;
+    let mut eat = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= *byte as u64;
+            hash = hash.wrapping_mul(PRIME);
+        }
+    };
+    eat(path.to_string_lossy().as_bytes());
+    eat(&meta.len().to_le_bytes());
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
+    eat(&modified.to_le_bytes());
+    format!("{hash:016x}")
+}
+
+/// 只保留当前在用的那张缓存图。
+fn prune_background_cache(dir: &Path, keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == keep {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if name.starts_with("bg-") {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }
 
 /// 标准 base64（RFC 4648，带 padding）。没有引入 base64 crate——依赖树里
@@ -3561,7 +3665,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod background_tests {
-    use super::{base64_encode, BACKGROUND_MAX_BYTES};
+    use super::{base64_encode, prepare_background, BACKGROUND_MAX_EDGE, BACKGROUND_MAX_SOURCE};
 
     #[test]
     fn base64_rfc4648_vectors() {
@@ -3583,9 +3687,91 @@ mod background_tests {
         assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
     }
 
+    /// 上限只用来挡掉「根本不该当壁纸」的怪物文件，不再拿它拦正常 4K 原图。
     #[test]
-    fn background_cap_is_sane() {
-        // 20 MiB 上限：比任何合理壁纸都大，比「用户把 4K 原图直接丢进来」小。
-        assert_eq!(BACKGROUND_MAX_BYTES, 20 * 1024 * 1024);
+    fn background_limits_are_sane() {
+        assert_eq!(BACKGROUND_MAX_SOURCE, 200 * 1024 * 1024);
+        assert_eq!(BACKGROUND_MAX_EDGE, 1920);
+    }
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "cdl-bg-{tag}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// 超宽原图 → 缩到最长边 1920、转成 JPEG、写进缓存目录，第二次读命中缓存。
+    #[test]
+    fn oversized_image_is_downscaled_then_served_from_cache() {
+        let dir = temp_dir("downscale");
+        let source = dir.join("wide.png");
+        let image = image::RgbImage::from_fn(3000, 100, |x, _| {
+            image::Rgb([(x % 256) as u8, 40, 80])
+        });
+        image.save(&source).unwrap();
+
+        let first = prepare_background(&dir, source.to_string_lossy().as_ref()).unwrap();
+        assert!(first.data_url.starts_with("data:image/jpeg;base64,"));
+        assert_eq!(first.source_size, std::fs::metadata(&source).unwrap().len());
+
+        let cache = dir.join("background-cache");
+        let files: Vec<_> = std::fs::read_dir(&cache)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.path())
+            .collect();
+        assert_eq!(files.len(), 1, "缓存目录里只该留当前这张");
+        let decoded = image::open(&files[0]).unwrap();
+        assert_eq!(decoded.width(), BACKGROUND_MAX_EDGE);
+        assert_eq!(decoded.height(), 64, "3000x100 等比缩到 1920x64");
+
+        // 同一张图再读一次必须走缓存（内容一致，且不再产生新文件）。
+        let second = prepare_background(&dir, source.to_string_lossy().as_ref()).unwrap();
+        assert_eq!(second.data_url, first.data_url);
+        assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 换一张图之后，上一张的缓存必须被清掉。
+    #[test]
+    fn replacing_the_image_prunes_the_old_cache() {
+        let dir = temp_dir("replace");
+        let first = dir.join("a.png");
+        image::RgbImage::from_pixel(64, 64, image::Rgb([10, 20, 30]))
+            .save(&first)
+            .unwrap();
+        prepare_background(&dir, first.to_string_lossy().as_ref()).unwrap();
+
+        let second = dir.join("b.png");
+        image::RgbImage::from_pixel(64, 64, image::Rgb([200, 10, 10]))
+            .save(&second)
+            .unwrap();
+        prepare_background(&dir, second.to_string_lossy().as_ref()).unwrap();
+
+        let cache = dir.join("background-cache");
+        assert_eq!(
+            std::fs::read_dir(&cache).unwrap().count(),
+            1,
+            "旧缓存必须被清掉，否则缓存目录会越滚越大"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 坏文件 / 不支持的格式要给专门的错误码，前端据此提示「格式不支持或已损坏」。
+    #[test]
+    fn broken_image_reports_decode_error() {
+        let dir = temp_dir("broken");
+        let bad = dir.join("bad.png");
+        std::fs::write(&bad, b"definitely not a png").unwrap();
+        let error = prepare_background(&dir, bad.to_string_lossy().as_ref()).unwrap_err();
+        assert_eq!(error.code, "BACKGROUND_DECODE");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

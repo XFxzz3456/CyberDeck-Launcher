@@ -1011,3 +1011,15 @@ export interface SaveScanReport {
   riskyCount: number;
   notes: string[];
 }
+
+/** 背景图压缩结果：后端把原图缩到最长边 1920 并转成 JPEG，前端只拿 data URL。 */
+export interface BackgroundImage {
+  /** `data:image/jpeg;base64,...`。走 data URL 是为了不必放宽 CSP 的资产白名单。 */
+  dataUrl: string;
+  /** 压缩后的字节数。 */
+  size: number;
+  /** 原图字节数。 */
+  sourceSize: number;
+  /** 原图被缩过或转码过。 */
+  compressed: boolean;
+}

@@ -1778,6 +1778,9 @@ export const zhCN = {
     minimize: "最小化",
   },
   toast: {
+    background: {
+      badImageTitle: "背景图不可用",
+    },
     batch: {
       // 连续部署/撤销的合并汇总：单条操作静默，多条才弹这一条。
       toggleDetail: "启用 {enabled} 个、禁用 {disabled} 个；逐条明细见「最近活动」。",

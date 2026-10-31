@@ -10,6 +10,7 @@ import type {
   AiFixProposal,
   AiFixReport,
   AiLocPlan,
+  BackgroundImage,
   AiLocReport,
   BackupInfo,
   ConflictInfo,
@@ -331,9 +332,9 @@ export const api = {
   },
 
   /** 读背景图 → data URL（后端校验类型/体积，CSP 不用放宽 asset 协议）。 */
-  async readBackgroundImage(path: string): Promise<{ dataUrl: string; size: number }> {
+  async readBackgroundImage(path: string): Promise<BackgroundImage> {
     if (!isTauri) return mockApi.readBackgroundImage(path);
-    return call<{ dataUrl: string; size: number }>("read_background_image", { path });
+    return call<BackgroundImage>("read_background_image", { path });
   },
 
   async changeStagingDir(newDir: string): Promise<StagingMoveReport> {

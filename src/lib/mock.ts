@@ -6,6 +6,7 @@ import type {
   AiStatus,
   AiFixProposal,
   AiFixReport,
+  BackgroundImage,
   AiLocPlan,
   AiLocReport,
   EnvSnapshot,
@@ -1604,7 +1605,7 @@ export const mockApi = {
     return settings;
   },
 
-  async readBackgroundImage(path: string): Promise<{ dataUrl: string; size: number }> {
+  async readBackgroundImage(path: string): Promise<BackgroundImage> {
     await sleep(120);
     // 浏览器演示模式没有真实文件：回一张内置的 SVG 渐变当「已选图」，路径仅作记录。
     if (!path.trim()) throw new Error("BACKGROUND_EMPTY");
@@ -1614,7 +1615,12 @@ export const mockApi = {
       '<stop offset="0" stop-color="#0e1420"/><stop offset="0.55" stop-color="#20304a"/>' +
       '<stop offset="1" stop-color="#fcee0a"/></linearGradient></defs>' +
       `<rect width="640" height="360" fill="url(#g)"/><text x="24" y="46" fill="#fcee0a" font-family="monospace" font-size="20">MOCK BACKGROUND</text></svg>`;
-    return { dataUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`, size: svg.length };
+    return {
+      dataUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+      size: svg.length,
+      sourceSize: svg.length,
+      compressed: false,
+    };
   },
 
   async changeStagingDir(newDir: string): Promise<StagingMoveReport> {

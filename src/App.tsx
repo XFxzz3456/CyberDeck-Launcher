@@ -494,12 +494,19 @@ export default function App() {
       .catch((error) => {
         if (cancelled) return;
         setBackgroundData({ path: bgImagePath, dataUrl: null });
+        const parsed = normalizeError(error);
+        // 图本身有问题（解码不了 / 大得离谱）：说清楚原因，别糊一层通用的
+        // 「加载失败」——用户需要知道是文件坏了还是路径丢了。
+        if (parsed.code === "BACKGROUND_DECODE" || parsed.code === "BACKGROUND_TOO_LARGE") {
+          toast("warn", t("toast.background.badImageTitle"), parsed.message, "system");
+          return;
+        }
         showError(error, t("err.backgroundLoad"));
       });
     return () => {
       cancelled = true;
     };
-  }, [bgImagePath, showError]);
+  }, [bgImagePath, showError, toast]);
 
   const refresh = useCallback(async () => {
     const next = await api.bootstrap();

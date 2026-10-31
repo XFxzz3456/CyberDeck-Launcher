@@ -59,6 +59,16 @@ open = { version = "5", features = ["shellexecute-on-windows"] }
 rusty-leveldb = "3"
 rust-ini = { version = "0.21.3", features = ["inline-comment"] }
 toml = "0.8"
+# 背景图自动压缩：只开解码用得上的格式（jpeg/png/webp/bmp/gif）。
+# 版本锁 0.25.6 —— 更新的 0.26 要求 rustc ≥ 1.80，而本机 rustc 1.99 虽够，
+# 但工程 rust-version 写的是 1.77.2，不能为了压图把门槛抬上去。
+image = { version = "0.25.6", default-features = false, features = [
+  "jpeg",
+  "png",
+  "webp",
+  "bmp",
+  "gif",
+] }
 
 [profile.release]
 panic = "abort"
