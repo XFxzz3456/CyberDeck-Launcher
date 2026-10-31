@@ -8,16 +8,16 @@
 - ⚠️ 标号冲突（待裁决）：`0.7.0-r4`（21:45 界面/交互批次）与 `0.8.0-r4`（22:58 回归门禁 + NXM 批次）同为 `r4`，本文件按**实际时间顺序**排列，标号原样保留；建议后续统一改为「按日期递增的 build 号」。
 - ✅ 版本号口径（2026-10-28 已执行）：`package.json` / `Cargo.toml` / `tauri.conf.json` 三处已统一升到 **0.8.0**。
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
-- 📁 **2026-10-31 文档合并**：21 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
+- 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
 ### 0.9.0-r39（2026-10-31，未构建：文档治理）
 
 | 项 | 内容 |
 |---|---|
-| 新增 | **`docs/PROJECT_HISTORY.md`**（367 行）：把 21 份零散报告 / 草稿按**里程碑 / 事故复盘 / 架构决策**三条线重新提炼，每条带稳定锚点供跨文档引用 |
-| 删除 | 21 份原文（`INCIDENT-*`、`UI-AUDIT-*`、`AUDIT-*`、`REPORT-*`、`DESIGN-ai-*`、`REAL-ENV-TEST-0.9.0`、`OLLAMA-LOCAL-MODEL`、`AI-LOCALIZATION-REVIEW`、`NIGHT_SHIFT_REPORT`、夜间批处理总结等，共约 3200 行）；git 历史可回溯 |
+| 新增 | **`docs/PROJECT_HISTORY.md`**（367 行）：把 20 份零散报告 / 草稿按**里程碑 / 事故复盘 / 架构决策**三条线重新提炼，每条带稳定锚点供跨文档引用 |
+| 删除 | 20 份原文（`INCIDENT-*`、`UI-AUDIT-*`、`AUDIT-*`、`REPORT-*`、`DESIGN-ai-*`、`REAL-ENV-TEST-0.9.0`、`OLLAMA-LOCAL-MODEL`、`AI-LOCALIZATION-REVIEW`、`NIGHT_SHIFT_REPORT`、夜间批处理总结等，合计删除 3032 行）；git 历史可回溯 |
 | 保留 | `docs/REAL-ENV-TEST.md` 是**活文档**（配套 `scripts/real-env-check.ps1`，README 有入口），不是报告，不在删除范围 |
-| 修复 | 引用断链：`README.md` / `HANDOFF.md` / `CHANGELOG.md` / `docs/MEMORY-CANON.md` 共 36 处指向原文件的线索改为指向锚点 |
+| 修复 | 引用断链：`README.md` 1 处、`HANDOFF.md` 12 处、`CHANGELOG.md` 18 处、`docs/MEMORY-CANON.md` 3 处、`docs/ARCHITECTURE.md` 1 处、`src-tauri/src/{aifix,ailoc,safemode}.rs` 各 1 处，**合计 38 处**指向原文件的线索改为指向锚点（19 个锚点全部命中，死锚点 0） |
 | 规则 | **任务分级 L1/L2/L3** 入 `~/.workbuddy/rules.md` 同源会话规则，并附「报告长度纪律」，防止再长出成堆长篇报告 |
 
 ---
