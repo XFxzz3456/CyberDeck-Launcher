@@ -281,18 +281,14 @@ export const zhCN = {
     groupWindowHint: "侧边栏收起方式，以及点关闭按钮时怎么处理",
     groupMotion: "动效与启动",
     groupMotionHint: "界面过渡动画与启动首帧",
-    groupLayout: "界面元素",
-    groupLayoutHint: "侧栏、动效、启动页与导航可见性",
     groupBackdrop: "背景图",
     groupBackdropHint: "自定义底图、不透明度与模糊",
     fontPreviewLabel: "预览",
     fontPreviewText: "赛博朋克 2077 · CyberDeck Launcher 0123",
     fontPreviewCode: "load_order::apply(195) → archive.xl  [OK]",
     styleLabel: "视觉风格",
-    hiddenViewsLabel: "界面显示管理",
     hiddenViewsHint: "隐藏不常用的侧边栏入口，让界面更专注。模组库与设置是固定入口，不可隐藏；隐藏当前所在页面时会自动跳回模组库。",
     hiddenViewItemDesc: "在侧边栏显示这个入口",
-    title: "外观与主题",
   },
   banner: {
     gameUpdated: {
@@ -393,6 +389,8 @@ export const zhCN = {
     refresh: "刷新",
     retry: "重试",
     save: "保存",
+    // 常驻通知（冲突 / 权限不足 / 跨盘失败 / 缺前置）不自动消失，这里给用户一个说明。
+    stickyToast: "这条提示不会自动消失，处理完再关闭",
     toggle: "切换",
     unknown: "未知",
   },
@@ -869,16 +867,13 @@ export const zhCN = {
     adoptSummary: "成功 {adopted} · 失败 {failed}",
     adoptSummaryCancelled: "成功 {adopted} · 失败 {failed} · 已取消",
     adoptTitle: "收编既有模组",
-    deployDetail: "检查目标路径并建立链接…",
-    deployTitle: "部署 {name}",
+    // 部署 / 撤销不再占任务行（P1 通知降噪）：原 deployTitle / deployDetail /
+    // undeployTitle / undeployDetail / undeployDone 五条已随改造删掉。
     extract: "解压到暂存区并识别布局…",
     importedDetail: "{name} · 已进入暂存区",
     importTitle: "导入 {name}",
     linkSummary: "硬链接 {hard} · 符号链接 {sym} · 复制 {copies}",
     queued: "等待处理…",
-    undeployDetail: "按部署清单撤除链接…",
-    undeployDone: "链接已移除，暂存文件保留",
-    undeployTitle: "撤除 {name}",
     uninstallDetail: "撤链接并删除暂存内容…",
     uninstallDone: "部署链接与暂存内容已删除",
     uninstallTitle: "卸载 {name}",
@@ -1602,7 +1597,6 @@ export const zhCN = {
     toolManualPick: "手动选择",
     toolPickFailed: "选择文件失败",
     toolSelected: "已选择并保存：{path}",
-    windowBehaviorTitle: "窗口行为",
     wolvenkitAutoTip: "在 dotnet 全局工具目录与 PATH 里查找 WolvenKit.Cli.exe",
     wolvenkitLabel: "WolvenKit CLI（可选，资源级深度扫描）",
     wolvenkitManualTip: "手动指定 WolvenKit.Cli.exe 的位置",
@@ -1749,6 +1743,11 @@ export const zhCN = {
     minimize: "最小化",
   },
   toast: {
+    batch: {
+      // 连续部署/撤销的合并汇总：单条操作静默，多条才弹这一条。
+      toggleDetail: "启用 {enabled} 个、禁用 {disabled} 个；逐条明细见「最近活动」。",
+      toggleTitle: "已切换 {count} 个模组",
+    },
     stopGame: {
       doneTitle: "游戏已退出",
       doneDetail: "进程正常关闭，现在可以安全地改模组了。",
@@ -1785,13 +1784,11 @@ export const zhCN = {
       conflictTitle: "部署被冲突拦住",
       doneTitle: "{name} 已部署",
       redscriptDetail: "脚本在游戏启动时编译；未生效看 r6\\logs\\redscript.log。",
-      redscriptTitle: "redscript 已部署",
       stillConflict: "仍有冲突",
       warningTitle: "部署提示",
     },
     disable: {
       conflictDetail: "部署链接已移除，暂存保留。",
-      doneDetail: "游戏目录中的链接已移除，暂存文件保留。",
       doneTitle: "{name} 已禁用",
     },
     game: {

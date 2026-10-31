@@ -42,3 +42,6 @@ node_modules/.vite/
 # ── CodeBuddy 本地私有配置（团队共享的 .codebuddy/rules 要提交）──────
 .codebuddy/settings.local.json
 CODEBUDDY.local.md
+
+# ── 编辑器本地配置（VS Code 自动生成的 launch.json 不含项目信息）──────
+.vscode/

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent, type Variants } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Info, LoaderCircle, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-react";
 import { t } from "../i18n";
 import { makeBackdropVariants, makeModalVariants, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
@@ -261,6 +261,8 @@ export interface ToastItem {
   tone: "ok" | "error" | "info" | "warn";
   title: string;
   message?: string;
+  /** 常驻：需要用户处理（冲突、权限不足、跨盘失败、缺前置），不自动消失，只能手动关。 */
+  sticky?: boolean;
 }
 
 export function ToastHost({
@@ -279,12 +281,21 @@ export function ToastHost({
   return (
     <div className="toast-host" aria-live="polite">
       {toasts.map((toast) => (
-        <div key={toast.id} className={`toast toast-${toast.tone}`}>
+        <div
+          key={toast.id}
+          className={`toast toast-${toast.tone}${toast.sticky ? " toast-sticky" : ""}`}
+          data-sticky={toast.sticky ? "1" : "0"}
+        >
           <span className="toast-icon">{icons[toast.tone]}</span>
           <div className="toast-copy">
             <div className="toast-title">{toast.title}</div>
             {toast.message ? <div className="toast-message">{toast.message}</div> : null}
           </div>
+          {toast.sticky ? (
+            <span className="toast-pin" title={t("common.stickyToast")} aria-label={t("common.stickyToast")}>
+              <Pin size={13} />
+            </span>
+          ) : null}
           <button className="toast-close" onClick={() => onDismiss(toast.id)} aria-label={t("common.dismissToast")}>
             <X size={14} />
           </button>

@@ -23,18 +23,22 @@ body {
   zoom: var(--ui-scale);
 }
 
-/* A very light CRT scanline. It is deliberately almost invisible; the mono
-   theme turns it off with --scanline-opacity: 0. */
+/* CRT 扫描线。原来是 1px/3px 的 rgba(255,255,255,0.9)，而 --scanline-opacity
+   只有 mono 显式设为 0，其余主题下这个变量不存在、opacity 直接回落到初始值
+   1 —— 等于满屏糊了一层接近实白的横纹，这才是「背景喧宾夺主」的主犯。
+   现在把描边本身压到 0.035、并用 soft-light 叠进底色：近看有 CRT 质感，
+   远看只剩一层呼吸，不会在纯黑上画出一道道笔画。 */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 9999;
   pointer-events: none;
+  mix-blend-mode: soft-light;
   opacity: var(--scanline-opacity);
   background: repeating-linear-gradient(
     0deg,
-    rgba(255, 255, 255, 0.9) 0 1px,
+    rgba(255, 255, 255, 0.035) 0 1px,
     transparent 1px 3px
   );
 }
@@ -141,6 +145,9 @@ pre {
   display: flex;
   flex-direction: column;
   background:
+    /* 中心提亮层：内容区比四周亮半档，配合网格 mask 的收紧把注意力推回中央的
+       加载图标与正文。纯白 2.2% 在暗色下刚好够，浅色模式下几乎不可察。 */
+    radial-gradient(1200px 720px at 50% 45%, rgba(255, 255, 255, 0.022), transparent 70%),
     radial-gradient(900px 500px at 72% -10%, rgba(49, 230, 255, 0.055), transparent 60%),
     radial-gradient(1100px 600px at 30% 110%, rgba(var(--accent-rgb), 0.035), transparent 60%),
     var(--bg);
@@ -148,17 +155,20 @@ pre {
   isolation: isolate;
 }
 
+/* 全局细网格：描边压到 2% 以内并改用 soft-light 融进底色。
+   mask 的衰减半径从 78% 收到 70%，让四周线条自然沉下去、中间留亮。 */
 .app-shell::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  mix-blend-mode: soft-light;
   opacity: var(--grid-opacity);
-  background-image: linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
   background-size: 64px 64px;
-  mask-image: radial-gradient(circle at 50% 40%, black, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 40%, black, transparent 70%);
 }
 
 /* ── 自定义背景图（看板【皮肤 UI 优化】P0 子项）────────────────────
@@ -2973,7 +2983,11 @@ pre {
 .diagnostics-loading {
   margin: auto;
   text-align: center;
-  color: var(--muted);
+  /* 加载态是整页唯一的内容，理应是最亮的那一档（任务 §二.1）。 */
+  color: var(--muted-2);
+  /* 给下面的提亮层一个独立层叠上下文，负 z-index 不会穿出去影响别处。 */
+  position: relative;
+  isolation: isolate;
 }
 
 .diagnostics-loading svg:first-child {
@@ -2984,6 +2998,8 @@ pre {
 .diagnostics-loading h2 {
   margin: 0 0 4px;
   font-size: 18px;
+  /* 加载态的标题就是此刻的「核心内容」，用最高对比度的文本色。 */
+  color: var(--text);
   color: var(--text-2);
 }
 
@@ -4165,6 +4181,21 @@ pre {
   color: var(--cyan);
 }
 
+/* 常驻通知（冲突 / 权限不足 / 跨盘失败 / 缺前置）：略提底色 + 图钉，
+   告诉用户「这条不会自己走」，必须手动处理。刻意不改边框，保留色调左边框。 */
+.toast-sticky {
+  background: var(--panel-3);
+  box-shadow:
+    0 12px 35px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.toast-pin {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  padding-top: 1px;
+}
+
 .toast-copy {
   flex: 1;
   min-width: 0;
@@ -4205,6 +4236,23 @@ pre {
   text-align: center;
   padding: 40px 20px;
   max-width: 340px;
+  /* 给下面的提亮层一个独立的层叠上下文：负 z-index 只落在本容器内，
+     不会穿出 .empty-state 去压别的东西（任务避坑指南 2）。 */
+  position: relative;
+  isolation: isolate;
+}
+
+/* 空状态页 /「正在连接 Nexus…」这类加载态的中心提亮层：中心一圈极淡的
+   高光把身后的网格压下去，保证加载图标和文案是全场对比度最高的东西
+   （任务 §二）。两类容器共用一条规则，样式不会各自走偏。 */
+.empty-state::before,
+.diagnostics-loading::before {
+  content: "";
+  position: absolute;
+  inset: -60px -40px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.05), transparent 72%);
 }
 
 .empty-icon {
@@ -8442,20 +8490,83 @@ body ::selection {
   flex-basis: 38px;
 }
 
-.sidebar.is-collapsed .nav-item {
+/* 折叠态几何：主操作 4 项 / 工具项 / 折叠按钮全部收敛成同一个正方形。
+   修复前这里其实是三种几何混用——nav-item 52×42、tool-nav-item 52×52
+   （内含 7px 上下 padding）、sidebar-collapse 52×30，宽高比各不相同，
+   图标中心轴自然对不齐；展开态右上角的 7px 切角在只剩图标时还会把
+   hover 高亮块切歪。现在统一：正方形 + flex 绝对居中 + 左右内边距清零。 */
+.sidebar.is-collapsed {
+  --nav-collapsed-size: 48px;
+  --nav-collapsed-gap: 8px;
+}
+
+/* 滚动容器在折叠态必须交出 scrollbar-gutter 占的 6px 槽位：
+   66px 宽 − 14px 左右 padding = 52px，再被 gutter 拿走 6px 只剩 44px，
+   48px 方块会被裁掉一截并被挤向右边。 */
+.sidebar.is-collapsed .sidebar-scroll {
+  scrollbar-gutter: auto;
+  padding-right: 0;
+}
+
+.sidebar.is-collapsed .nav-item,
+.sidebar.is-collapsed .tool-nav-item,
+.sidebar.is-collapsed .sidebar-collapse {
+  /* 宽度用 min(48px, 100%)：空间被挤窄时按比例缩，配合 aspect-ratio
+     永远保持正方形，不会退化成长方形把图标挤偏。
+     height 必须显式让位给 auto —— 基础的 .nav-item{height:42px} 和
+     .sidebar-collapse{height:30px} 会顶掉 aspect-ratio，量出来是 48×45
+     和 48×30 这种差几像素的矩形，.centerX 也会跟着歪。 */
+  width: min(var(--nav-collapsed-size), 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+  min-height: 0;
+  flex: 0 0 auto;
+  /* 折叠按钮是 .sidebar 的直接子元素（主项在 .sidebar-scroll 里），
+     两条参考轴的 content-box 起点不同，不自己居中的话会偏 1.5px。 */
+  align-self: center;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  height: 42px;
   padding: 0;
+  gap: 0;
+  /* 切角只在展开态有意义，折叠态取消才能让高亮块居中包住图标。 */
+  clip-path: none;
+  transition:
+    color 0.16s,
+    background 0.16s,
+    border-color 0.16s,
+    width 0.18s cubic-bezier(0.2, 0.7, 0.3, 1),
+    padding 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* 两列菜单都横向居中（52px 可用宽放 48px 方块，两侧各留 2px 呼吸），
+   纵向间距统一到同一个 gap——工具区原本是 6px，和主操作区的 8px 对不上。 */
+.sidebar.is-collapsed .sidebar-nav,
+.sidebar.is-collapsed .sidebar-tools-nav {
+  align-items: center;
+  gap: var(--nav-collapsed-gap);
+}
+
+/* 「工具」标签在折叠态是 display:none，用一致的 gap 补回那段距离。 */
+.sidebar.is-collapsed .sidebar-tools-nav {
+  margin-top: var(--nav-collapsed-gap);
 }
 
 .sidebar.is-collapsed .nav-item.active::before {
   left: -7px;
 }
 
+/* 折叠按钮继续保持贴底（footer 已隐藏），只是不再多留 8px 外边距。 */
 .sidebar.is-collapsed .sidebar-collapse {
-  justify-content: center;
   margin-top: auto;
-  margin-bottom: 8px;
+  margin-bottom: 0;
+}
+
+/* 矮窗口 / 大缩放档位：48px 方块会让侧栏一次只能看见很少几项，收一档。 */
+[data-vh-compact] .sidebar.is-collapsed {
+  --nav-collapsed-size: 40px;
+  --nav-collapsed-gap: 6px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -9075,7 +9186,8 @@ body::before {
   inset: 0;
   z-index: 9998;
   pointer-events: none;
-  opacity: 0.045;
+  /* 噪点要的是「远看看不见、近看才有颗粒」的量，0.045 在浅色主题下会浮出来。 */
+  opacity: 0.032;
   background-image: url("/noise.svg");
   background-size: 180px 180px;
   mix-blend-mode: soft-light;
@@ -9088,13 +9200,21 @@ body::before {
 /* Two grids: a fine white one for the hardware chassis, plus a 4x coarser
    accent grid so the accent colour appears in the environment, not only in
    buttons. */
+/* 第二层网格（细白 + 4 倍粗的 accent 网格），赛博四套实际吃的是这一条。
+   原先 opacity 是 calc(var(--grid-opacity) * 1.4)，而赛博四套压根没定义
+   --grid-opacity，整段 calc 无效、opacity 回落到 1，于是 0.035 的线被原样打
+   在近黑底上，观感接近 0.1+。做法：去掉 1.4 的倍数（改由变量全权决定），
+   描边按「最终想看到的浓度」重写成 0.022 / 0.018，accent 那层略高一档
+   0.026 / 0.018，再用 soft-light 融进去——看得见图形，抢不走焦点。
+   modern / mono 已把 --grid-opacity 设为 0，两层网格照旧整体关闭。 */
 .app-shell::after {
-  opacity: calc(var(--grid-opacity) * 1.4);
+  mix-blend-mode: soft-light;
+  opacity: var(--grid-opacity);
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-    linear-gradient(rgba(var(--accent-rgb), 0.038) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(var(--accent-rgb), 0.026) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(rgba(var(--accent-rgb), 0.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.018) 1px, transparent 1px);
   background-size: 64px 64px, 64px 64px, 256px 256px, 256px 256px;
 }
 
@@ -11460,8 +11580,11 @@ body::before {
   --text: #111827;
   --text-2: #374151;
   --text-3: #6b7280;
-  --muted: #6b7280;
-  --muted-2: #6b7280;
+  /* 次要文字色：原 #6b7280 压在浅色面板/白底上只有 4.44:1，正好卡在 WCAG AA
+     的 4.5 线下（侧栏未选中标签 .nav-label 被 check-ui-audit 拦下）。
+     加深一档到 #5f6672 ≈ 5.4:1，仍然是同一档次的灰，不影响 Modern 的观感。 */
+  --muted: #5f6672;
+  --muted-2: #5f6672;
   --accent: #2563eb;
   --accent-rgb: 37, 99, 235;
   --accent-soft: #1d4ed8;
@@ -11816,6 +11939,184 @@ body::before {
 :root[data-style="modern"] .drawer {
   border-left-color: var(--line);
   box-shadow: -24px 0 60px rgba(15, 23, 42, 0.16);
+}
+
+/* ============================================================
+   MODERN — 质感层（毛玻璃 / 弥散阴影 / 极细描边）
+
+   作用域死锁在 [data-style="modern"]：赛博四套吃的是硬边 + 发光，
+   mono 吃的是纯白极简，两者都不需要毛玻璃，下面每条规则都不会漏出去。
+
+   性能红线：backdrop-filter 每帧要重采样背后的画面，只给「浮在内容之上
+   的容器」（侧栏 / 顶栏 / 弹窗 / 右键菜单）加。列表卡片一律不加 —— 几百
+   个毛玻璃层会把 WebView2 的合成帧率直接拖垮，卡片层级改用「底色差 +
+   弥散阴影 + 极细描边」三件套表达。
+   ============================================================ */
+
+/* 1. 质感变量：明暗各一套。组件里只引用变量名，不再写死颜色。 */
+:root[data-style="modern"][data-mode="light"] {
+  /* 0.86 而不是常见的 0.7：0.72 时玻璃把侧栏底色压暗了一档，.nav-label
+     的对比度掉到 4.44，刚好卡在 WCAG AA 的 4.5 线下（check-ui-audit 会拦）。
+     0.86 保留了一层通透感，又能让未选中标签稳在 4.5 以上。 */
+  --glass-sidebar: rgba(245, 245, 246, 0.86);
+  --glass-bar: rgba(255, 255, 255, 0.72);
+  --glass-pop: rgba(255, 255, 255, 0.88);
+  --hairline: rgba(0, 0, 0, 0.06);
+  --hairline-strong: rgba(0, 0, 0, 0.1);
+  --divider: rgba(128, 128, 128, 0.15);
+  --elev-card: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --elev-pop: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --hover-overlay: rgba(15, 23, 42, 0.03);
+  --scrim: rgba(15, 23, 42, 0.32);
+  --glass-blur: 20px;
+  --glass-blur-pop: 24px;
+  /* 分割线从实心灰换成极淡中性灰（任务书 §二.3）。--line 保留较实的取值，
+     输入框这类必须看得见边界的控件继续用它，避免表单控件糊掉。 */
+  --line-soft: var(--divider);
+}
+
+:root[data-style="modern"][data-mode="dark"] {
+  --glass-sidebar: rgba(27, 27, 29, 0.72);
+  --glass-bar: rgba(22, 22, 23, 0.66);
+  --glass-pop: rgba(37, 38, 41, 0.9);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --divider: rgba(128, 128, 128, 0.15);
+  /* 暗色卡片不叠阴影：靠比背景更亮的底色 + 0.08 亮边拉开层级（§二.2），
+     否则半透明上的阴影会把相邻卡片糊成一片。只有真正浮起来的弹层配阴影。 */
+  --elev-card: none;
+  --elev-pop: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --hover-overlay: rgba(255, 255, 255, 0.04);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --glass-blur: 20px;
+  --glass-blur-pop: 24px;
+  --line-soft: var(--divider);
+}
+
+/* 2. 毛玻璃容器 —— 只有这四个场景，加之前先问「它是不是浮层」。 */
+:root[data-style="modern"] .sidebar {
+  background: var(--glass-sidebar);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border-right: 1px solid var(--hairline);
+}
+
+/* 开了自定义背景图时侧栏再透一档，背景图才有参与度。 */
+:root[data-style="modern"][data-backdrop="on"] .sidebar {
+  background: color-mix(in srgb, var(--glass-sidebar) 84%, transparent);
+}
+
+:root[data-style="modern"] .topbar {
+  background: var(--glass-bar);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border-bottom: 1px solid var(--hairline);
+}
+
+:root[data-style="modern"] .modal-backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+:root[data-style="modern"] .modal {
+  background: var(--glass-pop);
+  backdrop-filter: blur(var(--glass-blur-pop));
+  -webkit-backdrop-filter: blur(var(--glass-blur-pop));
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--elev-pop);
+}
+
+:root[data-style="modern"] .mod-context-menu {
+  background: var(--glass-pop);
+  backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--elev-pop);
+}
+
+/* 不支持 backdrop-filter 时退回不透明底色：宁可没有玻璃感，
+   也不能让半透明背景把底下的文字透上来。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-style="modern"] .sidebar,
+  :root[data-style="modern"] .topbar {
+    background: var(--bg-2);
+  }
+
+  :root[data-style="modern"] .modal,
+  :root[data-style="modern"] .mod-context-menu {
+    background: var(--panel-2);
+  }
+}
+
+/* 3. 极细描边：卡片级容器不再用实心灰；--line 仍留给输入框等必须看清的边框。 */
+:root[data-style="modern"] .panel,
+:root[data-style="modern"] .mod-card {
+  border-color: var(--hairline);
+  box-shadow: var(--elev-card);
+}
+
+/* 4. Hover 质感：微叠加 + 1px 上浮。只过渡这几个属性，
+   不用 transition: all —— all 会把 width/height 也卷进来，
+   侧栏折叠动画会被一起拖慢。 */
+:root[data-style="modern"] .btn,
+:root[data-style="modern"] .card-action-btn,
+:root[data-style="modern"] .mod-card {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+:root[data-style="modern"] .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-pop);
+}
+
+:root[data-style="modern"] .card-action-btn:hover {
+  background: var(--hover-overlay);
+  transform: translateY(-1px);
+}
+
+:root[data-style="modern"] .mod-card:hover {
+  background: var(--hover-overlay);
+  transform: translateY(-1px);
+  box-shadow: var(--elev-pop);
+}
+
+/* 关掉「界面动效」时位移必须一起消失，与全站 data-motion 口径一致。 */
+:root[data-style="modern"][data-motion="off"] .btn:hover:not(:disabled),
+:root[data-style="modern"][data-motion="off"] .card-action-btn:hover,
+:root[data-style="modern"][data-motion="off"] .mod-card:hover {
+  transform: none;
+}
+
+/* 5. 滚动条：4px 极细、轨道全透明、滑块默认近乎隐形，hover 才显形。
+   不做「完全透明」的默认态 —— WebView2 里那样等于永久看不见。 */
+:root[data-style="modern"] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.32) transparent;
+}
+
+:root[data-style="modern"] ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+:root[data-style="modern"] ::-webkit-scrollbar-track,
+:root[data-style="modern"] ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:root[data-style="modern"] ::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.22);
+  border: 0;
+  border-radius: 999px;
+}
+
+:root[data-style="modern"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.45);
 }
 
 /* ------------------------------------------------------------------ */

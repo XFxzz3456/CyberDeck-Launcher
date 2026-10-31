@@ -10,6 +10,19 @@
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
 - 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
+### 0.9.0-r40（2026-10-31，已构建：通知降噪 P1）
+
+| 项 | 内容 |
+|---|---|
+| 变更 | **单次启用 / 禁用完全静默**：不再弹 toast、不再占任务中心一行。结果由三处承载——卡片角标即时翻转、活动流逐条留痕（含 CET / redscript 的「接下来注意什么」）、状态栏汇总。改因：连续开关 5 个模组原本会刷 5–9 条 toast + 5 行任务，把有用信息推进噪声里。 |
+| 新增 | **2 秒合并窗口**（`src/lib/feedback.ts` 的 `createCoalescer`）：窗口内只有 1 次操作 → 完全静默；≥2 次 → 窗口结束时合并成一条「已切换 N 个模组 · 启用 x / 禁用 y」汇总，走 `deploy` 类别，仍受设置页通知开关约束。窗口从**最后一次操作**起算，所以一整串连点必然落在同一批，停下才说话。 |
+| 新增 | **常驻（sticky）toast**：冲突、权限不足、跨盘降级、缺前置依赖、未挂游戏目录这五类必须用户动手，改为一律不自动消失（图钉图标 + 抬高底色），只能手动关。`toast()` 增加 `options: { ttl, sticky }`。 |
+| 新增 | `scripts/check-notify-noise.mjs`（194 行，8 条断言）+ 接入 `scripts/gate.mjs` 的 UI 脚本清单：卡片就绪、单次静默、连串只留一条、汇总非常驻、任务中心 0 行、活动流逐条、角标同步。 |
+| 修复 | `scripts/gate.mjs` 在 Windows 下 `node` 装在 `C:\Program Files\` 会被命令行按空格拆开（报 `'C:\Program' is not recognized`），改为命中含空格路径时自动补引号。 |
+| 修复 | `scripts/check-deepseek.mjs` 仍按旧文案「界面显示管理」断言——r38 把它改名成「左侧导航栏」后这条断言必失，改为同时断言卡标题 + 卡说明。 |
+| 清理 | 删除 5 条无引用词条（`appearance.groupLayout` / `groupLayoutHint` / `hiddenViewsLabel` / `title`、`settings.windowBehaviorTitle`，均为 r38 卡片化的残留）；`.vscode/` 加入 `.gitignore`。词表 1689 条、死条目 0。 |
+| 验证 | `cargo test`（core-tests）101s 通过 · `tsc --noEmit` 通过 · `vite build` 通过 · 命令契约 131/131（missing=0）· i18n 缺口 0 / 死条目 0 · `check-notify-noise` 8/8 PASS · 合入门禁 `node scripts/gate.mjs --skip-ui` 全绿。 |
+
 ### 0.9.0-r39（2026-10-31，未构建：文档治理）
 
 | 项 | 内容 |

@@ -113,7 +113,13 @@ function checkExpectation(map, expression) {
 
 function runCommand(spec) {
   const started = Date.now();
-  const result = spawnSync(spec.cmd, spec.args ?? [], {
+  // Windows 下开了 shell：可执行文件本身带空格（node 常装在 C:\Program Files\nodejs）
+  // 会被命令行拆成两个词，报 "'C:\Program' is not recognized"。这里补引号。
+  const executable =
+    process.platform === "win32" && spec.cmd.includes(" ") && !spec.cmd.startsWith('"')
+      ? `"${spec.cmd}"`
+      : spec.cmd;
+  const result = spawnSync(executable, spec.args ?? [], {
     cwd: spec.cwd ?? ROOT,
     env: baseEnv,
     encoding: "utf8",
@@ -453,6 +459,23 @@ const UI_SCRIPTS = [
       "discoverHidden=1",
       "hiddenPersisted=1",
       "discoverRestored=1",
+    ],
+  },
+  {
+    // 通知降噪（看板【通知/任务/活动三层】P1）：单次开关静默、连串开关只留一条汇总、
+    // 任务队列不被轻操作污染、活动流逐条留痕、卡片角标同步。详见 scripts/check-notify-noise.mjs。
+    name: "通知降噪",
+    script: "check-notify-noise.mjs",
+    expect: [
+      "targetsReady=1",
+      "singleSilent=1",
+      "burstQuiet=1",
+      "batchToast=1",
+      "batchNotSticky=1",
+      "taskRows=0",
+      "activityLogged=1",
+      "badgesOk=1",
+      "checks_failed=0",
     ],
   },
   {

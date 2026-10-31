@@ -102,9 +102,19 @@ await page.waitForTimeout(800);
 check("速度折线卡渲染", (await page.locator(".dl-spark-card").count()) === 1, "", "sparkCard");
 check("拖拽接收区渲染", (await page.locator(".dl-dropzone").count()) === 1, "", "dropzone");
 
-// ── 模块四：界面显示管理 ────────────────────────────────────────────
+// ── 模块四：左侧导航栏（界面显示管理） ──────────────────────────────
 await openSettingsTab("个性化");
-check("界面显示管理区渲染", (await page.getByText("界面显示管理", { exact: false }).count()) >= 1, "", "hiddenViewsCard");
+// P0 个性化页拆 6 卡后，这块从「界面显示管理」改名成「左侧导航栏」卡片：
+// 卡存在 = 标题（appearance.groupNav）+ 说明（appearance.hiddenViewsHint）同时出现。
+// 旧的 hiddenViewsLabel 文案已无组件引用，继续按旧名断言会永远失败。
+const navCardTitle = await page.getByText("左侧导航栏", { exact: false }).count();
+const navCardHint = await page.getByText("隐藏不常用的侧边栏入口", { exact: false }).count();
+check(
+  "界面显示管理区渲染",
+  navCardTitle >= 1 && navCardHint >= 1,
+  `title=${navCardTitle} hint=${navCardHint}`,
+  "hiddenViewsCard",
+);
 const discoverSwitch = page.getByRole("switch", { name: "发现（N 网检索）" });
 check("「发现」开关渲染", (await discoverSwitch.count()) === 1, "", "discoverSwitch");
 await discoverSwitch.click();

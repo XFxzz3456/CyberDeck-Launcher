@@ -38,6 +38,7 @@ import {
   type EffectiveDependency,
 } from "./lib/dependencies";
 import { translationChildren } from "./lib/translationMatch";
+import { createCoalescer, type Coalescer } from "./lib/feedback";
 import { TranslationBindDialog } from "./components/TranslationBindDialog";
 import { useMotionEnabled, usePreferences } from "./lib/preferences";
 import { useViewportTier } from "./lib/viewportTier";
@@ -95,6 +96,9 @@ import { t } from "./i18n";
 
 /** 协议遮罩淡出时长（ms），必须与 styles.css 里 .eula-portal 的 transition 一致。 */
 const EULA_FADE_MS = 260;
+
+/** 部署 / 撤销反馈的静默合并窗口（ms）：连串开关攒够一批才给一条汇总。 */
+const TOGGLE_COALESCE_MS = 2000;
 
 interface ConfirmState {
   title: string;
@@ -301,14 +305,25 @@ export default function App() {
    * 打扰型通知（download/deploy/conflict/update）先查用户偏好再弹。
    */
   const toast = useCallback(
-    (tone: ToastItem["tone"], title: string, message?: string, category: ToastCategory = "system") => {
+    (
+      tone: ToastItem["tone"],
+      title: string,
+      message?: string,
+      category: ToastCategory = "system",
+      /** ttl 覆盖默认存活时长；sticky = 常驻，只能手动关（冲突 / 权限不足 / 缺前置）。 */
+      options?: { ttl?: number; sticky?: boolean },
+    ) => {
       if (!canNotify(category, notifyPrefsRef.current)) return;
       toastCounter.current += 1;
       const id = toastCounter.current;
-      setToasts((items) => [...items.slice(-3), { id, tone, title, message }]);
-      window.setTimeout(() => {
-        setToasts((items) => items.filter((item) => item.id !== id));
-      }, tone === "error" ? 7200 : 4200);
+      setToasts((items) => [...items.slice(-3), { id, tone, title, message, sticky: options?.sticky }]);
+      if (options?.sticky) return;
+      window.setTimeout(
+        () => {
+          setToasts((items) => items.filter((item) => item.id !== id));
+        },
+        options?.ttl ?? (tone === "error" ? 7200 : 4200),
+      );
     },
     [],
   );
@@ -402,8 +417,28 @@ export default function App() {
 
   const clearActivities = useCallback(() => setActivities([]), []);
 
+  // 部署 / 撤销的「合并器」：单次开关完全静默（结果在卡片角标上看得见），
+  // 2 秒内的连续开关合并成**一条**汇总 toast（走 deploy 类别，受设置页开关约束）。
+  // 见 lib/feedback.ts —— 窗口从最后一次操作起算，所以一整串连点必然落在同一批。
+  const toggleBatches = useRef<Coalescer | null>(null);
+  if (!toggleBatches.current) {
+    toggleBatches.current = createCoalescer(TOGGLE_COALESCE_MS, (groups) => {
+      const total = groups.reduce((sum, group) => sum + group.count, 0);
+      const enabled = groups.find((group) => group.key === "deploy")?.count ?? 0;
+      const disabled = groups.find((group) => group.key === "disable")?.count ?? 0;
+      if (total <= 0) return;
+      toast(
+        "info",
+        t("toast.batch.toggleTitle", { count: total }),
+        t("toast.batch.toggleDetail", { enabled, disabled }),
+        "deploy",
+      );
+    });
+  }
+  useEffect(() => () => toggleBatches.current?.dispose(), []);
+
   const showError = useCallback(
-    (error: unknown, title = t("err.generic")) => {
+    (error: unknown, title = t("err.generic"), options?: { ttl?: number; sticky?: boolean }) => {
       const parsed = normalizeError(error);
       const suffix =
         parsed.conflicts.length > 0
@@ -414,7 +449,7 @@ export default function App() {
                 .join(t("common.listSeparator")),
             })
           : "";
-      toast("error", title, `${parsed.message}${suffix}`);
+      toast("error", title, `${parsed.message}${suffix}`, "system", options);
     },
     [toast],
   );
@@ -1205,7 +1240,10 @@ export default function App() {
   const applyToggle = useCallback(
     async (mod: ModEntry, enabled: boolean) => {
       if (enabled && !snapshot?.game) {
-        toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedSettingsDetail"));
+        // 缺前置（没挂游戏目录）：必须用户去处理，常驻不自动消失。
+        toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedSettingsDetail"), "system", {
+          sticky: true,
+        });
         setView("settings");
         return;
       }
@@ -1235,17 +1273,6 @@ export default function App() {
         }
       }
       setBusyId(mod.id);
-      const taskId = addTask(
-        enabled ? "deploy" : "disable",
-        enabled
-          ? t("job.deployTitle", { name: mod.name })
-          : t("job.undeployTitle", { name: mod.name }),
-        enabled ? t("job.deployDetail") : t("job.undeployDetail"),
-      );
-      patchTask(taskId, {
-        status: "running",
-        progress: enabled ? 28 : 40,
-      });
       try {
         const report = await api.setModEnabled(mod.id, enabled);
         const linkSummary = t("job.linkSummary", {
@@ -1253,60 +1280,49 @@ export default function App() {
           sym: report.symlinks,
           copies: report.copies,
         });
-        patchTask(taskId, {
-          status: "success",
-          progress: 100,
-          detail: enabled ? linkSummary : t("job.undeployDone"),
-        });
+        // 部署 / 撤销是「看得见结果」的轻操作：卡片角标立刻翻转，所以
+        // 不再占一行任务、也不逐次弹 toast。留给用户的两条痕迹：
+        //   1) 活动流逐条记录（含 CET / redscript 这类「接下来注意什么」的提示）；
+        //   2) 2 秒合并窗口结束后，若这一串有 ≥2 次操作，合起来弹一条汇总。
+        const hints: string[] = [];
+        if (enabled) {
+          if (report.modEntry.hasCet) {
+            hints.push(t("toast.deploy.cetDetail"));
+          } else if (report.modEntry.layout === "redscript") {
+            hints.push(t("toast.deploy.redscriptDetail"));
+          }
+        }
         try {
           await refresh();
         } catch (error) {
           showError(error, t("err.refreshAfterAction"));
         }
-        if (enabled) {
-          toast("ok", t("toast.deploy.doneTitle", { name: mod.name }), linkSummary, "deploy");
-          if (report.modEntry.hasCet) {
-            toast("info", t("toast.deploy.cetTitle"), t("toast.deploy.cetDetail"), "deploy");
-          } else if (report.modEntry.layout === "redscript") {
-            toast("info", t("toast.deploy.redscriptTitle"), t("toast.deploy.redscriptDetail"), "deploy");
-          }
-          for (const warning of report.warnings.slice(0, 2)) {
-            toast("warn", t("toast.deploy.warningTitle"), warning, "deploy");
-          }
-        } else {
-          toast(
-            "info",
-            t("toast.disable.doneTitle", { name: mod.name }),
-            t("toast.disable.doneDetail"),
-            "deploy",
-          );
+        // 降级 / 降级原因（跨盘、目标被占）仍需用户知晓并处理：保留 toast，且常驻。
+        for (const warning of report.warnings.slice(0, 2)) {
+          toast("warn", t("toast.deploy.warningTitle"), warning, "deploy", { sticky: true });
         }
         recordActivity(
           enabled ? "deploy" : "disable",
           enabled
             ? t("activity.modDeployed", { name: mod.name })
             : t("activity.modUndeployed", { name: mod.name }),
-          enabled ? linkSummary : t("activity.undeployDetail"),
+          [enabled ? linkSummary : t("activity.undeployDetail"), ...hints].join(t("common.listSeparator")),
         );
+        toggleBatches.current?.push(enabled ? "deploy" : "disable", mod.name);
       } catch (error) {
         const parsed = normalizeError(error);
-        patchTask(taskId, {
-          status: "error",
-          progress: 100,
-          detail: undefined,
-          error: parsed.message,
-        });
         if (enabled && parsed.code === "DEPLOY_CONFLICT" && parsed.conflicts.length > 0) {
           setConflictState({ mod, conflicts: parsed.conflicts });
-          toast("error", t("toast.deploy.conflictTitle"), parsed.message, "conflict");
+          toast("error", t("toast.deploy.conflictTitle"), parsed.message, "conflict", { sticky: true });
         } else {
-          showError(error, enabled ? t("err.deploy") : t("err.disable"));
+          // 权限不足 / 跨盘硬链接失败：这类失败要用户动手，不能悄悄消失。
+          showError(error, enabled ? t("err.deploy") : t("err.disable"), { sticky: true });
         }
       } finally {
         setBusyId(null);
       }
     },
-    [addTask, patchTask, refresh, showError, recordActivity, snapshot?.game, toast],
+    [refresh, showError, recordActivity, snapshot?.game, toast],
   );
 
   /**
@@ -1372,7 +1388,7 @@ export default function App() {
         const parsed = normalizeError(error);
         if (parsed.code === "DEPLOY_CONFLICT" && parsed.conflicts.length > 0) {
           setConflictState({ mod: pending.mod, conflicts: parsed.conflicts });
-          toast("error", t("toast.deploy.stillConflict"), parsed.message, "conflict");
+          toast("error", t("toast.deploy.stillConflict"), parsed.message, "conflict", { sticky: true });
         } else {
           showError(error, t("err.deployAfterResolve"));
         }
@@ -1564,7 +1580,9 @@ export default function App() {
     (enabled: boolean) => {
       if (!snapshot) return;
       if (!snapshot.game) {
-        toast("warn", t("toast.game.notLinkedTitle"), t("toast.modlist.noGameDetail"));
+        toast("warn", t("toast.game.notLinkedTitle"), t("toast.modlist.noGameDetail"), "system", {
+          sticky: true,
+        });
         setView("settings");
         return;
       }
@@ -1613,7 +1631,9 @@ export default function App() {
       return;
     }
     if (snapshot.loadOrder.archives.length === 0) {
-      toast("warn", t("toast.modlist.noArchiveTitle"), t("toast.modlist.noArchiveDetail"));
+      toast("warn", t("toast.modlist.noArchiveTitle"), t("toast.modlist.noArchiveDetail"), "system", {
+        sticky: true,
+      });
       return;
     }
     if (snapshot.loadOrder.modlistExists && !snapshot.loadOrder.managedModlist) {
@@ -1908,7 +1928,9 @@ export default function App() {
 
   const handleLaunch = useCallback(async () => {
     if (!snapshot?.game) {
-      toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedDetail"));
+      toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedDetail"), "system", {
+        sticky: true,
+      });
       setView("settings");
       return;
     }
