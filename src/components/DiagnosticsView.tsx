@@ -359,7 +359,7 @@ export function DiagnosticsView({
 
       <div className="diagnostics-grid">
         <div className="diagnostics-main">
-          <section className={`panel ${issuesOpen ? "" : "is-collapsed"}`}>
+          <section className={`panel panel-collapsible ${issuesOpen ? "" : "is-collapsed"}`}>
             <div className="panel-head">
               <div>
                 <div className="panel-eyebrow">// ISSUES</div>
@@ -440,7 +440,7 @@ export function DiagnosticsView({
             </div>
           </section>
 
-          <section className={`panel ${frameworksOpen ? "" : "is-collapsed"}`}>
+          <section className={`panel panel-collapsible ${frameworksOpen ? "" : "is-collapsed"}`}>
             <div className="panel-head">
               <div>
                 <div className="panel-eyebrow">// FRAMEWORKS</div>
@@ -494,7 +494,7 @@ export function DiagnosticsView({
 
           <section
             id="cdl-deps-panel"
-            className={`panel ${depsOpen ? "" : "is-collapsed"}`}
+            className={`panel panel-collapsible ${depsOpen ? "" : "is-collapsed"}`}
           >
             <div className="panel-head">
               <div>

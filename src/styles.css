@@ -10301,9 +10301,49 @@ body::before {
   transform: rotate(-90deg);
 }
 
-.panel.is-collapsed .issue-list,
-.panel.is-collapsed .framework-grid {
-  display: none;
+/* 折叠内容：r44 改为「grid 行高过渡」（宿主 section 加 .panel-collapsible）。
+   旧实现只有 display:none —— 既没有动画，又漏了依赖面板的 .deps-empty / .deps-list，
+   于是「依赖检查」只翻箭头、内容不收（假收起）。 */
+.panel-collapsible {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  transition: grid-template-rows 0.24s ease;
+}
+
+.panel-collapsible.is-collapsed {
+  grid-template-rows: auto 0fr;
+}
+
+/* 0fr 要真的收成 0，内容必须有 min-height:0 + overflow:hidden；
+   否则内容自身的最小高度会顶住 0fr，看起来「收了但没全收」。 */
+.panel-collapsible > :not(.panel-head) {
+  min-height: 0;
+  overflow: hidden;
+  transition:
+    opacity 0.22s ease,
+    padding-top 0.24s ease,
+    padding-bottom 0.24s ease;
+}
+
+/* 收起时必须把 padding / border 也归零：`min-height:0` 只管内容盒，管不到
+   padding 与边框。依赖面板的 `.deps-empty` 就卡在这里——它有 14px 内边距 + 1px
+   虚线边框，`0fr` 之后仍剩 30px（14×2 + 1×2），看起来「收了但没收干净」。 */
+.panel-collapsible.is-collapsed > :not(.panel-head) {
+  opacity: 0;
+  pointer-events: none;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-collapsible,
+  .panel-collapsible > :not(.panel-head) {
+    transition: none;
+  }
 }
 
 .panel.is-collapsed .panel-head {

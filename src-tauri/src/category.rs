@@ -108,6 +108,38 @@ fn has_fragment(haystack: &str, words: &[&str]) -> bool {
     words.iter().any(|word| haystack.contains(word))
 }
 
+/// 名称清洗（文档「一、字符串清洗逻辑」）。
+///
+/// 真实库里的名字长这样：`!arkhe_10_ust_base_4k`、`!!!_vbr_2.0_skin`、
+/// `#01 - Some Mod`。开头的 `!` / `#` / `_` / `-` / `.` 是排序前缀或抓眼符号，
+/// 不是语义；`_` 在同一条名字里既当分隔符又被当空格读。统一成「空格分隔的
+/// 小写串」之后，关键词匹配才数得准。
+///
+/// 只做机械归一，不猜测含义：
+/// - 去掉开头连续的空白与装饰符（`! # _ - . [ ]`）；
+/// - `_` 与 `-` 视为分隔符（换成空格），保留 `.`（`2.0` 不能被拆成 `2 0`）；
+/// - 连续空白压成一个；去尾部空白；转小写。
+fn clean_name(raw: &str) -> String {
+    let trimmed = raw.trim_start_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '!' | '#' | '_' | '-' | '.' | '[' | ']')
+    });
+    let mut out = String::with_capacity(trimmed.len());
+    let mut prev_space = false;
+    for ch in trimmed.chars() {
+        let ch = if ch == '_' || ch == '-' { ' ' } else { ch };
+        if ch.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    out.trim_end().to_lowercase()
+}
+
 /// 名称关键词表。只放**有区分度**的词：像 "core" / "menu" 这种到处出现的
 /// 泛词要么不放，要么接受它带来的误判（它们权重只有 3，会被内容证据压过）。
 const NAME_RULES: [(&str, &[&str]); 10] = [
@@ -116,40 +148,55 @@ const NAME_RULES: [(&str, &[&str]); 10] = [
         &[
             "framework", "red4ext", "archivexl", "tweakxl", "codeware", "redscript",
             "cyber engine tweaks", "cet", "corelib", "nativelib", "equipment-ex", "equipmentex",
-            "mod settings", "modsettings", "框架", "前置", "库",
+            "mod settings", "modsettings", "native interactions", "core",
+            "框架", "前置", "库",
         ],
     ),
     (
         "武器",
         &[
-            "weapon", "gun", "firearm", "blade", "katana", "pistol", "rifle", "shotgun",
-            "sniper", "melee", "ammo", "武器", "枪", "刀", "弹药",
+            "weapon", "gun", "firearm", "blade", "katana", "sword", "pistol", "rifle",
+            "shotgun", "sniper", "melee", "ammo", "cyberarm",
+            "武器", "枪", "刀", "弹药",
         ],
     ),
     (
         "服装",
         &[
-            "clothing", "outfit", "wardrobe", "garment", "armor", "armour", "jacket", "coat",
-            "pants", "shoes", "boots", "dress", "shirt", "heels", "apparel", "lingerie",
-            "服装", "衣服", "护甲", "穿搭", "上衣", "裤", "鞋",
+            // 文档「服装/外观」组：skin/body/face/hair 从「视觉」移到这里——
+            // 它们是「人外表长什么样」，不是「画面怎么渲染」。
+            "clothing", "cloth", "outfit", "wardrobe", "garment", "armor", "armour",
+            "jacket", "coat", "pants", "shoes", "shoe", "boots", "dress", "shirt",
+            "heels", "apparel", "lingerie", "wear",
+            "skin", "body", "face", "hair", "hairstyle", "eyes",
+            "vbr", "sp0", "tattoo", "makeup",
+            "服装", "衣服", "护甲", "穿搭", "上衣", "裤", "鞋", "外观",
         ],
     ),
     (
         "车辆",
-        &["vehicle", "motorcycle", "garage", "车辆", "汽车", "摩托"],
+        &[
+            "vehicle", "car", "bike", "motor", "wheel", "motorcycle", "garage",
+            "车辆", "汽车", "摩托",
+        ],
     ),
     (
         "视觉",
         &[
-            "reshade", "visual", "weather", "lighting", "graphic", "texture", "hair",
-            "hairstyle", "face", "eyes", "skin", "body", "tattoo", "makeup", "lut", "lod",
-            "photmode",
-            "photomode", "画质", "视觉", "光影", "头发", "发型", "捏脸", "妆容",
+            // 文档「视觉/画质」组：画质与渲染相关词（4k/2k/8k 等是玩家最常用的
+            // 画质标签，此前漏收导致大量高清材质包落进「其他」）。
+            "4k", "2k", "8k", "retexture", "texture", "reshade", "lut", "lighting",
+            "weather", "env", "color", "fx", "path tracing", "vfx",
+            "visual", "graphic", "lod", "photmode", "photomode",
+            "画质", "视觉", "光影",
         ],
     ),
     (
         "音频",
-        &["audio", "sound", "music", "radio", "sfx", "soundtrack", "音效", "音乐", "电台"],
+        &[
+            "audio", "sound", "music", "radio", "voice", "sfx", "soundtrack",
+            "音效", "音乐", "电台",
+        ],
     ),
     (
         "任务",
@@ -162,9 +209,10 @@ const NAME_RULES: [(&str, &[&str]); 10] = [
         "玩法",
         &[
             "gameplay", "mechanic", "balance", "difficulty", "perk", "skill", "leveling",
-            "economy", "loot", "crafting", "hud", "minimap", "interface", "timescale",
-            "stealth", "spawn", "police", "traffic", "rebalance",
+            "level", "economy", "loot", "crafting", "hud", "minimap", "interface",
+            "timescale", "stealth", "spawn", "police", "traffic", "rebalance",
             "equip", "loadout", "inventory", "cyberware", "chipware", "progression",
+            "system", "combat", "physics", "tweak", "ai",
             "玩法", "平衡", "难度", "界面", "刷怪", "警察",
         ],
     ),
@@ -262,31 +310,41 @@ fn by_content(paths: &[String]) -> Option<&'static str> {
 /// 主入口：加权投票，取最高分。
 pub fn infer(signals: &Signals<'_>) -> String {
     let mut score: BTreeMap<&'static str, i32> = BTreeMap::new();
-    let mut vote = |category: &'static str, weight: i32| {
-        *score.entry(category).or_insert(0) += weight;
-    };
 
     // ① 内容证据
     if let Some(category) = by_content(signals.paths) {
-        vote(category, 6);
+        *score.entry(category).or_insert(0) += 6;
     }
 
-    // ② 名称与目录名
-    let name = signals.name.to_ascii_lowercase();
-    let folder = signals.folder.replace('\\', "/").to_ascii_lowercase();
+    // ② 名称与目录名（先清洗：去开头装饰符、下划线/连字符转空格、压空格、转小写）
+    let name = clean_name(signals.name);
+    let folder = clean_name(&signals.folder.replace('\\', "/"));
     for (category, words) in NAME_RULES {
         if words.is_empty() {
             continue;
         }
         if any_word(&name, words) || any_word(&folder, words) {
-            vote(category, 3);
+            *score.entry(category).or_insert(0) += 3;
         }
     }
 
     // ③ 布局兜底
     match signals.layout {
-        InstallLayout::Cet | InstallLayout::Redscript | InstallLayout::Redmod => vote("玩法", 1),
+        InstallLayout::Cet | InstallLayout::Redscript | InstallLayout::Redmod => {
+            *score.entry("玩法").or_insert(0) += 1;
+        }
         _ => {}
+    }
+
+    // ④ 后缀兜底（文档 三.1）：内容与名称都没认出任何类别时，ArchiveXL 的 `.xl`
+    //    调整档归视觉。权重给 1，只在「什么都没命中」时兜底，不抢真正的证据。
+    if score.is_empty()
+        && signals
+            .paths
+            .iter()
+            .any(|path| path.to_ascii_lowercase().ends_with(".xl"))
+    {
+        *score.entry("视觉").or_insert(0) += 1;
     }
 
     // 取最高分；并列时按 CATEGORY_ORDER 固定顺序决胜（靠前者胜）。
@@ -541,6 +599,70 @@ mod tests {
                 "{name} 不该被短词命中"
             );
         }
+    }
+
+    #[test]
+    fn clean_name_strips_leading_noise_and_separators() {
+        // 文档「一」点名的清洗：去开头装饰符、下划线转空格、压空格、转小写。
+        assert_eq!(clean_name("!!!_vbr_2.0_skin"), "vbr 2.0 skin");
+        assert_eq!(clean_name("!arkhe_10_ust_base_4k"), "arkhe 10 ust base 4k");
+        assert_eq!(clean_name("  #01 - Some Mod  "), "01 some mod");
+    }
+
+    #[test]
+    fn quality_tags_land_in_visual() {
+        // 文档点名：`!arkhe_10_ust_base_4k`（4k 画质标签）必须判视觉。
+        // 此前「4k/2k/8k/retexture/env/color/fx/vfx」都不在词库，导致大量
+        // 高清材质包落进「其他」。
+        let empty: Vec<String> = Vec::new();
+        for name in [
+            "!arkhe_10_ust_base_4k",
+            "8k_hd_retexture",
+            "some_vfx_pack",
+            "night_city_path_tracing",
+            "weather_and_lighting_overhaul",
+        ] {
+            assert_eq!(
+                infer(&Signals {
+                    name,
+                    folder: "",
+                    layout: &layout(),
+                    paths: &empty,
+                }),
+                "视觉",
+                "{name} 应判为视觉"
+            );
+        }
+    }
+
+    #[test]
+    fn vbr_and_skin_land_in_clothing() {
+        // 文档点名：`vbr_2.0_skin` 必须判服装；带前导装饰符也一样。
+        let empty: Vec<String> = Vec::new();
+        for name in ["vbr_2.0_skin", "!!!_vbr_2.0_skin", "sp0_body_replacer"] {
+            assert_eq!(
+                infer(&Signals {
+                    name,
+                    folder: "",
+                    layout: &layout(),
+                    paths: &empty,
+                }),
+                "服装",
+                "{name} 应判为服装"
+            );
+        }
+    }
+
+    #[test]
+    fn xl_only_mods_fall_back_to_visual() {
+        // 名称无信息、只有 ArchiveXL 的 `.xl` 调整档 → 视觉（低权重兜底）。
+        let result = infer(&Signals {
+            name: "zzzz",
+            folder: "",
+            layout: &layout(),
+            paths: &paths(&["archive/pc/mod/mystery.archive.xl"]),
+        });
+        assert_eq!(result, "视觉");
     }
 
     /// 真实库诊断：只打印「模组名 → 分类」，不改任何文件。
