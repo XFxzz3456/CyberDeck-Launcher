@@ -6,9 +6,11 @@ import {
   FileJson,
   FolderTree,
   Languages,
+  Layers,
   LayoutGrid,
   List,
   ListChecks,
+  ListFilter,
   PackageOpen,
   Plus,
   RefreshCw,
@@ -33,13 +35,49 @@ import { api, isTauri } from "../lib/api";
 import { isCollectionManifestPath } from "../lib/collection";
 import type { LibraryView as LibraryViewMode } from "../lib/preferences";
 import { VirtualModGrid } from "./VirtualModGrid";
+import { buildLibraryList } from "../lib/libraryList";
+import { missingDependencyNames } from "../lib/dependencies";
 import { ModContextMenu, type ModContextMenuState } from "./ModContextMenu";
 import { AiToolsDialog } from "./AiToolsDialog";
 import { CollectionWizard } from "./CollectionWizard";
 import { ConfirmDialog, EmptyState, Modal, Spinner } from "./ui";
-import { categoryLabel, t } from "../i18n";
+import { categoryLabel, t, type MessageKey } from "../i18n";
 
 export type SortMode = "name" | "recent" | "size" | "status";
+
+/** 列表视图的状态筛选。分类型筛选（左侧导航）和状态筛选是两条独立维度，可以叠加。 */
+type StatusFilter = "all" | "enabled" | "disabled" | "missing";
+
+const STATUS_FILTERS: Array<{ id: StatusFilter; labelKey: MessageKey }> = [
+  { id: "all", labelKey: "library.statusAll" },
+  { id: "enabled", labelKey: "library.statusEnabled" },
+  { id: "disabled", labelKey: "library.statusDisabled" },
+  { id: "missing", labelKey: "library.statusMissing" },
+];
+
+/** 折叠状态与「分组/平铺」都放 localStorage：这是视图偏好，不属于要备份的数据。 */
+const COLLAPSED_KEY = "ncl.ui.library.collapsedGroups.v1";
+const GROUP_MODE_KEY = "ncl.ui.library.groupMode.v1";
+
+function readCollapsedGroups(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function readGroupMode(): boolean {
+  try {
+    return window.localStorage.getItem(GROUP_MODE_KEY) !== "flat";
+  } catch {
+    return true;
+  }
+}
 
 const SORTS: Array<{ id: SortMode; label: string }> = [
   { id: "name", label: t("library.sortName") },
@@ -118,6 +156,9 @@ export function LibraryView({
   onViewChange: (view: LibraryViewMode) => void;
 }) {
   const mods = snapshot.state.mods;
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedGroups());
+  const [groupMode, setGroupMode] = useState<boolean>(() => readGroupMode());
   const enabledCount = mods.filter((mod) => mod.enabled).length;
   // 「其他」与「工具」都是兜底值：旧引擎把 168 个模组塞进了「工具」，
   // 只数「其他」会让智能归类按钮显示 0，用户以为没得修。
@@ -181,6 +222,15 @@ export function LibraryView({
     const needle = search.trim().toLowerCase();
     let result = mods.filter((mod) => {
       if (mod.parentModId) return false;
+      // 状态筛选与左侧分类筛选是两条独立维度，可以叠加（例：框架 + 已禁用）。
+      if (statusFilter === "enabled" && !mod.enabled) return false;
+      if (statusFilter === "disabled" && mod.enabled) return false;
+      if (
+        statusFilter === "missing" &&
+        missingDependencyNames(mod, dependencyReport, frameworks).length === 0
+      ) {
+        return false;
+      }
       // 以下比较用的是 Category 的原始取值（B 类数据），不可翻译；显示见 categoryLabel()。
       if (category === "已启用" && !mod.enabled) return false; // i18n-ignore
       if (category !== "全部" && category !== "已启用" && mod.category !== category) return false; // i18n-ignore
@@ -208,7 +258,39 @@ export function LibraryView({
       );
     });
     return result;
-  }, [mods, category, search, sort]);
+  }, [mods, category, search, sort, statusFilter, dependencyReport, frameworks]);
+
+  const toggleGroup = (categoryKey: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoryKey)) next.delete(categoryKey);
+      else next.add(categoryKey);
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+      } catch {
+        // 隐私模式 / 配额满：折叠状态记不住就记不住，不能因此让点击失效。
+      }
+      return next;
+    });
+  };
+
+  const toggleGroupMode = () => {
+    setGroupMode((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(GROUP_MODE_KEY, next ? "grouped" : "flat");
+      } catch {
+        // 同上：写不进去只影响下次进来时的默认值。
+      }
+      return next;
+    });
+  };
+
+  // 只有「列表视图 + 分组模式」才摊成组头行；其余组合沿用原来的平铺渲染。
+  const listItems = useMemo(
+    () => (view === "list" && groupMode ? buildLibraryList(filtered, collapsedGroups, true) : undefined),
+    [filtered, collapsedGroups, groupMode, view],
+  );
 
   const conflictTargets = new Set(conflicts.map((conflict) => conflict.target.toLowerCase())).size;
   const pendingConflicts = conflicts.filter((conflict) => conflict.pending).length;
@@ -536,6 +618,32 @@ export function LibraryView({
                 {t("library.reclassify")}
                 {unclassifiedCount > 0 ? ` (${unclassifiedCount})` : ""}
               </button>
+              <label className="sort-control" title={t("library.statusFilterTitle")}>
+                <ListFilter size={13} />
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                  aria-label={t("library.statusFilterAria")}
+                >
+                  {STATUS_FILTERS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {t(item.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {view === "list" ? (
+                <button
+                  type="button"
+                  className={`btn btn-ghost btn-sm ${groupMode ? "btn-accent" : ""}`}
+                  onClick={toggleGroupMode}
+                  aria-pressed={groupMode}
+                  title={t("library.groupModeTitle")}
+                >
+                  <Layers size={13} />
+                  {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
+                </button>
+              ) : null}
               <label className="sort-control">
                 <ArrowDownUp size={13} />
                 <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)}>
@@ -752,9 +860,11 @@ export function LibraryView({
             />
           ) : (
             <VirtualModGrid
-              filterKey={`${category}:${sort}`}
+              filterKey={`${category}:${sort}:${statusFilter}`}
               view={view}
               mods={filtered}
+              listItems={listItems}
+              onToggleGroup={toggleGroup}
               conflicts={conflicts}
               frameworks={frameworks}
               dependencyReport={dependencyReport}

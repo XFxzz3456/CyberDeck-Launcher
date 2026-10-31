@@ -29,6 +29,7 @@ export function ModRow({
   translationCount = 0,
   hasUpdate = false,
   updateVersion,
+  grouped = false,
   busy,
   onToggle,
   onOpen,
@@ -43,6 +44,8 @@ export function ModRow({
   translationCount?: number;
   hasUpdate?: boolean;
   updateVersion?: string;
+  /** 分组模式下分类已经写在组头上，行里再列一遍是重复信息。 */
+  grouped?: boolean;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
   onOpen: () => void;
@@ -175,12 +178,6 @@ export function ModRow({
         <div className="row-meta">
           <span>{mod.author || t("modCard.unknownAuthor")}</span>
           <span className="meta-dot" />
-          <span>{mod.version ? `v${mod.version}` : t("modCard.noVersion")}</span>
-          <span className="meta-dot" />
-          <span>{categoryLabel(mod.category)}</span>
-          <span className="meta-dot" />
-          <span>{formatBytes(mod.sizeBytes)}</span>
-          <span className="meta-dot" />
           <span>{mod.fileCount} {t("modCard.filesLabel")}</span>
           {mod.deployedFiles.length > 0 ? (
             <>
@@ -192,6 +189,18 @@ export function ModRow({
           ) : null}
         </div>
       </div>
+
+      {/* 版本 / 分类 / 大小各自成列：挤在第二行的一串文字里根本没法纵向扫视，
+          对齐之后眼睛只要沿一条竖线走就能比较大小和版本。 */}
+      <span className="row-col row-col-version" title={mod.version ? `v${mod.version}` : undefined}>
+        {mod.version ? `v${mod.version}` : "-"}
+      </span>
+      {grouped ? null : (
+        <span className="row-col row-col-category" title={categoryLabel(mod.category)}>
+          {categoryLabel(mod.category)}
+        </span>
+      )}
+      <span className="row-col row-col-size">{formatBytes(mod.sizeBytes)}</span>
 
       <span className={`row-state state-${state}`}>
         <i />

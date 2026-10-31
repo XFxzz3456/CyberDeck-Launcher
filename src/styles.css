@@ -14477,18 +14477,25 @@ body::before {
   color: var(--accent-text);
 }
 
-/* 列表视图：一行一条，虚拟滚动按 62px（56 行高 + 6 间距）切片。 */
+/* 列表视图：一行一条，虚拟滚动按 48px（42 行高 + 6 间距）切片。 */
 .virtual-row-list {
   display: block;
   padding-bottom: 0;
 }
 
+/* 分组头单独一行，高度与 ModGroupHeader 的 GROUP_HEADER_HEIGHT 一致。 */
+.virtual-row-group {
+  display: block;
+  padding-bottom: 0;
+  height: 34px;
+}
+
 .mod-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   /* 固定行高：虚拟滚动靠固定值估算，改这里必须同步 VirtualModGrid 的 LIST_ROW_HEIGHT。 */
-  height: 56px;
+  height: 42px;
   margin-bottom: 6px;
   padding: 0 10px;
   background: var(--panel);
@@ -14669,6 +14676,102 @@ body::before {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+/* 列对齐：版本 / 分类 / 大小各自固定宽度，右对齐数字列。
+   挤在第二行的一串「作者 · 版本 · 分类 · 大小」里，纵向扫视时眼睛找不到落脚点。 */
+.row-col {
+  flex: 0 0 auto;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-col-version {
+  width: 56px;
+  text-align: right;
+}
+
+.row-col-category {
+  width: 58px;
+}
+
+.row-col-size {
+  width: 58px;
+  text-align: right;
+}
+
+/* 窄窗口让位：分类、大小先撤，名称列与右侧开关/菜单永远保留。
+   这两个按钮被挤跑的列表等于没法操作，优先级高于任何信息列。 */
+@media (max-width: 1180px) {
+  .view-list .row-col-category {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .view-list .row-col-size {
+    display: none;
+  }
+}
+
+.mod-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px 0 2px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mod-group-head:hover {
+  color: var(--text);
+}
+
+.mod-group-head:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.group-caret {
+  flex: 0 0 auto;
+  transform: rotate(90deg);
+  transition: transform 0.14s ease;
+}
+
+.mod-group-head.is-collapsed .group-caret {
+  transform: rotate(0deg);
+}
+
+.group-name {
+  flex: 0 0 auto;
+}
+
+.group-count {
+  flex: 0 0 auto;
+  font-size: 8.5px;
+  color: var(--muted-2);
+}
+
+.group-rule {
+  flex: 1 1 auto;
+  height: 1px;
+  margin-left: 4px;
+  background: var(--line-soft);
 }
 
 /* 右侧状态胶囊：与卡片上的状态徽标同一套颜色语义。 */

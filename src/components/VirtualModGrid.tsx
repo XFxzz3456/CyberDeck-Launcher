@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ConflictInfo, DependencyReport, FrameworkStatus, ModEntry } from "../types";
 import { missingDependencyNames } from "../lib/dependencies";
+import type { LibraryListItem } from "../lib/libraryList";
 import type { LibraryView } from "../lib/preferences";
 import { ModCard } from "./ModCard";
 import { ModCardErrorBoundary } from "./ModCardErrorBoundary";
+import { ModGroupHeader, GROUP_HEADER_HEIGHT } from "./ModGroupHeader";
 import { ModRow } from "./ModRow";
 
-/** 列表视图单行占位高度（行 56px + 间距 6px）。虚拟滚动按固定值估算，改这里要同步改 CSS。 */
-const LIST_ROW_HEIGHT = 62;
+/** 列表视图单行占位高度（行 42px + 间距 6px）。虚拟滚动按固定值估算，改这里要同步改 CSS。 */
+const LIST_ROW_HEIGHT = 48;
 
 export function VirtualModGrid({
   mods,
@@ -20,6 +22,8 @@ export function VirtualModGrid({
   filterKey = "",
   updateIds,
   view = "grid",
+  listItems,
+  onToggleGroup,
   onToggle,
   onOpen,
   onContextMenu,
@@ -42,6 +46,9 @@ export function VirtualModGrid({
   updateIds?: Set<string>;
   /** 显示方式：卡片网格 / 紧凑列表（bf7889 反馈）。两种都走虚拟滚动。 */
   view?: LibraryView;
+  /** 列表视图的分组行（组头 + 模组）。给了就按它渲染，不给就按 mods 平铺。 */
+  listItems?: LibraryListItem[];
+  onToggleGroup?: (category: string) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   onOpen: (mod: ModEntry) => void;
   onContextMenu?: (mod: ModEntry, event: React.MouseEvent) => void;
@@ -104,10 +111,25 @@ export function VirtualModGrid({
   const rowHeight = view === "list" ? LIST_ROW_HEIGHT : 328;
   const rows = Math.max(1, Math.ceil(mods.length / columns));
 
+  // 列表视图走 listItems（可能带组头），网格仍按行切模组。
+  const list = view === "list" ? listItems : undefined;
+  const count = list ? list.length : rows;
+
   const virtualizer = useVirtualizer({
-    count: rows,
+    count,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (index) => {
+      if (!list) return rowHeight;
+      return list[index]?.type === "header" ? GROUP_HEADER_HEIGHT : LIST_ROW_HEIGHT;
+    },
+    // key 必须稳定：折叠一下整段列表都在换位，用 index 当 key 会让 React
+    // 复用到错的行上（开关状态、hover 都会串行）。
+    getItemKey: (index) => {
+      if (!list) return index;
+      const item = list[index];
+      if (!item) return index;
+      return item.type === "header" ? `h:${item.category}` : `m:${item.mod.id}`;
+    },
     overscan: view === "list" ? 8 : 4,
   });
 
@@ -119,10 +141,75 @@ export function VirtualModGrid({
     virtualizer.measure();
   }, [view, virtualizer]);
 
+  // 折叠 / 展开会改变总行数与高度，估算表必须重算，否则滚动条长度是错的。
+  const layoutKey = list ? `${list.length}` : `${rows}`;
+  const layoutRef = useRef(layoutKey);
+  useEffect(() => {
+    if (layoutRef.current === layoutKey) return;
+    layoutRef.current = layoutKey;
+    virtualizer.measure();
+  }, [layoutKey, virtualizer]);
+
+  const renderRow = (mod: ModEntry) => (
+    <ModCardErrorBoundary modId={mod.id} modName={mod.name}>
+      <ModRow
+        mod={mod}
+        conflicts={conflicts}
+        missingDeps={missingDependencyNames(mod, dependencyReport, frameworks)}
+        translationCount={translationCounts?.get(mod.id) ?? 0}
+        hasUpdate={updateIds?.has(mod.id) ?? false}
+        busy={busyId === mod.id}
+        grouped={Boolean(list)}
+        onToggle={(enabled) => onToggle(mod, enabled)}
+        onOpen={() => onOpen(mod)}
+        onContextMenu={
+          onContextMenu
+            ? (event) => {
+                event.preventDefault();
+                onContextMenu(mod, event);
+              }
+            : undefined
+        }
+        selectable={selectable}
+        selected={selectedIds?.has(mod.id) ?? false}
+        onSelectedChange={(checked) => onSelectChange?.(mod.id, checked)}
+      />
+    </ModCardErrorBoundary>
+  );
+
   return (
     <div className={`grid-scroll view-${view}`} ref={scrollRef}>
       <div className="virtual-grid" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
+          if (list) {
+            const item = list[virtualRow.index];
+            if (!item) return null;
+            if (item.type === "header") {
+              return (
+                <div
+                  key={virtualRow.key}
+                  className="virtual-row virtual-row-group"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  <ModGroupHeader
+                    category={item.category}
+                    count={item.count}
+                    collapsed={item.collapsed}
+                    onToggle={() => onToggleGroup?.(item.category)}
+                  />
+                </div>
+              );
+            }
+            return (
+              <div
+                key={virtualRow.key}
+                className="virtual-row virtual-row-list"
+                style={{ transform: `translateY(${virtualRow.start}px)` }}
+              >
+                {renderRow(item.mod)}
+              </div>
+            );
+          }
           const start = virtualRow.index * columns;
           const items = mods.slice(start, start + columns);
           if (view === "list") {
@@ -134,29 +221,7 @@ export function VirtualModGrid({
                 className="virtual-row virtual-row-list"
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
-                <ModCardErrorBoundary modId={mod.id} modName={mod.name}>
-                  <ModRow
-                    mod={mod}
-                    conflicts={conflicts}
-                    missingDeps={missingDependencyNames(mod, dependencyReport, frameworks)}
-                    translationCount={translationCounts?.get(mod.id) ?? 0}
-                    hasUpdate={updateIds?.has(mod.id) ?? false}
-                    busy={busyId === mod.id}
-                    onToggle={(enabled) => onToggle(mod, enabled)}
-                    onOpen={() => onOpen(mod)}
-                    onContextMenu={
-                      onContextMenu
-                        ? (event) => {
-                            event.preventDefault();
-                            onContextMenu(mod, event);
-                          }
-                        : undefined
-                    }
-                    selectable={selectable}
-                    selected={selectedIds?.has(mod.id) ?? false}
-                    onSelectedChange={(checked) => onSelectChange?.(mod.id, checked)}
-                  />
-                </ModCardErrorBoundary>
+                {renderRow(mod)}
               </div>
             );
           }

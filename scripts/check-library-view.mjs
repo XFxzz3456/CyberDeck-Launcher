@@ -107,11 +107,37 @@ check("列表按钮进入选中态", (await listBtn.getAttribute("aria-pressed")
 const heights = await page.locator(".mod-row").evaluateAll((nodes) =>
   nodes.slice(0, 5).map((node) => Math.round(node.getBoundingClientRect().height)),
 );
+// 42px 是列对齐后的行高（版本/分类/大小各占一列，名称不再需要第二行）。
+// 必须与 VirtualModGrid 的 LIST_ROW_HEIGHT - 6 间距严格一致，否则虚拟滚动错位。
 check(
-  "行高统一且为 56px",
-  heights.length > 0 && heights.every((value) => value === 56),
+  "行高统一且为 42px",
+  heights.length > 0 && heights.every((value) => value === 42),
   `heights=${heights.join("/")}`,
 );
+// 分组折叠：列表视图默认按分类分组，组头可点、点完该组收起。
+// 虚拟滚动按 header/row 两种固定高度切片，折叠后总高度必须跟着变。
+const groupCount = await page.locator(".mod-group-head").count();
+check("列表按分类分组", groupCount >= 1, `groups=${groupCount}`);
+if (groupCount > 0) {
+  await page.locator(".grid-scroll").evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  const rowsBefore = await page.locator(".mod-row").count();
+  await page.locator(".mod-group-head").first().click();
+  await page.waitForTimeout(200);
+  const collapsed = await page.locator(".mod-group-head").first().getAttribute("aria-expanded");
+  const rowsAfter = await page.locator(".mod-row").count();
+  check("点组头后进入折叠态", collapsed === "false", `aria-expanded=${collapsed}`);
+  check(
+    "折叠后该组的行被收起",
+    rowsAfter < rowsBefore || rowsBefore === 0,
+    `before=${rowsBefore} after=${rowsAfter}`,
+  );
+  // 复原，后面的「滚到底 / 切回网格」按未折叠状态跑。
+  await page.locator(".mod-group-head").first().click();
+  await page.waitForTimeout(200);
+}
+
 await page.screenshot({ path: "shots/audit/library-view-list.png" });
 
 // 滚到底：虚拟化应换掉渲染集合，且不能出现「渲染 0 条」的空白。
