@@ -498,6 +498,9 @@ export default function App() {
     path: string;
     dataUrl: string | null;
   }>({ path: "", dataUrl: null });
+  // 3D：读盘 + 压缩进行中的极简反馈。后端会自动把大图压到长边 1920，
+  // 大图要好几秒，不给个状态用户会以为点了没反应，再点一次。
+  const [bgLoading, setBgLoading] = useState(false);
   const bgLoadedPathRef = useRef<string | null>(null);
   const bgImagePath = snapshot?.state.settings.backgroundImage ?? "";
   useEffect(() => {
@@ -505,8 +508,10 @@ export default function App() {
     bgLoadedPathRef.current = bgImagePath;
     if (!bgImagePath) {
       setBackgroundData({ path: "", dataUrl: null });
+      setBgLoading(false);
       return;
     }
+    setBgLoading(true);
     let cancelled = false;
     void api
       .readBackgroundImage(bgImagePath)
@@ -524,6 +529,9 @@ export default function App() {
           return;
         }
         showError(error, t("err.backgroundLoad"));
+      })
+      .finally(() => {
+        if (!cancelled) setBgLoading(false);
       });
     return () => {
       cancelled = true;
@@ -2204,7 +2212,12 @@ export default function App() {
               backgroundSize: bgSize,
               backgroundPosition: `${bgPosX}% ${bgPosY}%`,
               opacity: bgOpacity / 100,
+              // 3A-1：模糊只在滑块 > 0 时存在；0 时 filter 完全移除，DOM 不留痕迹。
               filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+              // blur 会糊进上层 UI 的真因是模糊层与内容同层合成：强制独立合成层，
+              // 模糊就被关在自己这一层里，不再污染卡片。
+              transform: bgBlur > 0 ? "translateZ(0)" : undefined,
+              willChange: bgBlur > 0 ? "filter" : undefined,
               // 模糊边缘补偿。写进 style 而不是 CSS：`contain` 在 blur=0 时不能外扩，
               // 否则 28px 的旧固定值会把图上下各裁掉一截。
               inset: bgBleed > 0 ? `-${bgBleed}px` : "0px",
@@ -2463,6 +2476,7 @@ export default function App() {
                 <SettingsView
                 initialTab={settingsTabRequest}
                 snapshot={snapshot}
+                backgroundLoading={bgLoading}
                 appData={appData}
                 stagingBytes={stagingBytes}
                 demoMode={snapshot.demoMode}

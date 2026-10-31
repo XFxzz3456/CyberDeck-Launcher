@@ -28,7 +28,7 @@ import {
 import type { Preferences, ThemeId } from "../lib/preferences";
 import { HIDEABLE_VIEWS, type HiddenViewsMap, type HideableView } from "../lib/uiPrefs";
 import { STYLE_PRESETS, useTheme, type ColorMode } from "../lib/theme";
-import { SwitchRow } from "./ui";
+import { Spinner, SwitchRow } from "./ui";
 
 /** 背景图填充模式（与 Settings.backgroundFit 同形）。 */
 export type BackgroundFit = "cover" | "contain" | "stretch";
@@ -45,6 +45,8 @@ export interface BackgroundControl {
   posX: number;
   /** 焦点纵坐标 0–100。 */
   posY: number;
+  /** 3D：后台正在读盘 + 压缩新背景图（选图后到应用前的极简 Loading）。 */
+  loading?: boolean;
   onPick: () => void;
   onClear: () => void;
   onOpacity: (value: number) => void;
@@ -601,6 +603,11 @@ export function AppearanceSettings({
                   ? background.path.split(/[\\/]/).pop()
                   : t("appearance.backgroundEmpty")}
               </span>
+              {background.loading ? (
+                <span className="bg-loading" role="status">
+                  <Spinner size={12} /> {t("appearance.backgroundLoading")}
+                </span>
+              ) : null}
             </div>
             {/* 填充方式：铺满 / 完整显示 / 拉伸。
                 三选一用按钮组而不是下拉框：只有三个互斥项，全部摊开点一下就换，

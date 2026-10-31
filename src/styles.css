@@ -338,31 +338,27 @@ pre {
   border-radius: var(--frost-radius);
 }
 
-/* ── 主内容区毛玻璃底板（7b1db5，2026-10-31）────────────────────────
-   问题：侧栏 / 顶栏是半透明毛玻璃，中间主内容区却全透明，背景图在中段过于
-   清晰，视觉割裂。
-   做法：只给 `.content`（顶栏之下、包裹设置卡片与模组网格的大盒子）这**一层**
-   加 backdrop-filter。性能红线：里面的每张小卡片绝不加，否则滚动时每帧要重
-   采样几百块，帧率暴跌。
-   原来那块「.grid-scroll 压 0.3 黑」是主内容区还没有底板时的补丁；现在 .content
-   已统一压暗，再叠一层会在网格区留下一条比周围更暗的接缝，故一并移除。 */
+/* ── 主内容区毛玻璃底板（7b1db5 引入，3A-2 重构）──────────────────────
+   7b1db5 给 .content 铺的 rgba(5,5,5,0.7) 常驻底板正是「暗化遮罩拉到 0%
+   屏幕依然黑」的来源——它是一层不随滑块走的额外遮罩。3A-2 拍板：暗化只由
+   .app-backdrop-dim 这唯一一层控制，底板颜色降为 transparent，只保留
+   backdrop-filter 的模糊（模糊不变暗，不算第二层遮罩）。 */
 [data-backdrop="on"] {
-  --content-frost-bg: rgba(15, 15, 17, 0.6);
+  --content-frost-bg: transparent;
   --content-frost-blur: blur(20px);
 }
 
 :root[data-mode="light"] [data-backdrop="on"] {
-  --content-frost-bg: rgba(255, 255, 255, 0.62);
+  --content-frost-bg: transparent;
 }
 
-/* 赛博主题（ncpd / netrunner / arasaka / militech）：不要重模糊——
-   用带黑黄倾向的深遮罩 + 较轻的模糊，让底下的页面网格透出来（透视感）。
-   modern 是「现代 UI」那套，不吃赛博滤镜，保留中性毛玻璃。 */
+/* 赛博主题（ncpd / netrunner / arasaka / militech）：同样去掉常驻深遮罩，
+   只保留较轻的模糊（透视感由遮罩滑块自己调）。modern 保留中性模糊。 */
 :root[data-style="ncpd"] [data-backdrop="on"],
 :root[data-style="netrunner"] [data-backdrop="on"],
 :root[data-style="arasaka"] [data-backdrop="on"],
 :root[data-style="militech"] [data-backdrop="on"] {
-  --content-frost-bg: rgba(5, 5, 5, 0.7);
+  --content-frost-bg: transparent;
   --content-frost-blur: blur(10px);
 }
 
@@ -415,6 +411,17 @@ pre {
   white-space: nowrap;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+/* 3D：大图压缩进行中的极简 Loading（后端自动压缩，前端不再拦截体积）。 */
+.bg-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--accent-text);
+  white-space: nowrap;
 }
 
 .bg-sliders {

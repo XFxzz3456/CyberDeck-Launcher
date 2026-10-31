@@ -176,6 +176,7 @@ function NotificationDurationRow({
 
 export function SettingsView({
   snapshot,
+  backgroundLoading = false,
   appData,
   stagingBytes,
   demoMode,
@@ -214,6 +215,8 @@ export function SettingsView({
   onToggleHiddenView,
 }: {
   snapshot: Snapshot;
+  /** 3D：背景图读盘+压缩进行中（选图后到应用前）。 */
+  backgroundLoading?: boolean;
   appData: string;
   stagingBytes: number;
   demoMode: boolean;
@@ -409,6 +412,7 @@ export function SettingsView({
     fit: settings.backgroundFit ?? "cover",
     posX: settings.backgroundPosX ?? 50,
     posY: settings.backgroundPosY ?? 50,
+    loading: backgroundLoading,
     onPick: () => void pickBackgroundImage(),
     // 恢复默认连填充方式/焦点/遮罩一起复位，否则「清掉图再选一张」会带着上一张的
     // 焦点位置，用户以为是新图自己偏了。
