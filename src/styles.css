@@ -1182,6 +1182,13 @@ pre {
 .page {
   height: 100%;
   min-height: 0;
+  /* 超宽屏限宽：2560 宽下原本内容铺满 2300px，一行能塞 8 张卡片、
+     正文行长过百字，眼睛要横着扫，可读性反而变差。
+     1680 是「1920 屏刚好不触发、2560 屏把内容居中收进来」的临界值：
+     1920 下 .content 只有约 1660px，本规则不生效，现有布局零回归。 */
+  max-width: 1680px;
+  margin-inline: auto;
+  width: 100%;
   padding: 20px 24px 18px;
   display: flex;
   flex-direction: column;
@@ -2086,7 +2093,9 @@ pre {
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: 0.55px;
-  color: #687483;
+  /* 原硬编码 #687483：深色主题下实测仅 3.8:1，而这是 8px 小字。
+     改为跟随主题的次要文字色（--muted-2 已提到 5.0:1）。 */
+  color: var(--muted-2);
   white-space: nowrap;
 }
 
@@ -3220,7 +3229,10 @@ pre {
 }
 
 .switch-desc {
-  font-size: 9.5px;
+  /* 原 9.5px：这是设置项的中文说明（「会覆盖 ASCII 加载顺序…」），
+     属于要逐字读的正文，不是装饰。中文方块字在 9.5px 下笔画会糊成一团，
+     提到 11px 与 .settings-hint 对齐。 */
+  font-size: 11px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -5421,7 +5433,9 @@ input::placeholder {
   padding: 0;
   color: var(--accent-text);
   font-family: var(--mono);
-  font-size: 8.5px;
+  /* 原 8.5px：这是「获取 Key」这类可点击按钮的文字，
+     按钮可点却看不清标签是高成本错误，提到 10.5px。 */
+  font-size: 10.5px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -10105,7 +10119,9 @@ body::before {
 
 .platform-label {
   font-family: var(--mono);
-  font-size: 9px;
+  /* 原 9px：表单字段标签（「单个 archive 超时（秒）」）是要读的中文，
+     9px 配 0.12em 字距几乎糊在一起，提到 11px。 */
+  font-size: 11px;
   letter-spacing: 0.12em;
   color: var(--muted-2);
   text-transform: uppercase;
@@ -11584,7 +11600,10 @@ body::before {
   --text-2: #d6d8dd;
   --text-3: #a1a4ac;
   --muted: #a1a4ac;
-  --muted-2: #767a83;
+  /* 原 #767a83 在 --bg #161617 上只有 4.2:1，未达 WCAG AA 的 4.5:1；
+     这个色被 8px 的元数据/冲突块表头（.mod-meta / .conflict-block-head）使用，
+     小字号尤其吃亏。提到 #82868f 后实测 5.0:1。 */
+  --muted-2: #82868f;
   --accent: #60a5fa;
   --accent-rgb: 96, 165, 250;
   --accent-soft: #93c5fd;
@@ -14725,4 +14744,23 @@ body::before {
 .ai-tools-field textarea {
   min-width: 0;
   max-width: 100%;
+}
+
+/* ------------------------------------------------------------------ */
+/* 按下反馈（:active）                                                 */
+/* ------------------------------------------------------------------ */
+/* 这四个是可点击的主力控件，但此前只有 :hover 没有 :active ——        */
+/* 点下去界面上没有任何变化，触屏和低频点击时很容易以为「没点上」，    */
+/* 于是重复点击。给一个极短、极轻的压下反馈即可，不要做成动画。        */
+.nav-item:active,
+.settings-tab:active,
+.nexus-tab:active {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+/* 卡片 hover 是浮起 -2px，按下时回到 0 并收小阴影，形成「按下去」的位移差 */
+.mod-card:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+  transition-duration: 60ms;
 }
