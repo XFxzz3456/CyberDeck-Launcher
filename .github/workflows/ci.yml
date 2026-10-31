@@ -1,0 +1,115 @@
+# 持续集成：前端静态检查 + Rust 单元测试
+#
+# 两个刻意的设计决定，改之前先看这段：
+#
+# 1) Rust 测试跑在 windows-latest，不是 ubuntu。
+#    core-tests 用 #[path] 直接引入 src-tauri 的核心模块，其中 game.rs / nxm.rs
+#    在文件顶层 `use std::os::windows::ffi::OsStrExt` 和 `use winreg::RegKey`
+#    （HKCU 注册表），secret.rs 走 DPAPI 加解密。这些在 Linux 上根本编不过。
+#    把测试硬塞进 ubuntu 只会得到"模板跑不通"的红叉，不是真的更严格。
+#
+# 2) 先 vite build 出 dist，再 cargo test。
+#    仓库不跟踪 dist（.gitignore 里），而 src-tauri/build.rs 的 tauri_build
+#    会校验 tauri.conf.json 的 frontendDist（../dist）存在，缺了 build script
+#    直接报错。所以每一步 cargo 之前都必须先把前端产物构建出来。
+#
+# 公开仓库的 Actions 分钟数不计量，所以全量跑 177 条 Rust 测试是划算的。
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  # 允许在网页上手点一次，改完 workflow 不用非得推一次代码
+  workflow_dispatch:
+
+# 同一分支连续推送时取消上一次未完成的运行：省时间，也避免看板上堆一排过期的红叉。
+# 注意 release 分支和 tag 构建不在此列——那种不能被打断。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI 里增量编译没有收益（依赖靠 rust-cache），关掉可省磁盘与时间
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  frontend:
+    name: 前端（类型 / 契约 / 文案 / 构建）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # 与本机一致（pnpm 12.8.1）。锁文件是 lockfileVersion 9.0，
+          # pnpm 10 及以上都能读，但版本偏离容易在 --frozen-lockfile 上翻车。
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: npx tsc --noEmit
+
+      # 下面两项是"编译期发现不了、运行时才炸"的那类错误，必须单独卡：
+      # 新增 #[tauri::command] 忘了注册 → 前端 invoke 报 command not found；
+      # 新增界面文案忘了进 i18n → 切语言时露中文。
+      - name: Tauri 命令契约（定义 / 注册 / 调用三处对齐）
+        run: node scripts/check-commands.mjs
+
+      - name: 文案硬编码检查
+        run: node scripts/check-i18n.mjs --fail
+
+      - name: 构建前端产物
+        run: npx vite build
+
+  rust:
+    name: Rust 测试（Windows）
+    runs-on: windows-latest
+    # 冷启动要编 550+ 个 crate，实测本机 8 分钟起；给足余量避免被误判超时
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # 缓存的是依赖的编译产物，不是本项目的。550 个依赖不重编，
+      # 第二次之后的运行通常能压到 3 分钟内。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            core-tests -> target
+          # 测试挂了也保留缓存：多数失败是断言不过，不是编译环境坏了，
+          # 下次重跑没必要再从零编一遍
+          cache-on-failure: true
+
+      - name: 构建前端产物（build.rs 需要 ../dist 存在）
+        run: |
+          pnpm install --frozen-lockfile
+          npx vite build
+
+      - name: core-tests（无 GUI 的核心逻辑测试）
+        run: cargo test --manifest-path core-tests/Cargo.toml
+
+      - name: src-tauri 单元测试
+        run: cargo test --manifest-path src-tauri/Cargo.toml
