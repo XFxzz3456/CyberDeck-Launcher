@@ -125,7 +125,7 @@
 - r20–r22 批次内容：
   - r20：下载中心重排为任务列表页（设置项迁「设置 → 工具组件 → 下载设置」）+ 分类引擎增强（`haystack_has` 整词匹配 + `reclassify_unclassified`「智能归类」只动「其他」）+ CD 图标全套重制 / 窗口标题缩为 `CyberDeck` + Logo 纯文字化 / 删 Mono 主题 / 缩放 80–150% 滑块
   - r21：AI 配置 Anthropic 原生协议（`api_protocol` + `x-api-key` / `anthropic-version` / `max_tokens` / `system` 提权 / `sanitize_anthropic_messages`）
-  - r22（0.9.0 冲刺，看板【7】~【14】）：`glossary.rs`（词表 + 云端共享）、`docs/AI-LOCALIZATION-REVIEW.md`（【8】仅架构评审，M1 未启动）、`SplashScreen`（【9】）、`HelpCenterView` + `docs/help/*`（【11】）、`config_pack.rs`（【12】）、`safemode.rs` + `compat.rs`（【13】）、`docs/REAL-ENV-TEST-0.9.0.md`（【10】）、`docs/OLLAMA-LOCAL-MODEL.md` + `check-ollama.ps1`（【14】）
+  - r22（0.9.0 冲刺，看板【7】~【14】）：`glossary.rs`（词表 + 云端共享）、`docs/PROJECT_HISTORY.md#ai-loc-review`（【8】仅架构评审，M1 未启动）、`SplashScreen`（【9】）、`HelpCenterView` + `docs/help/*`（【11】）、`config_pack.rs`（【12】）、`safemode.rs` + `compat.rs`（【13】）、`docs/PROJECT_HISTORY.md#real-env-090`（【10】）、`docs/PROJECT_HISTORY.md#ollama` + `check-ollama.ps1`（【14】）
 - **待构建**：无。
 - ⚠️ 标号冲突未裁决：`0.7.0-r4` 与 `0.8.0-r4` 撞号，CHANGELOG 按实际时间排序、标号未改。
 
@@ -176,6 +176,10 @@
 | `NightCity-Loader-项目配置草稿.md` | `docs/REPORT-项目配置草稿.md` |
 | `doc_sync_driver.py` | `tools/doc_sync_driver.py` |
 | `md_to_doc_tables.py` | `tools/md_to_doc_tables.py` |
+
+> **2026-10-31 更新**：上表中的三份 `REPORT-*.md` 与其余 18 份零散报告/草稿，已提炼合并进 **`docs/PROJECT_HISTORY.md`**
+> （里程碑 / 事故复盘 / 架构决策三条线，每条带锚点），原文件已从仓库删除、**git 历史可回溯**。
+> 合并后 `README.md` / `HANDOFF.md` / `CHANGELOG.md` 里指向原文的线索统一改为 `#锚点`。
 
 已清理（删除前已打包快照）：
 

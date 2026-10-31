@@ -414,12 +414,13 @@ cyberdeck-launcher/
 ├─ scripts/                   图标、UI 测试、真实环境预检
 ├─ docs/screenshots/
 ├─ docs/REAL-ENV-TEST.md      真实游戏环境验收清单
+├─ docs/PROJECT_HISTORY.md    项目史：里程碑、事故复盘、架构决策
 └─ ../release/               便携发行版（exe + WebView2Loader.dll）
 ```
 
 更多分层说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-UI 审计的方法、发现的问题、六套主题的设计语言与遗留项，见 [docs/UI-AUDIT-0.7.0.md](docs/UI-AUDIT-0.7.0.md)。
+UI 审计的方法、发现的问题、六套主题的设计语言与遗留项，见 [项目史 · UI 审计 0.7.0](docs/PROJECT_HISTORY.md#audit-ui-070)。
 
 真实游戏目录验收步骤、权限/硬链接/CET/`.xl`/AI 服务检查清单见
 [docs/REAL-ENV-TEST.md](docs/REAL-ENV-TEST.md)。只读预检可以直接跑：

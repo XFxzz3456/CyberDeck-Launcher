@@ -210,7 +210,7 @@ pub fn exit(store: &Store) -> AppResult<SafeModeReport> {
 
 /// 只读检查：给定的每个目标文件是否仍在游戏目录里（用于验收「无残留」）。
 ///
-/// 当前只在真机验收（docs/REAL-ENV-TEST-0.9.0.md 的 D 组）里用，没有接成 Tauri 命令，
+/// 当前只在真机验收（docs/PROJECT_HISTORY.md#real-env-090 的 D 组（跨盘降级））里用，没有接成 Tauri 命令，
 /// 所以编译期是 dead_code。**特意保留**：这是核查「安全模式真的把链接撕干净了」的唯一手段，
 /// 删掉就等于放弃这一条验收能力。加 allow 是为了让 dead_code 警告保持零基线 ——
 /// 那条警告是 0.9.0 抓出「命令漏注册」的唯一线索，不能被常规噪音稀释。

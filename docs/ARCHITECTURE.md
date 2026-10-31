@@ -387,7 +387,7 @@ Nexus Collections（`collection.json` 清单）支持。CP2077 的整合包生�
   重命名为 `broken-*.json` 并**静默重置为空**。
   ⚠️ **空数组形态（`"modpacks": []`）同样会触发**，而空数组正是启动器每次落盘都会写出的形态——
   等于**每次启动都清空一次用户的模组库**（2026-10-26 实测事故，见
-  `docs/INCIDENT-2026-10-26-state-parse-desync.md`）。
+  `docs/PROJECT_HISTORY.md#incident-state-parse`）。
 - **改 schema 必须用真实旧数据跑一次解析**：`cargo test` 全绿 ≠ 旧数据能读。
   单元测试的构造样本常常是 `"mods": []` 这种**恰好掩盖问题**的形状。
 - **写这类测试必须断言三件事**：整个状态文件仍能解析；其它字段原样保留；

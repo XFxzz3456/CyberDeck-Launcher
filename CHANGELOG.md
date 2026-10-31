@@ -7,7 +7,20 @@
 - 版本标记：`rN` 为构建批次号（同日多次重建时区分），沿用 `HANDOFF.md` 原有标号，未擅自重命名。
 - ⚠️ 标号冲突（待裁决）：`0.7.0-r4`（21:45 界面/交互批次）与 `0.8.0-r4`（22:58 回归门禁 + NXM 批次）同为 `r4`，本文件按**实际时间顺序**排列，标号原样保留；建议后续统一改为「按日期递增的 build 号」。
 - ✅ 版本号口径（2026-10-28 已执行）：`package.json` / `Cargo.toml` / `tauri.conf.json` 三处已统一升到 **0.8.0**。
-- 事故复盘单独成篇，见 `docs/INCIDENT-*.md`；本文件只留摘要与链接。
+- 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
+- 📁 **2026-10-31 文档合并**：21 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
+
+### 0.9.0-r39（2026-10-31，未构建：文档治理）
+
+| 项 | 内容 |
+|---|---|
+| 新增 | **`docs/PROJECT_HISTORY.md`**（367 行）：把 21 份零散报告 / 草稿按**里程碑 / 事故复盘 / 架构决策**三条线重新提炼，每条带稳定锚点供跨文档引用 |
+| 删除 | 21 份原文（`INCIDENT-*`、`UI-AUDIT-*`、`AUDIT-*`、`REPORT-*`、`DESIGN-ai-*`、`REAL-ENV-TEST-0.9.0`、`OLLAMA-LOCAL-MODEL`、`AI-LOCALIZATION-REVIEW`、`NIGHT_SHIFT_REPORT`、夜间批处理总结等，共约 3200 行）；git 历史可回溯 |
+| 保留 | `docs/REAL-ENV-TEST.md` 是**活文档**（配套 `scripts/real-env-check.ps1`，README 有入口），不是报告，不在删除范围 |
+| 修复 | 引用断链：`README.md` / `HANDOFF.md` / `CHANGELOG.md` / `docs/MEMORY-CANON.md` 共 36 处指向原文件的线索改为指向锚点 |
+| 规则 | **任务分级 L1/L2/L3** 入 `~/.workbuddy/rules.md` 同源会话规则，并附「报告长度纪律」，防止再长出成堆长篇报告 |
+
+---
 
 ### 0.9.0-r38（2026-10-31，未构建：个性化页卡片化）
 
@@ -26,7 +39,7 @@
 | 项 | 内容 |
 |---|---|
 | 修复 | **超宽屏无最大宽度**：`.page` 原本直接铺满 `.content`，2560×1440 下内容实测宽 **2300px**（一行塞 8 张卡片、正文行超百字），加 `max-width: 1680px` + `margin-inline: auto` 后收窄居中、两侧各留 310px；**1680 是「1920 屏不触发」的临界值**，1920 及以下零回归。**次要文字对比度不足**：`--muted-2` `#767a83` 在 `--bg #161617` 上实测 4.2:1、`.mod-meta` 硬编码 `#687483` 实测 3.8:1，均低于 WCAG AA 的 4.5:1，且都用在 8-10px 小字上；`--muted-2` 提到 `#82868f`（5.0:1）、`.mod-meta` 改走该变量，两套主题对比度失败项 **5 → 0**。**四类控件无按下反馈**：`.nav-item` / `.mod-card` / `.settings-tab` / `.nexus-tab` 只有 hover 没有 `:active`，点下去界面无任何变化，触屏易误判「没点上」而重复点击；补齐后 hover/active 规则覆盖 **6/10 → 10/10**。**中文说明字号过小**：`.switch-desc` 9.5→11px、`.platform-label` 9→11px、`.link-btn` 8.5→10.5px（按钮文字看不清是高成本错误） |
-| 新增 | **UI 量化审查进 门禁**（`check-ui-audit.mjs`，九项断言：四档分辨率内容宽度 / 长文本溢出 / 80·125·150% 缩放 / 两套主题对比度 / 字号离群 / 表单对齐 / hover-active 规则 / 页面报错），门禁项数 26 → **27**，耗时约 31s；`make-readme-shots.mjs` 按 README 语义文件名批量出图；`docs/UI-AUDIT-2026-10-31.md` 量化审查报告 |
+| 新增 | **UI 量化审查进 门禁**（`check-ui-audit.mjs`，九项断言：四档分辨率内容宽度 / 长文本溢出 / 80·125·150% 缩放 / 两套主题对比度 / 字号离群 / 表单对齐 / hover-active 规则 / 页面报错），门禁项数 26 → **27**，耗时约 31s；`make-readme-shots.mjs` 按 README 语义文件名批量出图；`docs/PROJECT_HISTORY.md#audit-ui-1031` 量化审查报告 |
 | 变更 | **README 事实错误修正**：原文写「六套主题（含 Mono / Daylight）」——`mono` 在 r20 已删除（老配置迁到 `modern`）、`daylight` 更早下线，实际只有 **5 套**且仅 Modern 支持明暗；ARASAKA 那格贴的其实是 NCPD 的图；「原生 0.7.0」引用 0.7.0 时代截图已无意义。主题段落整段重写为五套（Modern 明暗各一张），删除 `mono.png` / `daylight.png`。**补齐从未写过的「存档管理」**：r30 新增的侧栏第六项，README 功能表与截图都没有，现补功能行 + 截图。**重拍 23 张截图**（原图全部是 10-22~25 的旧界面，未体现 T8 自定义字体、主题改版、存档管理页） |
 | 修复（工具） | **审查脚本自身两处假阳性**：① 塌陷判定只查元素自身 `display`，把 `[data-vh-tight] .sidebar-storage { display:none }` 这类**有意的让位设计**的子元素全算成塌陷，每档缩放稳定报 2-11 个（改用 `checkVisibility` 后可识别祖先隐藏）；② `<option>` 本就不生成布局盒，被误判。修正后 `scaleBroken 3 → 0`——**缩放布局本来就没坏**，差点照着假阳性去改正常代码 |
 | 验证 | 门禁 **27/27 全绿**（新增项 9 个断言全通过）；UI 实测 `viewports=4 · hScrollMax=0 · overflowTotal=0 · scaleBroken=0 · contrastFails=0 · alignSpread=0 · hoverRules=10 · pageErrors=0`；README 图片引用缺失 **0**；git 4 个提交已推送 `eeaae0f` |
@@ -93,7 +106,7 @@
 - **2026-10-29 23:47（0.9.0-r24 + r25，已构建部署）**：AI 模型预设两级化（r24）+ 侧栏纵向收口（r25）一并构建。exe 8,753,664 B / md5 `95C99B3E9CC52C783D4C00AD230EE626`，替换 release（r23 备份 `.prev.exe`），冒烟 `stage=frontend mods=195`、`integrity=0x2000`（非提权）。
 - **2026-10-29 22:20（0.9.0-r23，已构建部署）**：侧边栏重构 + 帮助中心迁入设置 + 设置页间距 + 分类引擎重写（详见下方 r23 段）。exe 8,751,104 B / md5 `543cf70867bf163d05b2b1cfe3861fdc`（**零编译警告**），NSIS 安装包 3,335,988 B；部署 release（r22 备份 `.prev.exe`），冒烟 `stage=frontend mods=195`、integrity=0x2000（**非提权启动**）。分类引擎在真实 195 个模组上校准后，「工具」从 168 降到 0。
 - **2026-10-29 02:21（0.9.0 正式发布）**：版本号三处统一升至 **0.9.0**，完成看板【7】~【14】八项任务（AI 汉化词表共享 / AI 深度汉化架构评审 / 启动动画 / 帮助中心 / 配置导入导出 / Safe Mode + 过期扫描 / 真机验收 / Ollama 本地模型）。`tauri build` 构建正式包 —— exe 8,736,768 B / md5 `6e498e3dce314a9fcc3602ac088589cd`（r22 批次，**零警告**），NSIS 安装包 `CyberDeck Launcher_0.9.0_x64-setup.exe` 3,332,269 B，便携版 `CyberDeck Launcher 0.9.0 便携版.zip` 4,148,716 B（带父文件夹 + 自带 `cyberdeck-data`）。部署至 release 目录（r21 备份为 `CyberDeck Launcher.prev.exe`），冒烟 `stage=frontend mods=195`、integrity=0x2000。
-  - ⚠️ 发布前抓到并修掉一个 P0：`config_export`/`config_import`/`safemode_state`/`safemode_enter`/`safemode_exit`/`compat_scan` **6 个命令只定义未进 `generate_handler!`**，编译通过、冒烟正常，但前端 invoke 会报 command not found（Safe Mode / 配置导入导出 / 过期扫描三项功能实际不可用）。线索是编译器 `never used` 警告。已加门禁 `scripts/check-commands.mjs`（定义 / 注册 / 调用三处对齐，102/102）。复盘见 `docs/INCIDENT-2026-10-29-command-not-registered.md`。
+  - ⚠️ 发布前抓到并修掉一个 P0：`config_export`/`config_import`/`safemode_state`/`safemode_enter`/`safemode_exit`/`compat_scan` **6 个命令只定义未进 `generate_handler!`**，编译通过、冒烟正常，但前端 invoke 会报 command not found（Safe Mode / 配置导入导出 / 过期扫描三项功能实际不可用）。线索是编译器 `never used` 警告。已加门禁 `scripts/check-commands.mjs`（定义 / 注册 / 调用三处对齐，102/102）。复盘见 `docs/PROJECT_HISTORY.md#incident-command-not-registered`。
 - **2026-10-28 02:08（r13 正式发布）**：版本号三处统一升至 **0.8.0**，`tauri build --no-bundle` 构建正式包（8,515,584 B，md5 `de41338e022bc66bc3ba34c950fd5b53`），部署至 release 目录（旧版备份 `CyberDeck Launcher.prev.exe`），启动验证 `stage=frontend mods=195`、integrity=0x2000；便携版 `CyberDeck Launcher 0.8.0 便携版-可直接发人.zip`（4,045,477 B，带父文件夹结构，内含 `使用说明.txt` 更新版+便携模式说明），解压实测通过后交付。内容 = r10–r13 全部（UI 文案整改 + 通知分类门 + 下载中心 + 四模块静态审查）。
 
 ## 版本总览
@@ -136,7 +149,7 @@
 | 2026-10-30 01:00 → 01:40 | 0.9.0-r28 | 自定义背景图（看板【皮肤 UI 优化】P0 子项）：设置只存路径、后端读图校验（类型/20MiB 上限）转 data URL；个性化页加不透明度+模糊双滑杆实时预览与一键恢复；背景层 z-index:-1 + 启用时壳/侧栏半透明；设置保存改合并队列（滑杆连拖不刷爆状态文件）；新增 check-background.mjs 13 项 + base64 单测 3 项 | schema.rs、lib.rs、types.ts、api.ts、mock.ts、normalize.ts、App.tsx、SettingsView.tsx、AppearanceSettings.tsx、styles.css、zh-CN.ts、check-background.mjs（新）、gate.mjs |
 | 2026-10-30 01:40 → 02:20 | 0.9.0-r29 | mod 列表及切换功能收尾（看板）：modlist 导入导出（导出 JSON 带 kind/version 签名 + 模组元数据快照；导入按 id 优先名字兜底对回库，unmatched 如实报告）+ 批量启用/禁用（多选模式 + 批量条，后端逐个走部署/撤除语义、单个失败不中断）；新增 check-modlist-tools.mjs 9 项 + safe_filename 单测（**未构建部署**） | profiles.rs、lib.rs、types.ts、api.ts、mock.ts、SettingsView.tsx、LibraryView.tsx、VirtualModGrid.tsx、ModCard.tsx、styles.css、zh-CN.ts、check-modlist-tools.mjs（新）、gate.mjs |
 | 2026-10-30 02:20 → 03:30 | 0.9.0-r30 | deepseek 任务四模块：①路径/部署方式/启动高级选项（暂存区磁盘建议、部署方式 hardlink/symlink/copy、显卡偏好注册表、进程优先级 creation_flags、启动前置命令）②下载中心升级（令牌桶限速、NXM 协议修复、.nxm 拖拽投递、速度折线图、拖拽接收区）③外部工具链管理器（登记/启动/固定到侧栏）④界面显示管理（侧栏入口隐藏 + 持久化 + 隐藏页跳回模组库）；新增 nxm_intake/nxm_intake_file/suggest_staging_dir/external_tool_* 共 9 个命令；check-deepseek.mjs 21 项（**未构建部署，随本次版本一并打包**） | schema.rs、lib.rs、installer.rs、game.rs、environment.rs、download_queue.rs、types.ts、normalize.ts、api.ts、mock.ts、SettingsView、ExternalToolsCard（新）、AppearanceSettings、Sidebar、uiPrefs.ts（新）、App.tsx、DownloadsView、styles.css、zh-CN.ts、check-deepseek.mjs（新）、check-platform.mjs、gate.mjs |
-| 2026-10-30 20:30 → 21:05 | 0.9.0-r31 | 合规自检 P1 两项修复（用户确认后执行）：①下载 429 限流等待期点暂停/取消被下一圈清旗标吞掉 → 改为就地收尾 `settle_interrupted` 并 return；②混合包（.archive + .reds/.lua）被判单布局后异类文件静默丢弃 → 新增 `layout_skipped` 统计，导入与部署两处都出 warning（列前 3 个文件名 + 建议拆包）；新增 6 个单测；自检报告 `docs/AUDIT-2026-10-30-seven-modules.md` 已标修复状态（**未构建部署**） | download_queue.rs、installer.rs、docs/AUDIT-2026-10-30-seven-modules.md |
+| 2026-10-30 20:30 → 21:05 | 0.9.0-r31 | 合规自检 P1 两项修复（用户确认后执行）：①下载 429 限流等待期点暂停/取消被下一圈清旗标吞掉 → 改为就地收尾 `settle_interrupted` 并 return；②混合包（.archive + .reds/.lua）被判单布局后异类文件静默丢弃 → 新增 `layout_skipped` 统计，导入与部署两处都出 warning（列前 3 个文件名 + 建议拆包）；新增 6 个单测；自检报告 `docs/PROJECT_HISTORY.md#audit-7modules` 已标修复状态（**未构建部署**） | download_queue.rs、installer.rs、docs/PROJECT_HISTORY.md#audit-7modules |
 | 2026-10-30 21:05 → 21:45 | 0.9.0-r32 | 实测反馈四项：①框架探测 P0（redscript 改认 `r6/scripts` 目录或 `engine/tools/redscript-cli.exe`；Mod Settings 改认 `red4ext/plugins/mod_settings/ModSettings.dll`，CET 版 `mods/ModSettings/init.lua` 兜底；新增 `resolve_ci` 逐级大小写不敏感解析，7 个单测）②顶栏版本号 `CDL vv0.9.0` → `CDL v0.9.0`（词条去掉写死的 v）③账户占位头像改 flex 居中 + `line-height:1` 消除基线偏移，新增 `nexusBus` 广播让侧栏「发现」未连接角标随连接/断开即时刷新 ④诊断结论卡重构为圆角卡片（48px 警告图标 / 两行文案 / 19px 统计数字，ISSUES 用警告色，窄屏自适应）；新增 check-feedback-fixes.mjs 22 项（**未构建部署**） | game.rs、zh-CN.ts、styles.css、DiagnosticsView.tsx、NexusSettingsCard.tsx、NexusView.tsx、App.tsx、lib/nexusBus.ts（新）、mock.ts、check-feedback-fixes.mjs（新）、gate.mjs |
 
 ---
@@ -178,7 +191,7 @@
 
 ## 0.9.0-r31 — 合规自检 P1 两项修复（2026-10-30 20:30 → 21:05，未构建部署）
 
-> 来源：`docs/AUDIT-2026-10-30-seven-modules.md` 自检报告的 P1-1 / P1-2，用户确认后执行。P2 七项保持记录在案、未动。
+> 来源：`docs/PROJECT_HISTORY.md#audit-7modules` 自检报告的 P1-1 / P1-2，用户确认后执行。P2 七项保持记录在案、未动。
 > 这是「修复缺陷」批次，不新增功能。
 
 ### 一、P1-1 下载 429 限流等待期的暂停/取消被吞（download_queue.rs）
@@ -484,7 +497,7 @@ cargo test --lib **95/95**（+12 分类用例，含连写句柄与并列决胜�
 
 ### 【8】AI 深度汉化（含模组框架菜单）—— 架构评审
 
-- 交付 `docs/AI-LOCALIZATION-REVIEW.md`：三条路线裁决 —— 离线资源（A）采用、overlay 覆盖（B）禁止、词表（C）已实现。
+- 交付 `docs/PROJECT_HISTORY.md#ai-loc-review`：三条路线裁决 —— 离线资源（A）采用、overlay 覆盖（B）禁止、词表（C）已实现。
 - 含写入白名单表、词表主键与冲突规则、生成到部署的流程、回滚矩阵、M1/M2/M3 里程碑、不做清单。
 - **状态**：架构定案交付，M1 编码未启动，看板保持 running。
 
@@ -528,13 +541,13 @@ cargo test --lib **95/95**（+12 分类用例，含连写句柄与并列决胜�
 
 ### 【10】真机环境最终排雷：完整链路验收
 
-- `docs/REAL-ENV-TEST-0.9.0.md`：自动化预检实测表（**0 failure**）、10 组手动验收清单（A 硬链接 ~ J AI 三链路）、代码级兜底表、验收记录表。
+- `docs/PROJECT_HISTORY.md#real-env-090`：自动化预检实测表（**0 failure**）、10 组手动验收清单（A 硬链接 ~ J AI 三链路）、代码级兜底表、验收记录表。
 - 对 `D:\steam\steamapps\common\Cyberpunk 2077` 实跑 `real-env-check.ps1`：游戏版本 3.0.5294808；RED4ext / ArchiveXL / TweakXL **PASS**；CET / redscript / ModSettings **WARN**（未安装）。
 - 已知脚本缺陷登记：`Get-Content` 未指定 UTF8，导致中文状态文件解析失败（已在文档标注，待修）。
 
 ### 【14】多模型 API 兼容验证：Ollama / 本地模型
 
-- `docs/OLLAMA-LOCAL-MODEL.md`：配置表、三条链路（名称汉化 / 日志诊断 / 内容汉化）验证步骤、6 项已知差异与处理（上下文长度、并发、模型名大小写、/v1 后缀、超时、JSON 模式支持）、排查表。
+- `docs/PROJECT_HISTORY.md#ollama`：配置表、三条链路（名称汉化 / 日志诊断 / 内容汉化）验证步骤、6 项已知差异与处理（上下文长度、并发、模型名大小写、/v1 后缀、超时、JSON 模式支持）、排查表。
 - 新增 `scripts/check-ollama.ps1`：本地 OpenAI 兼容端点探针（GET `/v1/models` + POST `/chat/completions`，处理 NO_PROXY）。
 
 ### 命令契约（新增 12 个 Tauri 命令，两处同步注册）
@@ -995,7 +1008,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 - **守卫脚本增强**：`--unused` 反向检查（词表里有、源码没用）；豁免支持行内 `// i18n-ignore` 与区块 `// i18n-ignore-start/end`。key 匹配用自定界 token 正则——「成对引号」正则在同一行有多个字符串（尤其 `: ""` 空串）时会配对错位，把 `t("palette.modDeployed")` 误判成没被引用。
 - **文案基准纠正（原「词汇漂移修复」已回退）**：迁移后我曾用 r7 轮留下的 `文案全量清单.csv` 做逐字比对，把 13 处更短的文案判成「抽取时被擅自改短」并改回清单原文。**这个判断是错的**：r7 的「全局文案去 AI 味」是另一个会话的成果，那份 CSV 是去 AI 味**之前**的快照，短的那一版才是当前应有的文案。13 处已全部回退到迁移时的源码原样（「保存分类」「查看日志」「恢复原状」×2「深度扫描」「清空任务」「开始收编」「一键修复环境」「解除锁定」「按序部署了…」「到模组页查看」「通过 Nexus API 下载导入」「定位游戏目录」「返回完整」）。**规则：文案回归的基准只能是「抽取当时的源码」，不能拿更早的审查快照做逐字比对——快照一旦落后于并行会话的文案改写，方向就是反的。**
 - **UI 回归断言同步（4 处）**：`ui-test.mjs` 的「保存分类并关闭」「查看日志内容」、`ui-polish-test.mjs` 的「查看日志内容」「恢复原始状态」（×2）是去 AI 味**之前**写下的旧期望值，与词表不一致；已按当前文案改为 `/保存分类/`、`/查看日志/`、`/恢复原状/`。为避免再出现零散遗漏，用一次性比对脚本核对：把四个脚本里的中文正则 / `name:` 断言全部提取，逐段与 `zh-CN.ts` 的词条值比对，**只剩这 4 处**，其余全对得上。
-- **文档里的 UI 名称同步（5 处）**：文案变了，文档里直接引用按钮名的位置就成了死引用——`README.md`（防误触表 ×2）、`docs/ARCHITECTURE.md`（恢复语义）、`docs/REAL-ENV-TEST.md`（日志入口 + 恢复步骤）、`NIGHT_SHIFT_REPORT.md`（熔断横幅按钮）已按当前文案更新为「恢复原状」「查看日志」「解除锁定」。
+- **文档里的 UI 名称同步（5 处）**：文案变了，文档里直接引用按钮名的位置就成了死引用——`README.md`（防误触表 ×2）、`docs/ARCHITECTURE.md`（恢复语义）、`docs/REAL-ENV-TEST.md`（日志入口 + 恢复步骤）、`docs/PROJECT_HISTORY.md#night-shift`（熔断横幅按钮）已按当前文案更新为「恢复原状」「查看日志」「解除锁定」。
 - **验证**：`tsc --noEmit` 0 错；`vite build` 通过；`i18n:gate` / `i18n:unused` 双向归零（1246 条，死条目 0）；四套 UI 回归（ui-test / polish / theme / hardware）**在文案回退后复跑全绿**；Rust 53 项 + core-tests 99+1 项全绿。
 - **构建与部署（2026-10-27 22:50）**：`tauri build --no-bundle`（`CARGO_PROFILE_RELEASE_LTO=false`）2m05s，产物 `src-tauri/target/release/cyberdeck-launcher.exe` **8,435,200 B**，md5 `49a25cb90483523eccf7af947dff00f2`。旧 exe 备份为 `CyberDeck Launcher.prev.exe`（md5 `451d7496…`），新 exe 已就位并启动验证：`startup.log` 记录 `stage=resolve → load ok → tray ok → lifecycle ok → **stage=frontend mods=195**`，数据完好、前端正常挂载。**便携版未打包**（按规矩等用户确认）。
 
@@ -1176,7 +1189,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 - `docs/ARCHITECTURE.md`（23:33）补 NXM 子系统与门禁入口；`docs/REAL-ENV-TEST.md`（23:34）新增「0.0 一条命令的自动门禁」「0.0.1 提权 / DPAPI 对照」两节，真机验收改为**连续启动两次** + exe 内前端产物 md5 一致性校验。
 - 项目看板按「价值 × 成本 × 依赖」重排为 **9 项功能优先级计划**（覆盖旧 9 项工程待办）：旧「验证 requireAdministrator 构建」并入【1】回归清单，旧「Vortex 元数据增强 A+C」并入【3】下载后闭环。
 - **环境事故清理**：删除 `D:\鐢ㄦ埛` 乱码镜像目录——其实是 `D:\用户\工作区\.tools` 的 UTF-8 字节被 GBK 误读的产物（仅 1 个 1.3KB 日志 + 空 `rustup` 子目录）。根因是 UTF-8 **无 BOM** 的 `.ps1` 被 PowerShell 5.1 按 GBK 解析，中文路径字面量被打乱 → **新规则：含中文路径的 .ps1 必须带 UTF-8 BOM，或改用 ASCII 路径变量**。
-- 新增本 `CHANGELOG.md`（此前只有按批次的 `docs/CHANGELOG-2026-10-26-brand-ui-collections.md`，无全量日志）。
+- 新增本 `CHANGELOG.md`（此前只有按批次的 `docs/PROJECT_HISTORY.md#batch-1026`，无全量日志）。
 
 ### 七、已知边界
 
@@ -1249,7 +1262,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 - **连带修复**：删 `modpack.rs` 时漏改平行 crate `core-tests` 的 `#[path]` 引用，导致无 GUI 测试 harness 编译不过 → 改指向 `collection.rs`，`core-tests` 72 项全绿。
 - **规则沉淀**：① 自定义 `deserialize_with` 必须消费输入；② 改 schema 前必须用真实旧数据跑解析（单测全绿 ≠ 旧数据可读）；③ 品牌改名 / schema 变更 / 数据迁移分三次提交。规则已同时写入 `ARCHITECTURE.md` 与 `REAL-ENV-TEST.md`（真机验收改为**连续启动两次** + exe 前端产物 md5 一致性校验）。
 
-> 复盘：`docs/INCIDENT-2026-10-26-state-parse-desync.md`
+> 复盘：`docs/PROJECT_HISTORY.md#incident-state-parse`
 
 ---
 
@@ -1295,7 +1308,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 
 `ui-test.mjs` 双 file input 的 strict mode 报错改用 `.first()`；主题数量断言 5→6；发现页新增「网页搜索」按钮（API v1 无搜索端点，把过滤词拼成 Nexus 搜索页）；`mock.ts::installMods` 造了 mod 却**从不 `db.state.mods.push`**（演示模式导入后分类存不上、遮罩卡死）；清理 `TaskKind` 死值 `"modpack"`（`ModOrigin` 保留）。
 
-> 批次详情：`docs/CHANGELOG-2026-10-26-brand-ui-collections.md`、`docs/夜间批处理总结-2026-10-26.md`
+> 批次详情：`docs/PROJECT_HISTORY.md#batch-1026`、`docs/PROJECT_HISTORY.md#batch-1026`
 
 ---
 
@@ -1315,7 +1328,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 - **权限策略**：**asInvoker**，不声明 `requireAdministrator`（曾短暂加过，已回退）。
 - **排查铁律**：进程行为异常（写被拒／子进程崩溃／跳转静默失败）→ 先 `icacls <exe>` 看 `Mandatory Label` 与孤儿 SID，再查 token integrity（Low=0x1000 / Medium=0x2000）；对照实验用同用户 PowerShell 做同一操作。
 
-> 复盘：`docs/INCIDENT-2026-10-26-low-integrity-rootcause.md`（定案）+ `docs/INCIDENT-2026-10-26-webview-and-datadir.md`（误判过程：6 轮错误假设、多打 5 个包）
+> 复盘：`docs/PROJECT_HISTORY.md#incident-low-integrity`（定案）+ `docs/PROJECT_HISTORY.md#incident-webview-datadir`（误判过程：6 轮错误假设、多打 5 个包）
 
 ---
 
@@ -1383,7 +1396,7 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 | 多平台嗅探 | 完成（Steam 注册表 + `libraryfolders.vdf`、GOG、Epic） |
 | 卡片错误边界 | 完成（单卡异常只坏一格，显示 `// ERROR: DATA CORRUPTED`） |
 
-**同期完成的五项无人值守任务**（详见 `NIGHT_SHIFT_REPORT.md`）：虚拟滚动错误边界、游戏更新熔断、多平台嗅探与启动适配、卡片右键菜单、环境完整性自检与自愈；配套四个可复跑验收脚本 `check-update-lock / check-platform / check-context-menu / check-env-panel`。
+**同期完成的五项无人值守任务**（详见 `docs/PROJECT_HISTORY.md#night-shift`）：虚拟滚动错误边界、游戏更新熔断、多平台嗅探与启动适配、卡片右键菜单、环境完整性自检与自愈；配套四个可复跑验收脚本 `check-update-lock / check-platform / check-context-menu / check-env-panel`。
 
 ---
 
@@ -1391,8 +1404,8 @@ r15 试点的 framer-motion 正式推广到其余三层动效，全部走 `motio
 
 | 日期 | 事故 | 影响 | 复盘文档 |
 |---|---|---|---|
-| 2026-10-26 | 目录 Low 完整性标签 → 跳转失效 / 数据目录分裂 / 子进程失败 | 6 轮错误假设、多打 5 个包 | `docs/INCIDENT-2026-10-26-low-integrity-rootcause.md`、`…-webview-and-datadir.md` |
-| 2026-10-26 | `deserialize_with` 未消费输入 → 状态文件被判损坏 | 195 条模组索引清空（文件未丢） | `docs/INCIDENT-2026-10-26-state-parse-desync.md` |
+| 2026-10-26 | 目录 Low 完整性标签 → 跳转失效 / 数据目录分裂 / 子进程失败 | 6 轮错误假设、多打 5 个包 | `docs/PROJECT_HISTORY.md#incident-low-integrity`、`…-webview-and-datadir.md` |
+| 2026-10-26 | `deserialize_with` 未消费输入 → 状态文件被判损坏 | 195 条模组索引清空（文件未丢） | `docs/PROJECT_HISTORY.md#incident-state-parse` |
 | 2026-10-26 | 发出 dev 构建（缺 `custom-protocol`） | 用户看到 `ERR_CONNECTION_REFUSED` | `HANDOFF.md` §0.7.0-r3 构建铁律 |
 
 ---

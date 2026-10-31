@@ -1,6 +1,6 @@
 //! 非破坏性 AI 汉化（T5）。
 //!
-//! 设计基线：`docs/DESIGN-ai-translation.md`。这里的实现只覆盖能确认正确的部分，
+//! 设计基线：`docs/PROJECT_HISTORY.md#design-ai-translation`。这里的实现只覆盖能确认正确的部分，
 //! 其余一律**明确阻断**而不是猜着做：
 //!
 //! - 输入：Mod 暂存目录里的本地化 JSON（onscreens 条目格式或扁平 key→text）。

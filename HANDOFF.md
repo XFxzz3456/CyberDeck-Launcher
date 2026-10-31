@@ -111,7 +111,7 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 
 ### 0.7.0-r2 热修复（2026-10-26 凌晨 · 版本号未变，exe 已重新构建部署）
 
-**复盘全文**：`docs/INCIDENT-2026-10-26-low-integrity-rootcause.md`（最终定案）+ `docs/INCIDENT-2026-10-26-webview-and-datadir.md`（误判过程记录）。
+**复盘全文**：`docs/PROJECT_HISTORY.md#incident-low-integrity`（最终定案）+ `docs/PROJECT_HISTORY.md#incident-webview-datadir`（误判过程记录）。
 
 **总根因（最终结论）：exe 所在目录带了 Low 完整性标签**
 - `D:\用户\工作区` 从旧电脑搬来时携带 `Mandatory Label\Low Mandatory Level:(OI)(CI)` 与孤儿 SID `S-1-4-…`；
@@ -165,7 +165,7 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 - **真因**：`schema.rs::deserialize_always_empty`（为清空旧 `modpacks` 记录而写）**丢弃了反序列化器参数、没消费输入值** → serde 解析位置错位 → 整个状态文件解析失败 → `store.rs` 判为损坏 → 重命名为 `.broken` 并**用空状态继续启动**。
 - **修复**：改用 `IgnoredAny::deserialize(deserializer)?` 消费输入后再返回空数组；新增回归测试 `schema::modpacks_cleared_on_load::modpacks_field_is_ignored_but_still_consumed`（喂带旧 modpacks 的真实结构，断言能解析且字段为空）。Rust 测试 47 项全绿。
 - **数据恢复**：从 `launcher-state.broken-20261025-221357.json` 复原 → `mods=195 / loadOrder=125 / modpacks=0 / nexus 引用完整`；备份保留为 `cyberdeck-data/launcher-state.pre-fix-backup.json`。
-- **复盘全文**：`docs/INCIDENT-2026-10-26-state-parse-desync.md`（含三条新规则：自定义反序列化器必须消费输入、schema 变更必须用真实旧数据验证、品牌改名/schema 变更/数据迁移要分三次提交）。
+- **复盘全文**：`docs/PROJECT_HISTORY.md#incident-state-parse`（含三条新规则：自定义反序列化器必须消费输入、schema 变更必须用真实旧数据验证、品牌改名/schema 变更/数据迁移要分三次提交）。
 - ⚠️ **给后续的硬约束**：状态文件解析失败时，`store.rs` 会静默重置为空——这条行为把"代码回归"伪装成了"数据丢失"。改 schema 前务必用真实旧数据跑一次解析。
 
 ### 0.8.0-r6（2026-10-27 晚 · AI 接入去服务商化）
@@ -308,7 +308,7 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 **验证**：门禁全绿（cargo 126 tests + tsc + vite + 21 个 UI 脚本，其中 `check-deepseek.mjs` 21 项新增）；exe 8,848,896 B / md5 `FEFDA28F258853A481EEDCED0F0012C6`；便携版 `发布产物\CyberDeck Launcher 0.9.0 便携版-r30重制-可直接发人.zip`（4,196,942 B）解压实测 + 冒烟 `stage=frontend mods=195`、integrity=0x2000；旧 0.9 便携 ZIP（两处）已删除。
 
-**合规自检**（`docs/AUDIT-2026-10-30-seven-modules.md`）：7 模块无 P0；P1×2 已于 **r31 修复**（等待期暂停/取消被吞、混合包静默丢文件），P2×7 仍记录在案待定。
+**合规自检**（`docs/PROJECT_HISTORY.md#audit-7modules`）：7 模块无 P0；P1×2 已于 **r31 修复**（等待期暂停/取消被吞、混合包静默丢文件），P2×7 仍记录在案待定。
 
 ### 0.9.0-r29（2026-10-30 01:40 → 02:20 · mod 列表及切换收尾，**已随 02:30 构建部署**）
 
@@ -371,20 +371,20 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 八项任务一次交付，版本号三处升至 **0.9.0**。
 
 - **【7】词表入库与云端共享**：新 `glossary.rs`。主键 `mod_id + FNV-1a64(原文)` —— Mod 更新即失配，**版本隔离天然成立、不需要迁移脚本**。`by` 分 ai/user/cloud，`user` 条目永不被非 user 覆盖。`ai.rs` 发请求前先查词表，命中直接复用、不耗配额；落库后回写。前端卡在「设置 → AI 配置」，含共享开关 / 地址 / 立即同步 / 导出导入。
-- **【8】深度汉化架构**：`docs/AI-LOCALIZATION-REVIEW.md` 定案 —— 离线资源采用、overlay 覆盖禁止、词表已实现；含写入白名单、回滚矩阵、M1/M2/M3 里程碑。**M1 编码未启动，看板保持 running**。
+- **【8】深度汉化架构**：`docs/PROJECT_HISTORY.md#ai-loc-review` 定案 —— 离线资源采用、overlay 覆盖禁止、词表已实现；含写入白名单、回滚矩阵、M1/M2/M3 里程碑。**M1 编码未启动，看板保持 running**。
 - **【9】启动动画**：`SplashScreen` 620ms + 200ms 淡出（≤820ms，符合 ≤1.5s 约束）；`pointerdown`/`keydown` 立即跳过；关动效或 `prefers-reduced-motion` 退化为静态。只用主题变量，**Cyber/Modern × 明暗四组合自动适配**。开关在「设置 → 个性化 → 启动动画」。
 - **【11】帮助中心**：`HelpCenterView` 搜索 + 三段切换 + 折叠面板动画；`helpContent.ts` 6 教程 + 10 FAQ（内容表用 `// i18n-ignore-start/end` 区块忽略）；`docs/help/01..06` 六篇 Markdown 同源。侧栏新增 `help` 视图。
 - **【12】配置导入导出**：新 `config_pack.rs`。白名单 15 个标量，**绝不导出 API Key / DPAPI 密文 / Mod 库 / deployed_files / staging_dir**；导入先全内存校验（解析 → 版本 → 白名单）再落盘，失败不写脏状态；非法 `aiProtocol` 进 `ignored`；超时钳制 10–600；profiles 覆盖后校验 active 归属。
 - **【13】Safe Mode + 过期扫描**：新 `safemode.rs` 与 `compat.rs`。
   - Safe Mode 严格四段式（读快照 → 逐条 undeploy **不持锁** → 短锁写状态 → 落盘），绕开 `store.data` 不可重入陷阱；**只撕 deployed_files 链接，绝不删 staging 本体**；`exit()` 仅 `failed_mods==0` 才删快照，失败留快照可重试；快照 `safemode-snapshot.json` 落 data_dir。前端两个操作均走 Modal 二次确认。
   - 过期扫描 `TARGET_GAME_VERSION="2.5"`，5 条正则 + `OnceLock` 缓存；**`2.21` 是 2.2.1 补丁、早于 `2.5`** —— 逐位取数字 `[2,2,1]` vs `[2,5]` 后字典序短补 0 比较，按整数比 21>5 会得反结论。读不到声明只 warn，**绝不误判 stale**。
-- **【10】真机验收**：`docs/REAL-ENV-TEST-0.9.0.md` —— 预检 **0 failure**（游戏 3.0.5294808；RED4ext/ArchiveXL/TweakXL PASS；CET/redscript/ModSettings WARN 未装）、10 组手动清单 A~J、代码级兜底表。已知脚本缺陷：`real-env-check.ps1` 的 `Get-Content` 未指定 UTF8，中文状态文件会解析失败（已登记待修）。
-- **【14】Ollama 本地模型**：`docs/OLLAMA-LOCAL-MODEL.md` 配置表 + 三条链路验证步骤 + 6 项已知差异与处理；新增 `scripts/check-ollama.ps1` 端点探针（`/v1/models` + `/chat/completions`，处理 NO_PROXY）。
+- **【10】真机验收**：`docs/PROJECT_HISTORY.md#real-env-090` —— 预检 **0 failure**（游戏 3.0.5294808；RED4ext/ArchiveXL/TweakXL PASS；CET/redscript/ModSettings WARN 未装）、10 组手动清单 A~J、代码级兜底表。已知脚本缺陷：`real-env-check.ps1` 的 `Get-Content` 未指定 UTF8，中文状态文件会解析失败（已登记待修）。
+- **【14】Ollama 本地模型**：`docs/PROJECT_HISTORY.md#ollama` 配置表 + 三条链路验证步骤 + 6 项已知差异与处理；新增 `scripts/check-ollama.ps1` 端点探针（`/v1/models` + `/chat/completions`，处理 NO_PROXY）。
 - **命令契约**：新增 12 个 Tauri 命令（glossary ×6 / config_pack ×2 / safemode ×3 / compat_scan ×1），`lib.rs` 的 `#[tauri::command]` 与 `generate_handler!` **两处都注册**。
 - **验证**：cargo test **83/83**、tsc 0 错、i18n **1380 条双向归零**、check-help 5/5、check-safemode 12/12、ui-test / ui-theme-test / ui-polish-test / check-ai-config / check-profiles / layout 54 / contrast 26 / motion 38 全绿。
-- **发布前修掉的 P0**：6 个命令（`config_export` / `config_import` / `safemode_state` / `safemode_enter` / `safemode_exit` / `compat_scan`）只写了 `#[tauri::command]` 定义、**没进 `generate_handler!`** —— 编译通过、启动冒烟正常，但前端 invoke 必然 command not found，Safe Mode / 配置导入导出 / 过期扫描三项等于没做。线索是编译器 `never used` 警告（指向 `safemode::state/enter/exit`），exe 字符串取证确认（`safemode` 出现 0 次、`glossary` 11 次）。已补注册，并加门禁 `scripts/check-commands.mjs`（`commands=102 registered=102 invoked=98 missing=0 unresolved=0`，已挂进 `gate.mjs` 的 COMMANDS）。复盘 `docs/INCIDENT-2026-10-29-command-not-registered.md`。
+- **发布前修掉的 P0**：6 个命令（`config_export` / `config_import` / `safemode_state` / `safemode_enter` / `safemode_exit` / `compat_scan`）只写了 `#[tauri::command]` 定义、**没进 `generate_handler!`** —— 编译通过、启动冒烟正常，但前端 invoke 必然 command not found，Safe Mode / 配置导入导出 / 过期扫描三项等于没做。线索是编译器 `never used` 警告（指向 `safemode::state/enter/exit`），exe 字符串取证确认（`safemode` 出现 0 次、`glossary` 11 次）。已补注册，并加门禁 `scripts/check-commands.mjs`（`commands=102 registered=102 invoked=98 missing=0 unresolved=0`，已挂进 `gate.mjs` 的 COMMANDS）。复盘 `docs/PROJECT_HISTORY.md#incident-command-not-registered`。
 - **部署**：exe 8,736,768 B，md5 `6e498e3dce314a9fcc3602ac088589cd`（**零编译警告**）；NSIS 安装包 `CyberDeck Launcher_0.9.0_x64-setup.exe` 3,332,269 B；便携版 `CyberDeck Launcher 0.9.0 便携版.zip` 4,148,716 B。冒烟 `stage=frontend mods=195`、integrity=0x2000。
-- **便携版已知边界**：在一台「运行过 CDL」的机器上解压便携包首跑，会把 `%APPDATA%\com.arol.cyberdeck` 的旧状态继承过来（195 个模组、`stagingDir` 仍指向 AppData）——迁移逻辑本来就这么设计（当年改名救回了模组库）。真正干净的便携体验要在**从未运行过**的机器上使用，或先挪走 AppData 目录。已在 `docs/REAL-ENV-TEST-0.9.0.md` 登记。
+- **便携版已知边界**：在一台「运行过 CDL」的机器上解压便携包首跑，会把 `%APPDATA%\com.arol.cyberdeck` 的旧状态继承过来（195 个模组、`stagingDir` 仍指向 AppData）——迁移逻辑本来就这么设计（当年改名救回了模组库）。真正干净的便携体验要在**从未运行过**的机器上使用，或先挪走 AppData 目录。已在 `docs/PROJECT_HISTORY.md#real-env-090` 登记。
 
 ### 0.8.0-r21（2026-10-29 01:00 → 01:30 · AI 配置支持 Anthropic 原生协议，**已构建部署**）
 
@@ -561,7 +561,7 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 - 缺陷：这一步只写了 `eprintln!`，而打包后的 exe 是 `windows_subsystem="windows"`，没有控制台；
 - 修复：`Store.recovered_from` → `Snapshot.state_recovered_from` → 界面顶部 `STATE RECOVERY` 红条，
   写明原文件路径与"恢复前别动"；回归测试 `store.rs::recovery_tests` 两项（坏文件必须保留并上报、正常文件不得误报）；
-- 复盘追加在 `docs/INCIDENT-2026-10-26-state-parse-desync.md` 第 8 节。
+- 复盘追加在 `docs/PROJECT_HISTORY.md#incident-state-parse` 第 8 节。
 
 ### 0.8.0-r3（2026-10-26 · 计划【2】绕过官方启动器直接启动）
 
@@ -626,7 +626,7 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 - ⚠️ **交接提醒**：本轮发现 `schema.rs::deserialize_always_empty` 曾被回退成"不消费输入"的版本
   （症状是三处状态文件回归测试立刻变红）。该函数**必须** `IgnoredAny::deserialize(deserializer)?`，
-  详见 `docs/INCIDENT-2026-10-26-state-parse-desync.md` 与 ARCHITECTURE「状态文件与序列化」。
+  详见 `docs/PROJECT_HISTORY.md#incident-state-parse` 与 ARCHITECTURE「状态文件与序列化」。
 
 ### 0.7.0-r4（2026-10-26 晚 · 浮层重叠 / 暂存区可迁移 / 自动查找 / 设置分类）
 
@@ -1252,5 +1252,5 @@ D:\DS worker\CyberDeck-Launcher-src-0.7.0.zip
 - 这次修复**代价**是什么？引入了什么新约束（权限、性能、迁移、兼容）？
 - 下次遇到同类问题，**第一步该查什么**？
 
-复盘模板与示例：`docs/INCIDENT-2026-10-26-webview-and-datadir.md`。
+复盘模板与示例：`docs/PROJECT_HISTORY.md#incident-webview-datadir`。
 
