@@ -67,6 +67,8 @@ export function SettingsView({
   onScale,
   onUiFont,
   onCodeFont,
+  onCustomUiFont,
+  onCustomCodeFont,
   onSplash,
   onSidebarCollapsed,
   onAnimations,
@@ -101,6 +103,8 @@ export function SettingsView({
   onScale: (scale: number) => void;
   onUiFont: (font: UiFontId) => void;
   onCodeFont: (font: CodeFontId) => void;
+  onCustomUiFont: (font: string) => void;
+  onCustomCodeFont: (font: string) => void;
   onSidebarCollapsed: (collapsed: boolean) => void;
   onAnimations: (value: boolean) => void;
   onSplash: (value: boolean) => void;
@@ -531,6 +535,8 @@ export function SettingsView({
             onScale={onScale}
             onUiFont={onUiFont}
             onCodeFont={onCodeFont}
+            onCustomUiFont={onCustomUiFont}
+            onCustomCodeFont={onCustomCodeFont}
             onSidebarCollapsed={onSidebarCollapsed}
             onAnimations={onAnimations}
             onSplash={onSplash}

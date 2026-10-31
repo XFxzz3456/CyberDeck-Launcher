@@ -150,6 +150,8 @@ export default function App() {
     setLibraryView,
     setUiFont,
     setCodeFont,
+    setCustomUiFont,
+    setCustomCodeFont,
   } = usePreferences();
   const motionEnabled = useMotionEnabled();
   // 侧栏纵向档位：按「窗口高度 ÷ 缩放」算，让矮窗口 / 大缩放时逐级让位（见 viewportTier.ts）。
@@ -2438,6 +2440,8 @@ export default function App() {
                 onScale={setScale}
                 onUiFont={setUiFont}
                 onCodeFont={setCodeFont}
+                onCustomUiFont={setCustomUiFont}
+                onCustomCodeFont={setCustomCodeFont}
                 onSidebarCollapsed={setSidebarCollapsed}
             onAnimations={setAnimations}
             onSplash={setSplash}

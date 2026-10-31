@@ -36,6 +36,10 @@ export interface Preferences {
   uiFont: UiFontId;
   /** 代码与日志字体（T8 字体设置），默认跟随主题等宽。 */
   codeFont: CodeFontId;
+  /** uiFont === "custom" 时用户输入的系统字体名（空 = 跟随主题）。 */
+  customUiFont: string;
+  /** codeFont === "custom" 时用户输入的系统字体名（空 = 跟随主题）。 */
+  customCodeFont: string;
 }
 
 /** 模组库的两种显示方式。 */
@@ -54,14 +58,21 @@ export const DEFAULT_PREFERENCES: Preferences = {
   libraryView: "grid",
   uiFont: "system",
   codeFont: "theme",
+  customUiFont: "",
+  customCodeFont: "",
 };
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
-/** 缩放钳制：0.8–1.5，按 5% 一档取整（滑块拖出来的小数不会写脏 localStorage）。 */
+/**
+ * 缩放钳制：0.8–1.5（80%–150%）。
+ *
+ * 2026-10-31 起不再按 5% 取整：界面缩放从滑块改成「固定档位 + 自定义输入」，
+ * 自定义允许 80–150 之间任意整数百分比（如 113%），取整会把用户输入悄悄改掉。
+ */
 function clampScale(value: unknown): number {
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : 1;
-  return Math.min(1.5, Math.max(0.8, Math.round(numeric * 20) / 20));
+  return Math.min(1.5, Math.max(0.8, numeric));
 }
 
 /**
@@ -79,6 +90,8 @@ interface StoredPreferences {
   libraryView: LibraryView;
   uiFont: UiFontId;
   codeFont: CodeFontId;
+  customUiFont: string;
+  customCodeFont: string;
 }
 
 function loadStored(): StoredPreferences {
@@ -105,6 +118,9 @@ function loadStored(): StoredPreferences {
       // 字体：老配置没有该字段，一律「跟随主题」，升级后界面字体不该突变。
       uiFont: isUiFont(value.uiFont) ? value.uiFont : "system",
       codeFont: isCodeFont(value.codeFont) ? value.codeFont : "theme",
+      customUiFont: typeof value.customUiFont === "string" ? value.customUiFont : "",
+      customCodeFont:
+        typeof value.customCodeFont === "string" ? value.customCodeFont : "",
     };
   } catch {
     return { ...DEFAULT_PREFERENCES };
@@ -249,7 +265,12 @@ export function applyPreferences(preferences: Preferences) {
   const root = document.documentElement;
   root.style.setProperty("--ui-scale", String(preferences.scale));
   // 字体覆盖写在内联样式上（T8 字体设置）；「跟随主题」时移除覆盖，回到主题自带栈。
-  applyFonts(preferences.uiFont, preferences.codeFont);
+  applyFonts(
+    preferences.uiFont,
+    preferences.codeFont,
+    preferences.customUiFont,
+    preferences.customCodeFont,
+  );
   // data-style / data-mode / data-theme 全部由 theme.ts 负责，这里不碰。
   if (preferences.useCustomAccent && HEX_RE.test(preferences.accent)) {
     applyCustomAccent(preferences.accent);
@@ -328,7 +349,7 @@ export function usePreferences() {
     resetAccent: () =>
       setStored((current) => ({ ...current, useCustomAccent: false })),
     setScale: (scale: number) =>
-      setStored((current) => ({ ...current, scale })),
+      setStored((current) => ({ ...current, scale: clampScale(scale) })),
     setSidebarCollapsed: (sidebarCollapsed: boolean) =>
       setStored((current) => ({ ...current, sidebarCollapsed })),
     setAnimations: (animations: boolean) =>
@@ -338,5 +359,9 @@ export function usePreferences() {
       setStored((current) => ({ ...current, libraryView })),
     setUiFont: (uiFont: UiFontId) => setStored((current) => ({ ...current, uiFont })),
     setCodeFont: (codeFont: CodeFontId) => setStored((current) => ({ ...current, codeFont })),
+    setCustomUiFont: (customUiFont: string) =>
+      setStored((current) => ({ ...current, customUiFont })),
+    setCustomCodeFont: (customCodeFont: string) =>
+      setStored((current) => ({ ...current, customCodeFont })),
   };
 }

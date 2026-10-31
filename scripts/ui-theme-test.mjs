@@ -103,9 +103,8 @@ check(
     )) === "#3df2ff",
 );
 
-// r20：缩放从三档按钮换成了 80%–150% 滑块，这里拖到 110%。
-await page.locator(".scale-slider").fill("1.1");
-await page.dispatchEvent(".scale-slider", "change");
+// 2026-10-31：缩放从滑块改成分段按钮组（90/100/110/120 + 自定义），这里点 110%。
+await page.getByRole("button", { name: "110%", exact: true }).click();
 await page.waitForTimeout(400);
 check("UI scale reaches 110%", (await page.evaluate(() => getComputedStyle(document.body).zoom)) === "1.1");
 check("app shell fills the viewport at 110%", await page.evaluate(() => {
@@ -144,8 +143,7 @@ check("no horizontal overflow after reload", await viewportFits());
 
 // 90% is the small-screen mode, including the native 1120 CSS-width window.
 await openSettings();
-await page.locator(".scale-slider").fill("0.9");
-await page.dispatchEvent(".scale-slider", "change");
+await page.getByRole("button", { name: "90%", exact: true }).click();
 await page.waitForTimeout(350);
 check("UI scale reaches 90%", (await page.evaluate(() => getComputedStyle(document.body).zoom)) === "0.9");
 check("app shell fills the viewport at 90%", await page.evaluate(() => {

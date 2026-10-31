@@ -8,13 +8,14 @@ import {
   EyeOff,
   Palette,
   PanelLeftClose,
+  Pencil,
   RotateCcw,
   Sparkles,
   Sun,
   Type,
   ZoomIn,
 } from "lucide-react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { t, type MessageKey } from "../i18n";
 import {
   CODE_FONTS,
@@ -61,6 +62,13 @@ const FIT_OPTIONS: { id: BackgroundFit; labelKey: MessageKey }[] = [
   { id: "stretch", labelKey: "appearance.backgroundFitStretch" },
 ];
 
+/** 界面缩放固定档位（百分比）。自定义覆盖 80–150 之间其余的整数百分比。 */
+const SCALE_PRESETS = [90, 100, 110, 120] as const;
+
+/** 当前缩放是否正好落在固定档位上（决定「自定义」按钮是否高亮）。 */
+const isPresetScale = (pct: number) =>
+  (SCALE_PRESETS as readonly number[]).includes(pct);
+
 const MODE_OPTIONS: { id: ColorMode; label: string; icon: typeof Sun }[] = [
   { id: "light", label: t("appearance.modeLight"), icon: Sun },
   { id: "dark", label: t("appearance.modeDark"), icon: Moon },
@@ -84,6 +92,8 @@ export function AppearanceSettings({
   onScale,
   onUiFont,
   onCodeFont,
+  onCustomUiFont,
+  onCustomCodeFont,
   onSidebarCollapsed,
   onAnimations,
   onSplash,
@@ -100,6 +110,8 @@ export function AppearanceSettings({
   onScale: (scale: number) => void;
   onUiFont: (font: UiFontId) => void;
   onCodeFont: (font: CodeFontId) => void;
+  onCustomUiFont: (font: string) => void;
+  onCustomCodeFont: (font: string) => void;
   onSidebarCollapsed: (collapsed: boolean) => void;
   onAnimations: (value: boolean) => void;
   onSplash: (value: boolean) => void;
@@ -129,11 +141,47 @@ export function AppearanceSettings({
 
   const accent = preferences.useCustomAccent ? preferences.accent : themeAccent;
 
+  // ── 界面缩放：固定档位 + 自定义输入（2026-10-31 重构）──────────────────
+  // 滑块难对齐整数、拖动时字体发虚，改成四档 + 自定义。自定义值不在档位里时，
+  // 「自定义」按钮高亮并直接显示当前百分比；输入在 Enter / onBlur 才真正应用
+  // （不在 onChange 实时改全局缩放，否则每敲一个字符就整页重排）。
+  const scalePct = Math.round(preferences.scale * 100);
+  const [scaleEditing, setScaleEditing] = useState(false);
+  const [scaleDraft, setScaleDraft] = useState(String(scalePct));
+  const [scaleHint, setScaleHint] = useState("");
+  const scaleHintTimer = useRef<number | null>(null);
+
+  const flashScaleHint = (message: string) => {
+    setScaleHint(message);
+    if (scaleHintTimer.current !== null) window.clearTimeout(scaleHintTimer.current);
+    scaleHintTimer.current = window.setTimeout(() => setScaleHint(""), 2200);
+  };
+
+  const commitScale = (raw: string) => {
+    const parsed = Number.parseInt(raw.replace(/[^\d]/g, ""), 10);
+    // 空 / 非数字：回退到上一次有效值，不报错也不改缩放。
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setScaleDraft(String(scalePct));
+      setScaleEditing(false);
+      return;
+    }
+    if (parsed > 150) flashScaleHint(t("appearance.scaleMaxHint"));
+    else if (parsed < 80) flashScaleHint(t("appearance.scaleMinHint"));
+    const clamped = Math.min(150, Math.max(80, parsed));
+    onScale(clamped / 100);
+    setScaleDraft(String(clamped));
+    setScaleEditing(false);
+  };
+
+  // Ctrl+滚轮等外部改动缩放时，非编辑态同步草稿值，编辑态不打断用户输入。
+  useEffect(() => {
+    if (!scaleEditing) setScaleDraft(String(scalePct));
+  }, [scalePct, scaleEditing]);
+
   return (
     <>
       {/* ── 01 主题与配色 ───────────────────────────────── */}
       <SettingCard
-        index="01"
         span
         eyebrow="// THEME / PALETTE"
         title={t("appearance.groupTheme")}
@@ -284,7 +332,6 @@ export function AppearanceSettings({
 
       {/* ── 02 左侧导航栏 ───────────────────────────────── */}
       <SettingCard
-        index="02"
         eyebrow="// NAVIGATION"
         title={t("appearance.groupNav")}
         hint={t("appearance.groupNavHint")}
@@ -306,7 +353,6 @@ export function AppearanceSettings({
 
       {/* ── 03 窗口与侧边栏 ─────────────────────────────── */}
       <SettingCard
-        index="03"
         eyebrow="// WINDOW / SIDEBAR"
         title={t("appearance.groupWindow")}
         hint={t("appearance.groupWindowHint")}
@@ -349,7 +395,6 @@ export function AppearanceSettings({
 
       {/* ── 04 字体与排版 ───────────────────────────────── */}
       <SettingCard
-        index="04"
         span
         eyebrow="// TYPOGRAPHY"
         title={t("appearance.groupTypography")}
@@ -359,21 +404,62 @@ export function AppearanceSettings({
         <div className="appearance-label">
           <ZoomIn size={13} /> {t("appearance.scaleLabel")}
         </div>
-        {/* r20：三档按钮换滑块，80%–150%，拖动即生效（preferences 里按 5% 钳制取整）。 */}
-        <div className="scale-row">
-          <input
-            className="scale-slider"
-            type="range"
-            min={0.8}
-            max={1.5}
-            step={0.05}
-            value={preferences.scale}
-            onChange={(event) => onScale(Number(event.target.value))}
-            aria-label={t("appearance.scaleLabel")}
-          />
-          <span className="scale-value">{Math.round(preferences.scale * 100)}%</span>
-          <span className="scale-note">{t("appearance.scaleNote")}</span>
+        {/* 分段按钮组 + 自定义输入（取代 r20 的滑块）。固定档位 90/100/110/120，
+            其余 80–150 走「自定义」——点它原地变输入框，Enter / onBlur 才应用。 */}
+        <div className="scale-segmented" role="group" aria-label={t("appearance.scaleLabel")}>
+          {SCALE_PRESETS.map((pct) => (
+            <button
+              key={pct}
+              type="button"
+              className={`scale-seg ${scalePct === pct ? "selected" : ""}`}
+              aria-pressed={scalePct === pct}
+              onClick={() => onScale(pct / 100)}
+            >
+              {pct}%
+            </button>
+          ))}
+          {scaleEditing ? (
+            <span className="scale-seg scale-seg-input">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={scaleDraft}
+                autoFocus
+                aria-label={t("appearance.scaleCustomLabel")}
+                onChange={(event) => setScaleDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitScale(scaleDraft);
+                  } else if (event.key === "Escape") {
+                    setScaleDraft(String(scalePct));
+                    setScaleEditing(false);
+                  }
+                }}
+                onBlur={() => commitScale(scaleDraft)}
+              />
+              <i>%</i>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={`scale-seg scale-seg-custom ${
+                isPresetScale(scalePct) ? "" : "selected"
+              }`}
+              aria-pressed={!isPresetScale(scalePct)}
+              title={t("appearance.scaleCustomTip")}
+              onClick={() => {
+                setScaleDraft(String(scalePct));
+                setScaleEditing(true);
+              }}
+            >
+              <Pencil size={11} />
+              {isPresetScale(scalePct) ? t("appearance.scaleCustom") : `${scalePct}%`}
+            </button>
+          )}
         </div>
+        {scaleHint ? <p className="appearance-hint scale-hint">{scaleHint}</p> : null}
+        <p className="appearance-hint">{t("appearance.scaleNote")}</p>
 
         {/* T8 字体设置（2026-10-30 补做）：全局字体 + 代码/日志字体 + 实时预览。 */}
         <div className="appearance-label appearance-label-spaced">
@@ -409,27 +495,78 @@ export function AppearanceSettings({
             </select>
           </label>
         </div>
+        {/* 自定义字体：下拉选到「自定义…」时，这里出现一个文本框；输入系统已装
+            字体名，Enter / onBlur 应用。留空 = 跟随主题（不覆盖字体栈）。 */}
+        {preferences.uiFont === "custom" || preferences.codeFont === "custom" ? (
+          <div className="font-row font-custom-row">
+            {preferences.uiFont === "custom" ? (
+              <label className="font-field">
+                <span>{t("appearance.fontCustomLabel")}</span>
+                <input
+                  className="font-input"
+                  type="text"
+                  defaultValue={preferences.customUiFont}
+                  placeholder={t("appearance.fontCustomPlaceholder")}
+                  spellCheck={false}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      onCustomUiFont(event.currentTarget.value.trim());
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(event) => onCustomUiFont(event.currentTarget.value.trim())}
+                />
+              </label>
+            ) : null}
+            {preferences.codeFont === "custom" ? (
+              <label className="font-field">
+                <span>{t("appearance.fontCustomLabel")}</span>
+                <input
+                  className="font-input"
+                  type="text"
+                  defaultValue={preferences.customCodeFont}
+                  placeholder={t("appearance.fontCustomPlaceholder")}
+                  spellCheck={false}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      onCustomCodeFont(event.currentTarget.value.trim());
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(event) => onCustomCodeFont(event.currentTarget.value.trim())}
+                />
+              </label>
+            ) : null}
+          </div>
+        ) : null}
         <div className="font-preview">
           <span className="font-preview-tag">{t("appearance.fontPreviewLabel")}</span>
           <p
             className="font-preview-text"
-            style={{ fontFamily: uiFontPreview(preferences.uiFont) || undefined }}
+            style={{
+              fontFamily:
+                uiFontPreview(preferences.uiFont, preferences.customUiFont) || undefined,
+            }}
           >
             {t("appearance.fontPreviewText")}
           </p>
           <code
             className="font-preview-code"
-            style={{ fontFamily: codeFontPreview(preferences.codeFont) || undefined }}
+            style={{
+              fontFamily:
+                codeFontPreview(preferences.codeFont, preferences.customCodeFont) ||
+                undefined,
+            }}
           >
             {t("appearance.fontPreviewCode")}
           </code>
         </div>
         <p className="bg-hint">{t("appearance.fontHint")}</p>
+        <p className="bg-hint">{t("appearance.fontCustomHint")}</p>
       </SettingCard>
 
       {/* ── 05 背景图 ───────────────────────────────────── */}
       <SettingCard
-        index="05"
         span
         eyebrow="// BACKDROP"
         title={t("appearance.groupBackdrop")}
@@ -596,7 +733,6 @@ export function AppearanceSettings({
 
       {/* ── 06 动效与启动 ───────────────────────────────── */}
       <SettingCard
-        index="06"
         span
         eyebrow="// MOTION / STARTUP"
         title={t("appearance.groupMotion")}
@@ -624,10 +760,12 @@ export function AppearanceSettings({
 
 /**
  * 个性化页的单张设置卡：沿用其他 Tab 的 `.panel + .panel-head` 结构，
- * 右上角放序号（01–06）保留极客感，标题下方是灰色副标题说明。
+ * 左侧 eyebrow（`// XXX`）+ 大标题 + 灰色副标题，右上角只放图标。
+ *
+ * 2026-10-31 起不再显示 01–06 序号——其他 Tab 的卡片都没有编号，只有这一页有，
+ * 反而不一致；`// XXX` 前缀则在所有 Tab 里统一保留。
  */
 function SettingCard({
-  index,
   eyebrow,
   title,
   hint,
@@ -635,7 +773,6 @@ function SettingCard({
   span = false,
   children,
 }: {
-  index: string;
   eyebrow: string;
   title: string;
   hint: string;
@@ -644,20 +781,14 @@ function SettingCard({
   children: ReactNode;
 }) {
   return (
-    <section
-      className={`panel settings-card appearance-card ${span ? "span-2" : ""}`}
-      data-setting-card={index}
-    >
+    <section className={`panel settings-card appearance-card ${span ? "span-2" : ""}`}>
       <header className="panel-head appearance-card-head">
         <div className="appearance-card-copy">
           <div className="panel-eyebrow">{eyebrow}</div>
           <h2>{title}</h2>
           <p className="appearance-card-hint">{hint}</p>
         </div>
-        <div className="appearance-card-aside">
-          {aside}
-          <span className="appearance-section-index">{index}</span>
-        </div>
+        <div className="appearance-card-aside">{aside}</div>
       </header>
       <div className="appearance-card-body">{children}</div>
     </section>

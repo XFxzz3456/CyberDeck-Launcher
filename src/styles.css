@@ -9065,26 +9065,85 @@ body ::selection {
   margin-top: 0;
 }
 
-.scale-row {
+/* 界面缩放：分段按钮组 + 自定义输入（2026-10-31 取代 r20 的滑块）。
+   滑块难对齐整数、拖动时字体发虚；分段控件一档一击、选中态一目了然。 */
+.scale-segmented {
   display: flex;
-  align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.015);
+  width: fit-content;
+  max-width: 100%;
 }
 
-/* r20：UI 缩放滑块（80%–150%）。 */
-.scale-slider {
-  flex: 1 1 160px;
-  max-width: 220px;
-  accent-color: var(--accent);
-}
-
-.scale-value {
-  min-width: 44px;
+.scale-seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 56px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--text-2);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+  white-space: nowrap;
+}
+
+.scale-seg:hover:not(.selected):not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.scale-seg.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.scale-seg:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.6);
+  outline-offset: 1px;
+}
+
+/* 自定义档位原地变输入框：外形与按钮一致，里面是数字 + 固定 % 后缀。 */
+.scale-seg-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.scale-seg-input input {
+  width: 44px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
   text-align: right;
+  outline: none;
+}
+
+.scale-seg-input i {
+  font-style: normal;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.scale-hint {
+  color: var(--accent-text);
 }
 
 .scale-btn {
@@ -9138,11 +9197,6 @@ body ::selection {
   border-color: var(--accent);
   background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent-text);
-}
-
-.scale-note {
-  font-size: 9.5px;
-  color: var(--muted-2);
 }
 
 .sidebar-pref {
@@ -14675,6 +14729,27 @@ body::before {
   outline-offset: -1px;
 }
 
+/* 自定义字体名输入框：与 .font-select 同高同边框，设置页里高度不齐一眼就看得出。 */
+.font-input {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.font-input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.font-custom-row {
+  margin-top: 10px;
+}
+
 .font-preview {
   margin-top: 10px;
   padding: 10px 12px;
@@ -14767,17 +14842,6 @@ body::before {
 .appearance-card-body {
   min-width: 0;
   margin-top: 12px;
-}
-
-.appearance-section-index {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: var(--accent-text);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  padding: 2px 5px;
-  line-height: 1.2;
 }
 
 /* 设置项做成圆角小卡：一块一块，比「一行 + 下边框」更容易扫读。 */
