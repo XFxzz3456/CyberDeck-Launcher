@@ -281,6 +281,7 @@ export default function App() {
   const [updateReport, setUpdateReport] = useState<NexusUpdateReport | null>(null);
   const [applyingUpdates, setApplyingUpdates] = useState(false);
   const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
+  const [appUpdating, setAppUpdating] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [enriching, setEnriching] = useState(false);
   // 收编（Adopt）：扫描结果 / 执行进度 / 执行结果 / 任务行 id。
@@ -1870,6 +1871,34 @@ export default function App() {
     [applyingUpdates, recordActivity, refresh, showError, toast],
   );
 
+  /** P5-5C：检查启动器自身更新（走 tauri-plugin-updater + GitHub Releases 的 latest.json）。 */
+  const handleCheckAppUpdate = useCallback(async () => {
+    if (!isTauri) {
+      toast("info", t("settings.updateUnsupportedTitle"), t("settings.updateUnsupportedDetail"));
+      return;
+    }
+    if (appUpdating) return;
+    setAppUpdating(true);
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (!update) {
+        toast("ok", t("settings.upToDateTitle"), t("settings.upToDateDetail"), "update");
+        return;
+      }
+      const go = window.confirm(
+        t("settings.updateConfirm", { version: update.version, current: update.currentVersion }),
+      );
+      if (!go) return;
+      await update.downloadAndInstall();
+      toast("ok", t("settings.updateInstalledTitle"), t("settings.updateInstalledDetail"), "update");
+    } catch (error) {
+      showError(error, t("err.checkAppUpdate"));
+    } finally {
+      setAppUpdating(false);
+    }
+  }, [appUpdating, showError, toast]);
+
   /** 补全收编模组的 Nexus 元数据：文件名里的 ModId → 官方名称/作者/版本/封面。 */
   const runEnrichMetadata = useCallback(async () => {
     if (enriching) return;
@@ -2601,6 +2630,8 @@ export default function App() {
                 onClearGame={handleClearGame}
                 onSettings={handleSettings}
                 onAdjustBackground={() => setBgCropOpen(true)}
+                onCheckAppUpdate={() => void handleCheckAppUpdate()}
+                appUpdating={appUpdating}
                 onRefreshMods={() => void refresh()}
                 onToggleWrite={handleToggleWrite}
                 onOpenPath={(path) => {

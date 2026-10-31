@@ -15,6 +15,7 @@ import {
   MonitorPlay,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Save,
   ScrollText,
@@ -186,6 +187,8 @@ export function SettingsView({
   onClearGame,
   onSettings,
   onAdjustBackground,
+  onCheckAppUpdate,
+  appUpdating = false,
   onRefreshMods,
   onToggleWrite,
   onOpenPath,
@@ -228,6 +231,9 @@ export function SettingsView({
   onSettings: (settings: Settings) => void;
   /** 3A-3：打开背景构图模态（App 持有 dataUrl，弹窗只能挂在那里）。 */
   onAdjustBackground: () => void;
+  /** P5-5C：检查启动器自身更新。 */
+  onCheckAppUpdate?: () => void;
+  appUpdating?: boolean;
   onRefreshMods: () => void;
   onToggleWrite: (enabled: boolean) => void;
   onOpenPath: (path: string) => void;
@@ -1722,6 +1728,15 @@ export function SettingsView({
               <li>{t("settings.aboutAi")}</li>
             </ul>
             <div className="about-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={onCheckAppUpdate}
+                disabled={appUpdating || !onCheckAppUpdate}
+                title={t("settings.checkUpdateTitle")}
+              >
+                {appUpdating ? <Spinner size={13} /> : <RefreshCw size={13} />}
+                {t("settings.checkUpdate")}
+              </button>
               <button className="btn btn-ghost btn-sm" onClick={onShowEula}>
                 <ScrollText size={13} /> {t("eula.showInAbout")}
               </button>

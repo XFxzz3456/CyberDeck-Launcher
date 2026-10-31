@@ -3453,6 +3453,8 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // P5-5C：启动器自更新。公钥与更新端点在 tauri.conf.json 的 plugins.updater。
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // nxm 收件箱必须先就位：后面读启动参数时要往里塞链接。
             app.manage(NxmInbox::default());
