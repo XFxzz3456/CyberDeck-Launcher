@@ -2,17 +2,19 @@ import {
   Check,
   Image as ImageIcon,
   ImageOff,
+  MonitorPlay,
   MonitorSmartphone,
   Moon,
   EyeOff,
   Palette,
   PanelLeftClose,
   RotateCcw,
+  Sparkles,
   Sun,
   Type,
   ZoomIn,
 } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { t, type MessageKey } from "../i18n";
 import {
   CODE_FONTS,
@@ -44,6 +46,15 @@ const MODE_OPTIONS: { id: ColorMode; label: string; icon: typeof Sun }[] = [
   { id: "system", label: t("appearance.modeSystem"), icon: MonitorSmartphone },
 ];
 
+/**
+ * 个性化页（2026-10-31 重构）。
+ *
+ * 之前是「一张大卡里塞四段 + 虚线分隔」，设置项混排、窗口行为还落在卡片外面。
+ * 现在拆成 6 张独立卡片，按「外观 → 导航 → 窗口 → 排版 → 背景 → 动效」排序：
+ * 01 / 04 / 05 / 06 满宽，02 / 03 半宽并排（窄窗自动落单列）。
+ *
+ * 只改排版与归属，不动任何一条 `ncl.ui.*` 存储键，用户现有主题/字体/侧栏状态不会重置。
+ */
 export function AppearanceSettings({
   preferences,
   onSelectTheme,
@@ -55,6 +66,8 @@ export function AppearanceSettings({
   onSidebarCollapsed,
   onAnimations,
   onSplash,
+  closeBehavior,
+  onCloseBehavior,
   background,
   hiddenViews = {},
   onToggleHiddenView,
@@ -69,6 +82,9 @@ export function AppearanceSettings({
   onSidebarCollapsed: (collapsed: boolean) => void;
   onAnimations: (value: boolean) => void;
   onSplash: (value: boolean) => void;
+  /** 关闭窗口行为：由 SettingsView 传入（原本是页脚那张独立 panel）。 */
+  closeBehavior: "tray" | "exit";
+  onCloseBehavior: (value: "tray" | "exit") => void;
   background?: BackgroundControl;
   hiddenViews?: HiddenViewsMap;
   onToggleHiddenView?: (view: HideableView, hidden: boolean) => void;
@@ -93,28 +109,16 @@ export function AppearanceSettings({
   const accent = preferences.useCustomAccent ? preferences.accent : themeAccent;
 
   return (
-    <section className="panel settings-card span-2 appearance-card">
-      <div className="panel-head">
-        <div>
-          <div className="panel-eyebrow">// INTERFACE / PERSONALIZATION</div>
-          <h2>{t("appearance.title")}</h2>
-        </div>
-        <BadgeLabel theme={active.name} custom={preferences.useCustomAccent} />
-      </div>
-
-      {/* 个性化页内部分成四个子分类（2026-10-30 用户反馈「坨在一起」）：
-          主题与配色 / 排版与缩放 / 界面元素 / 背景与预览。
-          每段自带编号与标题，段间有分隔线，滚动时能看清自己在哪一类。 */}
-      <div className="appearance-sections">
-        <section className="appearance-section">
-          <header className="appearance-section-head">
-            <span className="appearance-section-index">01</span>
-            <div className="appearance-section-copy">
-              <h3>{t("appearance.groupTheme")}</h3>
-              <p>{t("appearance.groupThemeHint")}</p>
-            </div>
-          </header>
-          <div className="appearance-grid">
+    <>
+      {/* ── 01 主题与配色 ───────────────────────────────── */}
+      <SettingCard
+        index="01"
+        span
+        eyebrow="// THEME / PALETTE"
+        title={t("appearance.groupTheme")}
+        hint={t("appearance.groupThemeHint")}
+        aside={<BadgeLabel theme={active.name} custom={preferences.useCustomAccent} />}
+      >
         <div className="appearance-block">
           <div className="appearance-label">
             <Palette size={13} /> {t("appearance.styleLabel")}
@@ -232,237 +236,315 @@ export function AppearanceSettings({
             </button>
           </div>
           <p className="appearance-hint">{t("appearance.accentHint")}</p>
-          </div>
-          </div>
-        </section>
+        </div>
 
-        <section className="appearance-section">
-          <header className="appearance-section-head">
-            <span className="appearance-section-index">02</span>
-            <div className="appearance-section-copy">
-              <h3>{t("appearance.groupTypography")}</h3>
-              <p>{t("appearance.groupTypographyHint")}</p>
-            </div>
-          </header>
-
-          <div className="appearance-label">
-            <ZoomIn size={13} /> {t("appearance.scaleLabel")}
+        {/* 实况预览讲的是「这套配色长什么样」，所以归主题卡，不跟背景图混在一起。 */}
+        <div className="appearance-preview" data-preview-theme={styleTheme}>
+          <div className="preview-top">
+            <span className="preview-dot" />
+            <span>LIVE PREVIEW</span>
+            <b>{active.name}</b>
           </div>
-          {/* r20：三档按钮换滑块，80%–150%，拖动即生效（preferences 里按 5% 钳制取整）。 */}
-          <div className="scale-row">
-            <input
-              className="scale-slider"
-              type="range"
-              min={0.8}
-              max={1.5}
-              step={0.05}
-              value={preferences.scale}
-              onChange={(event) => onScale(Number(event.target.value))}
-              aria-label={t("appearance.scaleLabel")}
+          <div className="preview-bar">
+            <i />
+            <i />
+            <i />
+          </div>
+          <div className="preview-row">
+            <span />
+            <span />
+            <span className="preview-accent" />
+          </div>
+          <p>
+            <PanelLeftClose size={11} /> {t("appearance.persistNote")}
+          </p>
+        </div>
+      </SettingCard>
+
+      {/* ── 02 左侧导航栏 ───────────────────────────────── */}
+      <SettingCard
+        index="02"
+        eyebrow="// NAVIGATION"
+        title={t("appearance.groupNav")}
+        hint={t("appearance.groupNavHint")}
+        aside={<EyeOff size={16} />}
+      >
+        <p className="bg-hint">{t("appearance.hiddenViewsHint")}</p>
+        <div className="setting-list">
+          {HIDEABLE_VIEWS.map((viewId) => (
+            <SwitchRow
+              key={viewId}
+              title={t(`hiddenView.${viewId}` as MessageKey)}
+              description={t("appearance.hiddenViewItemDesc")}
+              checked={!hiddenViews[viewId]}
+              onChange={(visible) => onToggleHiddenView?.(viewId, !visible)}
             />
-            <span className="scale-value">{Math.round(preferences.scale * 100)}%</span>
-            <span className="scale-note">{t("appearance.scaleNote")}</span>
-          </div>
+          ))}
+        </div>
+      </SettingCard>
 
-          {/* T8 字体设置（2026-10-30 补做）：全局字体 + 代码/日志字体 + 实时预览。 */}
-          <div className="appearance-label appearance-label-spaced">
-            <Type size={13} /> {t("appearance.fontLabel")}
-          </div>
-          <div className="font-row">
-            <label className="font-field">
-              <span>{t("appearance.uiFontLabel")}</span>
-              <select
-                className="font-select"
-                value={preferences.uiFont}
-                onChange={(event) => onUiFont(event.target.value as UiFontId)}
+      {/* ── 03 窗口与侧边栏 ─────────────────────────────── */}
+      <SettingCard
+        index="03"
+        eyebrow="// WINDOW / SIDEBAR"
+        title={t("appearance.groupWindow")}
+        hint={t("appearance.groupWindowHint")}
+        aside={<MonitorPlay size={16} />}
+      >
+        <div className="setting-list">
+          <SwitchRow
+            title={t("appearance.collapseSidebar")}
+            description={t("appearance.collapseSidebarDesc")}
+            checked={preferences.sidebarCollapsed}
+            onChange={onSidebarCollapsed}
+          />
+          {/* 关闭方式只换位置，持久化仍走 settings.closeBehavior（避坑指南第 1 条）。 */}
+          <div className="setting-item setting-item--stack">
+            <div className="setting-item-label">{t("settings.closeBehaviorLabel")}</div>
+            <div className="settings-field-row">
+              <button
+                className={`btn btn-sm ${
+                  closeBehavior === "tray" ? "btn-primary" : "btn-ghost"
+                }`}
+                aria-pressed={closeBehavior === "tray"}
+                onClick={() => onCloseBehavior("tray")}
               >
-                {UI_FONTS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {t(option.labelKey as MessageKey)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="font-field">
-              <span>{t("appearance.codeFontLabel")}</span>
-              <select
-                className="font-select"
-                value={preferences.codeFont}
-                onChange={(event) => onCodeFont(event.target.value as CodeFontId)}
+                {t("settings.closeTray")}
+              </button>
+              <button
+                className={`btn btn-sm ${
+                  closeBehavior === "exit" ? "btn-primary" : "btn-ghost"
+                }`}
+                aria-pressed={closeBehavior === "exit"}
+                onClick={() => onCloseBehavior("exit")}
               >
-                {CODE_FONTS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {t(option.labelKey as MessageKey)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="font-preview">
-            <span className="font-preview-tag">{t("appearance.fontPreviewLabel")}</span>
-            <p
-              className="font-preview-text"
-              style={{ fontFamily: uiFontPreview(preferences.uiFont) || undefined }}
-            >
-              {t("appearance.fontPreviewText")}
-            </p>
-            <code
-              className="font-preview-code"
-              style={{ fontFamily: codeFontPreview(preferences.codeFont) || undefined }}
-            >
-              {t("appearance.fontPreviewCode")}
-            </code>
-          </div>
-          <p className="bg-hint">{t("appearance.fontHint")}</p>
-        </section>
-
-        <section className="appearance-section">
-          <header className="appearance-section-head">
-            <span className="appearance-section-index">03</span>
-            <div className="appearance-section-copy">
-              <h3>{t("appearance.groupLayout")}</h3>
-              <p>{t("appearance.groupLayoutHint")}</p>
+                {t("settings.closeExit")}
+              </button>
             </div>
-          </header>
+            <small className="setting-item-note">{t("settings.closeBehaviorNote")}</small>
+          </div>
+        </div>
+      </SettingCard>
 
-          <div className="appearance-two-col">
-          <div className="sidebar-pref">
-            <SwitchRow
-              title={t("appearance.collapseSidebar")}
-              description={t("appearance.collapseSidebarDesc")}
-              checked={preferences.sidebarCollapsed}
-              onChange={onSidebarCollapsed}
-            />
-            <SwitchRow
-              title={t("appearance.animations")}
-              description={t("appearance.animationsDesc")}
-              checked={preferences.animations}
-              onChange={onAnimations}
-            />
-            <SwitchRow
-              title={t("appearance.splash")}
-              description={t("appearance.splashDesc")}
-              checked={preferences.splash}
-              onChange={onSplash}
-            />
-          </div>
+      {/* ── 04 字体与排版 ───────────────────────────────── */}
+      <SettingCard
+        index="04"
+        span
+        eyebrow="// TYPOGRAPHY"
+        title={t("appearance.groupTypography")}
+        hint={t("appearance.groupTypographyHint")}
+        aside={<ZoomIn size={16} />}
+      >
+        <div className="appearance-label">
+          <ZoomIn size={13} /> {t("appearance.scaleLabel")}
+        </div>
+        {/* r20：三档按钮换滑块，80%–150%，拖动即生效（preferences 里按 5% 钳制取整）。 */}
+        <div className="scale-row">
+          <input
+            className="scale-slider"
+            type="range"
+            min={0.8}
+            max={1.5}
+            step={0.05}
+            value={preferences.scale}
+            onChange={(event) => onScale(Number(event.target.value))}
+            aria-label={t("appearance.scaleLabel")}
+          />
+          <span className="scale-value">{Math.round(preferences.scale * 100)}%</span>
+          <span className="scale-note">{t("appearance.scaleNote")}</span>
+        </div>
 
-          {/* 右列：导航可见性。和左列的动效开关分开，避免一排开关连成一片。 */}
-          <div className="appearance-block">
-          {/* 界面显示管理（deepseek 任务·模块四）：隐藏侧栏入口；模组库/设置受保护。 */}
-          <div className="appearance-label">
-            <EyeOff size={13} /> {t("appearance.hiddenViewsLabel")}
-          </div>
-          <p className="bg-hint">{t("appearance.hiddenViewsHint")}</p>
-          <div className="sidebar-pref">
-            {HIDEABLE_VIEWS.map((viewId) => (
-              <SwitchRow
-                key={viewId}
-                title={t(`hiddenView.${viewId}` as MessageKey)}
-                description={t("appearance.hiddenViewItemDesc")}
-                checked={!hiddenViews[viewId]}
-                onChange={(visible) => onToggleHiddenView?.(viewId, !visible)}
-              />
-            ))}
-          </div>
-          </div>
-          </div>
-        </section>
+        {/* T8 字体设置（2026-10-30 补做）：全局字体 + 代码/日志字体 + 实时预览。 */}
+        <div className="appearance-label appearance-label-spaced">
+          <Type size={13} /> {t("appearance.fontLabel")}
+        </div>
+        <div className="font-row">
+          <label className="font-field">
+            <span>{t("appearance.uiFontLabel")}</span>
+            <select
+              className="font-select"
+              value={preferences.uiFont}
+              onChange={(event) => onUiFont(event.target.value as UiFontId)}
+            >
+              {UI_FONTS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {t(option.labelKey as MessageKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="font-field">
+            <span>{t("appearance.codeFontLabel")}</span>
+            <select
+              className="font-select"
+              value={preferences.codeFont}
+              onChange={(event) => onCodeFont(event.target.value as CodeFontId)}
+            >
+              {CODE_FONTS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {t(option.labelKey as MessageKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="font-preview">
+          <span className="font-preview-tag">{t("appearance.fontPreviewLabel")}</span>
+          <p
+            className="font-preview-text"
+            style={{ fontFamily: uiFontPreview(preferences.uiFont) || undefined }}
+          >
+            {t("appearance.fontPreviewText")}
+          </p>
+          <code
+            className="font-preview-code"
+            style={{ fontFamily: codeFontPreview(preferences.codeFont) || undefined }}
+          >
+            {t("appearance.fontPreviewCode")}
+          </code>
+        </div>
+        <p className="bg-hint">{t("appearance.fontHint")}</p>
+      </SettingCard>
 
-        <section className="appearance-section">
-          <header className="appearance-section-head">
-            <span className="appearance-section-index">04</span>
-            <div className="appearance-section-copy">
-              <h3>{t("appearance.groupBackdrop")}</h3>
-              <p>{t("appearance.groupBackdropHint")}</p>
+      {/* ── 05 背景图 ───────────────────────────────────── */}
+      <SettingCard
+        index="05"
+        span
+        eyebrow="// BACKDROP"
+        title={t("appearance.groupBackdrop")}
+        hint={t("appearance.groupBackdropHint")}
+        aside={<ImageIcon size={16} />}
+      >
+        {background ? (
+          <div className="appearance-label appearance-label-spaced bg-block">
+            <div className="appearance-label">
+              <ImageIcon size={13} /> {t("appearance.backgroundLabel")}
             </div>
-          </header>
-
-          {background ? (
-            <div className="appearance-label appearance-label-spaced bg-block">
-              <div className="appearance-label">
-                <ImageIcon size={13} /> {t("appearance.backgroundLabel")}
-              </div>
-              <div className="bg-row">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={background.onPick}
-                  title={t("appearance.backgroundPickTitle")}
-                >
-                  <ImageIcon size={12} /> {t("appearance.backgroundPick")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={background.onClear}
+            <div className="bg-row">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={background.onPick}
+                title={t("appearance.backgroundPickTitle")}
+              >
+                <ImageIcon size={12} /> {t("appearance.backgroundPick")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={background.onClear}
+                disabled={!background.path}
+                title={t("appearance.backgroundClearTitle")}
+              >
+                <ImageOff size={12} /> {t("appearance.backgroundClear")}
+              </button>
+              <span className="bg-path" title={background.path}>
+                {background.path
+                  ? background.path.split(/[\\/]/).pop()
+                  : t("appearance.backgroundEmpty")}
+              </span>
+            </div>
+            <div className={`bg-sliders ${background.path ? "" : "is-disabled"}`}>
+              <label className="bg-slider">
+                <span>{t("appearance.backgroundOpacity")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={background.opacity}
                   disabled={!background.path}
-                  title={t("appearance.backgroundClearTitle")}
-                >
-                  <ImageOff size={12} /> {t("appearance.backgroundClear")}
-                </button>
-                <span className="bg-path" title={background.path}>
-                  {background.path
-                    ? background.path.split(/[\\/]/).pop()
-                    : t("appearance.backgroundEmpty")}
-                </span>
-              </div>
-              <div className={`bg-sliders ${background.path ? "" : "is-disabled"}`}>
-                <label className="bg-slider">
-                  <span>{t("appearance.backgroundOpacity")}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={background.opacity}
-                    disabled={!background.path}
-                    onChange={(event) => background.onOpacity(Number(event.target.value))}
-                    aria-label={t("appearance.backgroundOpacity")}
-                  />
-                  <code>{background.opacity}%</code>
-                </label>
-                <label className="bg-slider">
-                  <span>{t("appearance.backgroundBlur")}</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={40}
-                    step={1}
-                    value={background.blur}
-                    disabled={!background.path}
-                    onChange={(event) => background.onBlur(Number(event.target.value))}
-                    aria-label={t("appearance.backgroundBlur")}
-                  />
-                  <code>{background.blur}px</code>
-                </label>
-              </div>
-              <p className="appearance-hint">{t("appearance.backgroundHint")}</p>
+                  onChange={(event) => background.onOpacity(Number(event.target.value))}
+                  aria-label={t("appearance.backgroundOpacity")}
+                />
+                <code>{background.opacity}%</code>
+              </label>
+              <label className="bg-slider">
+                <span>{t("appearance.backgroundBlur")}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={40}
+                  step={1}
+                  value={background.blur}
+                  disabled={!background.path}
+                  onChange={(event) => background.onBlur(Number(event.target.value))}
+                  aria-label={t("appearance.backgroundBlur")}
+                />
+                <code>{background.blur}px</code>
+              </label>
             </div>
-          ) : null}
-
-          <div className="appearance-preview" data-preview-theme={styleTheme}>
-            <div className="preview-top">
-              <span className="preview-dot" />
-              <span>LIVE PREVIEW</span>
-              <b>{active.name}</b>
-            </div>
-            <div className="preview-bar">
-              <i />
-              <i />
-              <i />
-            </div>
-            <div className="preview-row">
-              <span />
-              <span />
-              <span className="preview-accent" />
-            </div>
-            <p>
-              <PanelLeftClose size={11} /> {t("appearance.persistNote")}
-            </p>
+            <p className="appearance-hint">{t("appearance.backgroundHint")}</p>
           </div>
-        </section>
-      </div>
+        ) : null}
+      </SettingCard>
+
+      {/* ── 06 动效与启动 ───────────────────────────────── */}
+      <SettingCard
+        index="06"
+        span
+        eyebrow="// MOTION / STARTUP"
+        title={t("appearance.groupMotion")}
+        hint={t("appearance.groupMotionHint")}
+        aside={<Sparkles size={16} />}
+      >
+        <div className="setting-list">
+          <SwitchRow
+            title={t("appearance.animations")}
+            description={t("appearance.animationsDesc")}
+            checked={preferences.animations}
+            onChange={onAnimations}
+          />
+          <SwitchRow
+            title={t("appearance.splash")}
+            description={t("appearance.splashDesc")}
+            checked={preferences.splash}
+            onChange={onSplash}
+          />
+        </div>
+      </SettingCard>
+    </>
+  );
+}
+
+/**
+ * 个性化页的单张设置卡：沿用其他 Tab 的 `.panel + .panel-head` 结构，
+ * 右上角放序号（01–06）保留极客感，标题下方是灰色副标题说明。
+ */
+function SettingCard({
+  index,
+  eyebrow,
+  title,
+  hint,
+  aside,
+  span = false,
+  children,
+}: {
+  index: string;
+  eyebrow: string;
+  title: string;
+  hint: string;
+  aside?: ReactNode;
+  span?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`panel settings-card appearance-card ${span ? "span-2" : ""}`}
+      data-setting-card={index}
+    >
+      <header className="panel-head appearance-card-head">
+        <div className="appearance-card-copy">
+          <div className="panel-eyebrow">{eyebrow}</div>
+          <h2>{title}</h2>
+          <p className="appearance-card-hint">{hint}</p>
+        </div>
+        <div className="appearance-card-aside">
+          {aside}
+          <span className="appearance-section-index">{index}</span>
+        </div>
+      </header>
+      <div className="appearance-card-body">{children}</div>
     </section>
   );
 }

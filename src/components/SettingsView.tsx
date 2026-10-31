@@ -510,45 +510,12 @@ export function SettingsView({
             onSidebarCollapsed={onSidebarCollapsed}
             onAnimations={onAnimations}
             onSplash={onSplash}
+            closeBehavior={settings.closeBehavior}
+            onCloseBehavior={(value) => update({ closeBehavior: value })}
             background={backgroundControl}
             hiddenViews={hiddenViews}
             onToggleHiddenView={onToggleHiddenView}
           />
-
-          <section className="panel settings-card span-2">
-            <div className="panel-head">
-              <div>
-                <div className="panel-eyebrow">// WINDOW</div>
-                <h2>{t("settings.windowBehaviorTitle")}</h2>
-              </div>
-              <MonitorPlay size={18} />
-            </div>
-            <div className="settings-field">
-              <span>{t("settings.closeBehaviorLabel")}</span>
-              <div className="settings-field-row">
-                <button
-                  className={`btn btn-sm ${
-                    settings.closeBehavior === "tray" ? "btn-primary" : "btn-ghost"
-                  }`}
-                  aria-pressed={settings.closeBehavior === "tray"}
-                  onClick={() => update({ closeBehavior: "tray" })}
-                >
-                  {t("settings.closeTray")}
-                </button>
-                <button
-                  className={`btn btn-sm ${
-                    settings.closeBehavior === "exit" ? "btn-primary" : "btn-ghost"
-                  }`}
-                  aria-pressed={settings.closeBehavior === "exit"}
-                  onClick={() => update({ closeBehavior: "exit" })}
-                >
-                  {t("settings.closeExit")}
-                </button>
-              </div>
-              <small>
-                {t("settings.closeBehaviorNote")}
-              </small>
-            </div>          </section>
         </section>
 
         {/* ── 通知 ──────────────────────────────────────── */}

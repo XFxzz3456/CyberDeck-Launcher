@@ -3005,7 +3005,8 @@ pre {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   padding-bottom: 12px;
-  align-items: start;
+  /* stretch：同一排两张卡等高，右侧不再留空洞（2026-10-31 个性化页卡片化时改）。 */
+  align-items: stretch;
 }
 
 .settings-card {
@@ -14106,31 +14107,42 @@ body::before {
 }
 
 /* ------------------------------------------------------------------ */
-/* 9) 个性化页子分类（2026-10-30 反馈：主题与其余设置「坨在一起」）      */
-/*    四段：01 主题与配色 / 02 排版与缩放 / 03 界面元素 / 04 背景与预览   */
+/* 9) 个性化页：6 张独立卡片（2026-10-31 重构）                          */
+/*    01 主题与配色 / 02 左侧导航栏 / 03 窗口与侧边栏                    */
+/*    04 字体与排版 / 05 背景图 / 06 动效与启动                          */
+/*    旧版是「一张大卡 + 四段虚线」，设置项混排、窗口行为还落在卡外。      */
 /* ------------------------------------------------------------------ */
 
-.appearance-sections {
-  display: flex;
-  flex-direction: column;
-}
-
-.appearance-section {
-  padding: 16px 0 18px;
-  min-width: 0;
-}
-
-/* 段间用虚线分隔：实线会和卡片自身边框打架，虚线更像「分区」而不是「新卡片」。 */
-.appearance-section + .appearance-section {
-  border-top: 1px dashed var(--line-soft);
-}
-
-.appearance-section-head {
-  display: flex;
+.appearance-card-head {
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 12px;
+}
+
+.appearance-card-copy {
   min-width: 0;
+}
+
+.appearance-card-copy h2 {
+  margin: 0;
+}
+
+.appearance-card-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-2);
+}
+
+.appearance-card-aside {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-2);
+}
+
+.appearance-card-body {
+  min-width: 0;
+  margin-top: 12px;
 }
 
 .appearance-section-index {
@@ -14142,45 +14154,66 @@ body::before {
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   padding: 2px 5px;
   line-height: 1.2;
-  margin-top: 1px;
 }
 
-.appearance-section-copy {
+/* 设置项做成圆角小卡：一块一块，比「一行 + 下边框」更容易扫读。 */
+.setting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.setting-item,
+.setting-list .switch-row {
   min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
 }
 
-.appearance-section-copy h3 {
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+/* 卡片内的开关行改成「文字占满左侧、开关贴右」的网格，
+   不再用 space-between 顶到卡片两端——那样文字看起来是散的。 */
+.setting-list .switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 0;
+}
+
+.setting-list .switch-row > div:first-child {
+  min-width: 0;
+  text-align: left;
+}
+
+.setting-item--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-item-label {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text);
 }
 
-.appearance-section-copy p {
-  margin: 3px 0 0;
-  font-size: 10.5px;
-  line-height: 1.4;
+.setting-item-note {
+  font-size: 11px;
+  line-height: 1.55;
   color: var(--muted-2);
 }
 
-/* 段内两列（界面元素：动效开关 | 导航可见性）。 */
-.appearance-two-col {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
-  align-items: start;
-}
-
-/* 分组后组内第一项不再需要额外的上边距，靠段头提供间隔。 */
-.appearance-section .appearance-label:first-of-type {
-  margin-top: 0;
-}
-
-@media (max-width: 1180px) {
-  .appearance-two-col {
+/* 窄窗（含高缩放导致可用宽度不足）：半宽卡落单列，避免挤成 400px。 */
+@media (max-width: 1120px) {
+  .settings-grid {
     grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
+  }
+
+  .settings-card.span-2 {
+    grid-column: auto;
   }
 }
 
