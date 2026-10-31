@@ -15,6 +15,8 @@
 export const zhCN = {
   activity: {
     backupCreated: "创建备份",
+    updateApplied: "更新模组",
+    updateRolledBack: "回滚模组更新",
     backupCreatedDetail: "已保存 modlist.txt 与 r6/config",
     enrichMetadata: "补全 Nexus 信息",
     importArchives: "导入 {count} 个压缩包",
@@ -800,6 +802,8 @@ export const zhCN = {
   },
   err: {
     adopt: "收编失败",
+    applyUpdate: "更新模组失败",
+    rollbackUpdate: "回滚失败",
     adoptCancel: "取消收编失败",
     adoptRefresh: "收编完成，但刷新模组库失败",
     adoptScan: "收编扫描失败",
@@ -936,6 +940,12 @@ export const zhCN = {
   library: {
     bindFolder: "绑定目录",
     checkUpdates: "检查更新",
+    applyUpdate: "更新模组失败",
+    rollbackUpdate: "回滚失败",
+    updateApplied: "更新模组",
+    updateRolledBack: "回滚模组更新",
+    applyAll: "全部更新",
+    applyAllTitle: "把有更新的模组一次性更新到最新版；每个旧版本都会先在本地留备份，可回滚",
     checkUpdatesTitle: "批量检查已装模组的新版本（只发现，不安装）",
     clipboardFailed: "剪贴板不可用，手动复制。",
     collectionFilter: "集合清单",
@@ -1179,6 +1189,10 @@ export const zhCN = {
     deployList: "部署清单",
     disable: "禁用",
     downloadPage: "下载页",
+    updateNow: "更新到 {version}",
+    rollback: "回滚到 {version}",
+    rollbackTitle: "有可回滚的备份",
+    rollbackDetail: "更新前的版本是 {version}，可以还原。",
     drawerAria: "{name} 详情",
     editAria: "编辑信息",
     editButtonTitle: "编辑名称 / 作者 / 版本 / 分类",
@@ -1948,6 +1962,10 @@ export const zhCN = {
     },
     update: {
       allLatest: "全部都是最新版",
+      appliedTitle: "模组已更新",
+      partialTitle: "{applied} 个更新成功，{failed} 个失败",
+      rollbackTitle: "已回滚到旧版本",
+      rollbackDetail: "当前是 {version}，旧版本文件已恢复。",
       foundDetail: "列表上已打上 UPD 标，点开详情可直接去下载页。",
       foundTitle: "{count} 个模组有新版本",
       unlocked: "已解除更新锁定",

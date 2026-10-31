@@ -31,6 +31,7 @@ mod secret;
 mod store;
 mod translation;
 mod vortex;
+mod updates;
 mod vercmp;
 mod wolvenkit;
 
@@ -47,6 +48,7 @@ use schema::{
     RestoreResult, Settings,
     Snapshot, TranslateReport,
 };
+use updates::{UpdateApplyItem, UpdateApplyReport};
 use collection::{CollectionDeployReport, CollectionPlan};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -2206,7 +2208,7 @@ fn set_mod_category(
     installer::set_category(store.inner(), &id, &category)
 }
 
-/// #1 批量检查库内 Nexus 模组的更新。只发现、只引导，绝不自动覆盖安装。
+/// #1 / P5 批量检查库内 Nexus 模组的更新。
 #[tauri::command]
 async fn nexus_check_updates(app: tauri::AppHandle) -> AppResult<NexusUpdateReport> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -2215,6 +2217,56 @@ async fn nexus_check_updates(app: tauri::AppHandle) -> AppResult<NexusUpdateRepo
     })
     .await
     .map_err(|e| CommandError::new("NEXUS_TASK", format!("Nexus 更新检查任务异常：{e}")))?
+}
+
+/// P5-5B：更新单个模组（下载新版 → 备份旧版 → 替换 → 保持启用状态）。
+#[tauri::command]
+async fn nexus_apply_update(app: tauri::AppHandle, entry_id: String) -> AppResult<UpdateApplyItem> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let data = store.snapshot_data();
+        let game = current_game(&data).ok();
+        updates::apply_update(&app, store.inner(), game.as_ref(), &entry_id)
+    })
+    .await
+    .map_err(|e| CommandError::new("NEXUS_TASK", format!("更新任务异常：{e}")))?
+}
+
+/// P5-5B：批量更新。「全部更新」按钮走这条，单个失败不连坐。
+#[tauri::command]
+async fn nexus_apply_updates(
+    app: tauri::AppHandle,
+    busy: State<'_, BusyTasks>,
+    entry_ids: Vec<String>,
+) -> AppResult<UpdateApplyReport> {
+    let _guard = busy.begin("更新模组");
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let data = store.snapshot_data();
+        let game = current_game(&data).ok();
+        updates::apply_updates(&app, store.inner(), game.as_ref(), &entry_ids)
+    })
+    .await
+    .map_err(|e| CommandError::new("NEXUS_TASK", format!("批量更新任务异常：{e}")))?
+}
+
+/// P5-5B：回滚到更新前的版本（用最近一次留下的备份）。
+#[tauri::command]
+async fn nexus_rollback_update(app: tauri::AppHandle, entry_id: String) -> AppResult<UpdateApplyItem> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let data = store.snapshot_data();
+        let game = current_game(&data).ok();
+        updates::rollback_update(store.inner(), game.as_ref(), &entry_id)
+    })
+    .await
+    .map_err(|e| CommandError::new("NEXUS_TASK", format!("回滚任务异常：{e}")))?
+}
+
+/// P5-5B：有哪些可回滚的备份（前端在模组详情里显示「回滚到旧版本」）。
+#[tauri::command]
+fn nexus_list_update_backups(store: State<'_, Store>) -> Vec<updates::UpdateBackup> {
+    updates::list_backups(&store)
 }
 
 #[tauri::command]
@@ -3621,6 +3673,10 @@ pub fn run() {
             download_queue_clear_finished,
             nexus_prune_downloads,
             nexus_check_updates,
+            nexus_apply_update,
+            nexus_apply_updates,
+            nexus_rollback_update,
+            nexus_list_update_backups,
     nexus_refresh_covers,
     nexus_enrich_metadata,
     attach_mod_from_nexus,

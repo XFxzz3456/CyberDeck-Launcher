@@ -13,6 +13,7 @@ import {
   ListFilter,
   PackageOpen,
   Plus,
+  Download,
   RefreshCw,
   SearchX,
   ShieldCheck,
@@ -112,6 +113,8 @@ export function LibraryView({
   updateMap,
   onUpdateCheck,
   updateChecking = false,
+  onApplyUpdates,
+  applyingUpdates = false,
   onEnrichMetadata,
   enriching = false,
   onVortexImport,
@@ -142,6 +145,9 @@ export function LibraryView({
   updateMap?: Map<string, import("../types").NexusUpdateItem>;
   onUpdateCheck: () => void;
   updateChecking?: boolean;
+  /** P5-5B：一次性更新所有命中的模组（后端会先备份旧版本）。 */
+  onApplyUpdates?: (entryIds: string[]) => void;
+  applyingUpdates?: boolean;
   onEnrichMetadata?: () => void;
   enriching?: boolean;
   /** 从 Vortex 本地数据库导入元数据（需关闭 Vortex）。 */
@@ -746,6 +752,18 @@ export function LibraryView({
                 {t("library.checkUpdates")}
                 {(updateMap?.size ?? 0) > 0 ? t("library.updateCountSuffix", { count: updateMap!.size }) : ""}
               </button>
+              {(updateMap?.size ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => onApplyUpdates?.([...(updateMap?.keys() ?? [])])}
+                  disabled={applyingUpdates || !onApplyUpdates}
+                  title={t("library.applyAllTitle")}
+                >
+                  {applyingUpdates ? <Spinner size={13} /> : <Download size={13} />}
+                  {t("library.applyAll")}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"

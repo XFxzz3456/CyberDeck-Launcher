@@ -372,6 +372,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // P5-5B：更新检查 → 全部更新 → 命中清空。
+    name: "Mod 更新落地",
+    script: "check-updates.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     name: "游戏更新熔断",
     script: "check-update-lock.mjs",
     expect: ["banners=1", "after_click=0"],

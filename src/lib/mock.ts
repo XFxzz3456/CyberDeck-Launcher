@@ -37,6 +37,9 @@ import type {
   NexusCoverRefresh,
   NexusEnrichReport,
   NexusUpdateReport,
+  UpdateApplyItem,
+  UpdateApplyReport,
+  UpdateBackup,
   RestoreResult,
   TranslateReport,
   Settings,
@@ -2386,6 +2389,74 @@ export const mockApi = {
       message: "检查了 3 个模组，1 个有新版本。",
       generatedAt: new Date().toISOString(),
     };
+  },
+
+  /** P5-5B 演示：更新单个模组（不动真实文件，只回一份报告）。 */
+  async nexusApplyUpdate(entryId: string): Promise<UpdateApplyItem> {
+    await sleep(1400);
+    return {
+      entryId,
+      name: "CyberDeck ReLIT",
+      ok: true,
+      fromVersion: "2.4.0",
+      toVersion: "2.5.0",
+      backupId: `${DEMO_DATA}\\update-backups\\${entryId}\\old.zip`,
+      error: null,
+      warning: null,
+    };
+  },
+
+  /** P5-5B 演示：批量更新。 */
+  async nexusApplyUpdates(entryIds: string[]): Promise<UpdateApplyReport> {
+    await sleep(1800);
+    const items = entryIds.map((entryId) => ({
+      entryId,
+      name: "CyberDeck ReLIT",
+      ok: true,
+      fromVersion: "2.4.0",
+      toVersion: "2.5.0",
+      backupId: `${DEMO_DATA}\\update-backups\\${entryId}\\old.zip`,
+      error: null,
+      warning: null,
+    }));
+    return {
+      applied: items.length,
+      failed: 0,
+      items,
+      message: `${items.length} 个模组已更新，旧版本都留了备份。`,
+    };
+  },
+
+  /** P5-5B 演示：回滚。 */
+  async nexusRollbackUpdate(entryId: string): Promise<UpdateApplyItem> {
+    await sleep(1200);
+    return {
+      entryId,
+      name: "CyberDeck ReLIT",
+      ok: true,
+      fromVersion: "2.5.0",
+      toVersion: "2.4.0",
+      backupId: `${DEMO_DATA}\\update-backups\\${entryId}\\old.zip`,
+      error: null,
+      warning: null,
+    };
+  },
+
+  /** P5-5B 演示：备份清单。 */
+  async nexusListUpdateBackups(): Promise<UpdateBackup[]> {
+    await sleep(200);
+    return [
+      {
+        entryId: "mod-relit",
+        name: "CyberDeck ReLIT",
+        modId: 7712,
+        fromVersion: "2.4.0",
+        toVersion: "2.5.0",
+        createdAt: new Date(Date.now() - 3600_000).toISOString(),
+        enabled: true,
+        archive: `${DEMO_DATA}\\update-backups\\mod-relit\\old.zip`,
+      },
+    ];
   },
 
   // ── Nexus Collections 集合安装（演示）─────────────────────────

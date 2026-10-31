@@ -36,6 +36,9 @@ import type {
   NexusCoverRefresh,
   NexusEnrichReport,
   NexusUpdateReport,
+  UpdateApplyItem,
+  UpdateApplyReport,
+  UpdateBackup,
   TranslateReport,
   NexusDownloadResult,
   NexusModDetail,
@@ -441,6 +444,30 @@ export const api = {
   async nexusCheckUpdates(): Promise<NexusUpdateReport> {
     if (!isTauri) return mockApi.nexusCheckUpdates();
     return call<NexusUpdateReport>("nexus_check_updates");
+  },
+
+  /** P5-5B：更新单个模组（下载新版 → 备份旧版 → 替换 → 保持启用状态）。 */
+  async nexusApplyUpdate(entryId: string): Promise<UpdateApplyItem> {
+    if (!isTauri) return mockApi.nexusApplyUpdate(entryId);
+    return call<UpdateApplyItem>("nexus_apply_update", { entryId });
+  },
+
+  /** P5-5B：批量更新，单个失败不连坐。 */
+  async nexusApplyUpdates(entryIds: string[]): Promise<UpdateApplyReport> {
+    if (!isTauri) return mockApi.nexusApplyUpdates(entryIds);
+    return call<UpdateApplyReport>("nexus_apply_updates", { entryIds });
+  },
+
+  /** P5-5B：回滚到更新前的版本（用最近一次备份）。 */
+  async nexusRollbackUpdate(entryId: string): Promise<UpdateApplyItem> {
+    if (!isTauri) return mockApi.nexusRollbackUpdate(entryId);
+    return call<UpdateApplyItem>("nexus_rollback_update", { entryId });
+  },
+
+  /** P5-5B：列出可回滚的备份。 */
+  async nexusListUpdateBackups(): Promise<UpdateBackup[]> {
+    if (!isTauri) return mockApi.nexusListUpdateBackups();
+    return call<UpdateBackup[]>("nexus_list_update_backups");
   },
 
   /** 智能归类：把兜底的「其他 / 工具」按内容与名称重新推断。返回改动条数。 */

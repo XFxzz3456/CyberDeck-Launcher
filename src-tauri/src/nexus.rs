@@ -1013,17 +1013,26 @@ struct DownloadProgress {
     total: Option<u64>,
 }
 
-/// Download a Nexus file to the launcher data directory, then install it.
-///
-/// This is a blocking function. The Tauri command wraps it in
-/// `spawn_blocking` so the webview stays responsive.
-pub fn download_and_install(
+/// 一个已经落到本地 `downloads` 目录的文件（P5-5B 抽出，更新流程复用同一套下载）。
+pub(crate) struct DownloadedFile {
+    pub path: PathBuf,
+    pub file_name: String,
+    pub file_id: u64,
+    /// Nexus 上这个模组的版本号（detail.json 的 version）。
+    pub version: Option<String>,
+    pub picture_url: Option<String>,
+    /// 命中上次留下的同名文件，没有重新下载。
+    pub reused: bool,
+}
+
+/// 下载指定文件到 `downloads` 目录，**不**安装。阻塞调用。
+pub(crate) fn download_file(
     app: &AppHandle,
     store: &Store,
     mod_id: u64,
     file_id: u64,
     file_name_hint: Option<String>,
-) -> AppResult<NexusDownloadResult> {
+) -> AppResult<DownloadedFile> {
     let key = api_key(store)?;
     let client = client()?;
     let detail: ApiMod = get_json(
@@ -1108,16 +1117,15 @@ pub fn download_and_install(
         }
         let part = target.with_extension("part");
         let _ = std::fs::remove_file(&part);
-        let mut output = std::fs::File::create(&part).map_err(|e| {
-            CommandError::new("NEXUS_DOWNLOAD", format!("无法创建下载文件：{e}"))
-        })?;
+        let mut output = std::fs::File::create(&part)
+            .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法创建下载文件：{e}")))?;
         let mut response = response;
         let mut received: u64 = 0;
         let mut buffer = [0u8; 128 * 1024];
         loop {
-            let read = response.read(&mut buffer).map_err(|e| {
-                CommandError::new("NEXUS_DOWNLOAD", format!("下载中断：{e}"))
-            })?;
+            let read = response
+                .read(&mut buffer)
+                .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("下载中断：{e}")))?;
             if read == 0 {
                 break;
             }
@@ -1153,21 +1161,76 @@ pub fn download_and_install(
         if target.exists() {
             let _ = std::fs::remove_file(&target);
         }
-        std::fs::rename(&part, &target).map_err(|e| {
-            CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}"))
-        })?;
+        std::fs::rename(&part, &target)
+            .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}")))?;
     }
 
-    let nexus = NexusRef {
-        mod_id,
-        file_id: Some(file_id),
-        url: format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{mod_id}"),
+    Ok(DownloadedFile {
+        path: target,
+        file_name: download_name,
+        file_id,
         version: Some(detail.version.clone()).filter(|value| !value.trim().is_empty()),
         picture_url: detail.picture_url.clone(),
+        reused,
+    })
+}
+
+/// 下载这个 Mod 的「最新主文件」。
+///
+/// 选法：`category_name == MAIN` 的条目里取 `file_id` 最大的（Nexus 的 file_id
+/// 单调递增，等价于最新上传）；一个 MAIN 都没有时退回全体 file_id 最大的那个。
+/// 这样「可选补丁」「旧版本」不会被误当成更新源。
+pub(crate) fn download_latest(app: &AppHandle, store: &Store, mod_id: u64) -> AppResult<DownloadedFile> {
+    let key = api_key(store)?;
+    let client = client()?;
+    let files_raw: ApiFiles = get_json(
+        &client,
+        &key,
+        &format!("{API_BASE}/games/{GAME_DOMAIN}/mods/{mod_id}/files.json"),
+    )?;
+
+    let newest = |only_main: bool| -> Option<(u64, String)> {
+        files_raw
+            .files
+            .iter()
+            .filter(|file| !only_main || file.category_name.eq_ignore_ascii_case("MAIN"))
+            .max_by_key(|file| file.file_id)
+            .map(|file| {
+                let hint = if !file.file_name.trim().is_empty() {
+                    file.file_name.clone()
+                } else {
+                    file.name.clone()
+                };
+                (file.file_id, hint)
+            })
+    };
+    let (file_id, hint) = newest(true)
+        .or_else(|| newest(false))
+        .ok_or_else(|| {
+            CommandError::new("NEXUS_NO_FILES", "这个模组在 Nexus 上没有任何文件可下载。")
+        })?;
+    download_file(app, store, mod_id, file_id, Some(hint))
+}
+
+/// 下载并安装一个新模组（首次安装路径）。阻塞调用。
+pub fn download_and_install(
+    app: &AppHandle,
+    store: &Store,
+    mod_id: u64,
+    file_id: u64,
+    file_name_hint: Option<String>,
+) -> AppResult<NexusDownloadResult> {
+    let downloaded = download_file(app, store, mod_id, file_id, file_name_hint)?;
+    let nexus = NexusRef {
+        mod_id,
+        file_id: Some(downloaded.file_id),
+        url: format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{mod_id}"),
+        version: downloaded.version.clone(),
+        picture_url: downloaded.picture_url.clone(),
         latest_version: None,
         last_check: None,
     };
-    let entry = installer::install_archive(store, &target.to_string_lossy(), Some(nexus))?;
+    let entry = installer::install_archive(store, &downloaded.path.to_string_lossy(), Some(nexus))?;
     {
         let mut data = store.data.lock().expect("state mutex poisoned");
         data.mods.push(entry.clone());
@@ -1179,19 +1242,18 @@ pub fn download_and_install(
 
     Ok(NexusDownloadResult {
         outcome: InstallOutcome {
-            path: target.to_string_lossy().to_string(),
+            path: downloaded.path.to_string_lossy().to_string(),
             success: true,
             mod_entry: Some(entry),
             error: None,
             error_code: None,
         },
-        file_name: download_name,
-        path: target.to_string_lossy().to_string(),
-        reused,
+        file_name: downloaded.file_name,
+        path: downloaded.path.to_string_lossy().to_string(),
+        reused: downloaded.reused,
     })
 }
 
-/// Remove downloaded installers older than `days`. Returns the number removed.
 pub fn prune_downloads(store: &Store, days: u64) -> usize {
     let dir = store.data_dir.join("downloads");
     let Ok(entries) = std::fs::read_dir(&dir) else {

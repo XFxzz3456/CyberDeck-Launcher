@@ -6,6 +6,7 @@ import {
   Box,
   ChevronRight,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -16,9 +17,10 @@ import {
   Pencil,
   Power,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
-import type { ConflictInfo, ModEntry } from "../types";
+import type { ConflictInfo, ModEntry, UpdateBackup } from "../types";
 import type { EffectiveDependency } from "../lib/dependencies";
 import { CATEGORIES, LAYOUT_LABEL_KEY } from "../types";
 import { formatBytes, formatDate, relativeTime } from "../lib/format";
@@ -34,6 +36,10 @@ export function ModDetailDrawer({
   conflicts,
   missingDeps = [],
   updateInfo,
+  backupInfo,
+  onApplyUpdate,
+  onRollbackUpdate,
+  applyingUpdate = false,
   busy,
   onClose,
   onToggle,
@@ -65,6 +71,11 @@ export function ModDetailDrawer({
   onUnbindTranslation?: (childId: string) => void;
   /** #1 更新检查命中时传入，抽屉里给出「查看新版本」入口。 */
   updateInfo?: { currentVersion: string | null; latestVersion: string; pageUrl: string } | null;
+  /** 这个模组可回滚的备份（有值才显示「回滚」按钮）。 */
+  backupInfo?: UpdateBackup | null;
+  onApplyUpdate?: () => void;
+  onRollbackUpdate?: () => void;
+  applyingUpdate?: boolean;
   busy: boolean;
   onClose: () => void;
   onToggle: (enabled: boolean) => void;
@@ -371,9 +382,43 @@ export function ModDetailDrawer({
                   })}
                 </span>
               </div>
-              <button className="btn btn-sm btn-primary" onClick={() => onOpenNexus(updateInfo.pageUrl)}>
-                <ExternalLink size={12} /> {t("modDetail.downloadPage")}
-              </button>
+              <div className="drawer-update-actions">
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={onApplyUpdate}
+                  disabled={applyingUpdate || !onApplyUpdate}
+                >
+                  {applyingUpdate ? <Spinner size={12} /> : <Download size={12} />}
+                  {t("modDetail.updateNow", { version: updateInfo.latestVersion })}
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => onOpenNexus(updateInfo.pageUrl)}
+                >
+                  <ExternalLink size={12} /> {t("modDetail.downloadPage")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {backupInfo && !updateInfo ? (
+            <div className="drawer-update">
+              <div>
+                <strong>{t("modDetail.rollbackTitle")}</strong>
+                <span>
+                  {t("modDetail.rollbackDetail", { version: backupInfo.fromVersion ?? "?" })}
+                </span>
+              </div>
+              <div className="drawer-update-actions">
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={onRollbackUpdate}
+                  disabled={applyingUpdate || !onRollbackUpdate}
+                >
+                  {applyingUpdate ? <Spinner size={12} /> : <Undo2 size={12} />}
+                  {t("modDetail.rollback", { version: backupInfo.fromVersion ?? "?" })}
+                </button>
+              </div>
             </div>
           ) : null}
 

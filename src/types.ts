@@ -763,6 +763,39 @@ export interface NexusUpdateReport {
   generatedAt: string;
 }
 
+/** 单个模组的更新结果（P5-5B）。 */
+export interface UpdateApplyItem {
+  entryId: string;
+  name: string;
+  ok: boolean;
+  fromVersion: string | null;
+  toVersion: string | null;
+  /** 备份 zip 路径；回滚靠它定位。失败时为 null。 */
+  backupId: string | null;
+  error: string | null;
+  /** 更新成功但后续动作（重新部署）出问题时的提示。 */
+  warning: string | null;
+}
+
+export interface UpdateApplyReport {
+  applied: number;
+  failed: number;
+  items: UpdateApplyItem[];
+  message: string;
+}
+
+/** 一份旧版本备份（data/update-backups 下的清单）。 */
+export interface UpdateBackup {
+  entryId: string;
+  name: string;
+  modId: number;
+  fromVersion: string | null;
+  toVersion: string | null;
+  createdAt: string;
+  enabled: boolean;
+  archive: string;
+}
+
 export interface NexusDownloadProgress {
   modId: number;
   fileId: number;

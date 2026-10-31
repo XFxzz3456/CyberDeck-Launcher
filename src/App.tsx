@@ -20,7 +20,7 @@ import type {
   NxmLink,
   NexusStatus,
   NexusUpdateItem,
-  NexusUpdateReport,
+  NexusUpdateReport,  UpdateBackup,
   Settings,
   Snapshot,
   ExternalToolEntry,
@@ -279,6 +279,8 @@ export default function App() {
   const [nexus, setNexus] = useState<NexusStatus | null>(null);
   // #1 更新检查：结果与进行中标记。updates 按 entryId 索引供列表/抽屉查。
   const [updateReport, setUpdateReport] = useState<NexusUpdateReport | null>(null);
+  const [applyingUpdates, setApplyingUpdates] = useState(false);
+  const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [enriching, setEnriching] = useState(false);
   // 收编（Adopt）：扫描结果 / 执行进度 / 执行结果 / 任务行 id。
@@ -1794,6 +1796,80 @@ export default function App() {
     }
   }, [recordActivity, showError, toast, updateChecking]);
 
+  /**
+   * P5-5B：执行更新。单个走 nexus_apply_update，多个走批量命令。
+   * 更新前每个模组的旧暂存目录都会打一份 zip 备份，所以这里是可回滚的。
+   */
+  const handleApplyUpdates = useCallback(
+    async (entryIds: string[]) => {
+      if (applyingUpdates || entryIds.length === 0) return;
+      setApplyingUpdates(true);
+      try {
+        const report =
+          entryIds.length === 1
+            ? await (async () => {
+                const item = await api.nexusApplyUpdate(entryIds[0]);
+                return {
+                  applied: item.ok ? 1 : 0,
+                  failed: item.ok ? 0 : 1,
+                  items: [item],
+                  message: item.ok ? (item.warning ?? "") : (item.error ?? ""),
+                };
+              })()
+            : await api.nexusApplyUpdates(entryIds);
+        refresh();
+        setUpdateReport((current) =>
+          current
+            ? {
+                ...current,
+                updates: current.updates.filter(
+                  (item) => !report.items.some((done) => done.ok && done.entryId === item.entryId),
+                ),
+              }
+            : current,
+        );
+        if (report.failed > 0) {
+          toast(
+            "warn",
+            t("toast.update.partialTitle", { applied: report.applied, failed: report.failed }),
+            report.items
+              .filter((item) => !item.ok)
+              .map((item) => `${item.name}：${item.error ?? ""}`)
+              .join("；"),
+            "update",
+          );
+        } else {
+          toast("ok", t("toast.update.appliedTitle"), report.message, "update");
+        }
+        recordActivity("deploy", t("activity.updateApplied"), report.message);
+      } catch (error) {
+        showError(error, t("err.applyUpdate"));
+      } finally {
+        setApplyingUpdates(false);
+      }
+    },
+    [applyingUpdates, recordActivity, refresh, showError, toast],
+  );
+
+  /** P5-5B：回滚到更新前的版本（用最近一次留下的备份）。 */
+  const handleRollbackUpdate = useCallback(
+    async (entryId: string) => {
+      if (applyingUpdates) return;
+      setApplyingUpdates(true);
+      try {
+        const item = await api.nexusRollbackUpdate(entryId);
+        refresh();
+        toast("ok", t("toast.update.rollbackTitle"), t("toast.update.rollbackDetail", { version: item.toVersion ?? "?" }), "update");
+        recordActivity("deploy", t("activity.updateRolledBack"), item.name);
+      } catch (error) {
+        showError(error, t("err.rollbackUpdate"));
+      } finally {
+        setApplyingUpdates(false);
+      }
+    },
+    [applyingUpdates, recordActivity, refresh, showError, toast],
+  );
+
   /** 补全收编模组的 Nexus 元数据：文件名里的 ModId → 官方名称/作者/版本/封面。 */
   const runEnrichMetadata = useCallback(async () => {
     if (enriching) return;
@@ -2104,6 +2180,23 @@ export default function App() {
     />
   );
 
+  // 详情抽屉打开时拉一次「可回滚备份」，供「回滚到旧版本」按钮判断。
+  useEffect(() => {
+    if (!detailId) return;
+    let alive = true;
+    void api
+      .nexusListUpdateBackups()
+      .then((list) => {
+        if (alive) setUpdateBackups(list);
+      })
+      .catch(() => {
+        /* 备份清单拿不到不影响主流程，静默即可 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [detailId]);
+
   if (bootError) {
     return (
       <>
@@ -2165,6 +2258,7 @@ export default function App() {
     t("confirm.profileSwitch.stepDeploy"),
     t("confirm.profileSwitch.stepRefresh"),
   ];
+
   // #1 更新检查命中表：entryId → 更新条目，列表徽标与抽屉共用。
   const updateMap = new Map<string, NexusUpdateItem>(
     (updateReport?.updates ?? []).map((item) => [item.entryId, item]),
@@ -2410,6 +2504,8 @@ export default function App() {
                 updateMap={updateMap}
                 onUpdateCheck={() => void runUpdateCheck()}
                 updateChecking={updateChecking}
+                onApplyUpdates={(ids) => void handleApplyUpdates(ids)}
+                applyingUpdates={applyingUpdates}
                 onEnrichMetadata={() => void runEnrichMetadata()}
                 enriching={enriching}
                 onVortexImport={() => void runVortexImport()}
@@ -2567,6 +2663,12 @@ export default function App() {
             }
           }}
           updateInfo={updateMap.get(detailMod.id) ?? null}
+          backupInfo={
+            updateBackups.find((item) => item.entryId === detailMod.id) ?? null
+          }
+          onApplyUpdate={() => void handleApplyUpdates([detailMod.id])}
+          onRollbackUpdate={() => void handleRollbackUpdate(detailMod.id)}
+          applyingUpdate={applyingUpdates}
           busy={busyId === detailMod.id}
           onClose={() => setDetailId(null)}
           onToggle={(enabled) => void handleToggle(detailMod, enabled)}

@@ -11835,6 +11835,14 @@ body::before {
   line-height: 1.5;
   color: var(--muted);
 }
+/* P5-5B：更新块里的按钮组（更新 / 打开下载页 / 回滚）允许换行，
+   窄抽屉里不会把文字挤成两行半。 */
+.drawer-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
 
 /* #4 前置行状态 */
 .drawer-prereq-row.is-ok {
