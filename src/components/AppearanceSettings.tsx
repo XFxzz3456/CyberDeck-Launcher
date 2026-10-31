@@ -343,12 +343,11 @@ export function AppearanceSettings({
         aside={<EyeOff size={16} />}
       >
         <p className="bg-hint">{t("appearance.hiddenViewsHint")}</p>
-        <div className="setting-list">
+        <div className="setting-list setting-list--nav">
           {HIDEABLE_VIEWS.map((viewId) => (
             <SwitchRow
               key={viewId}
               title={t(`hiddenView.${viewId}` as MessageKey)}
-              description={t("appearance.hiddenViewItemDesc")}
               checked={!hiddenViews[viewId]}
               onChange={(visible) => onToggleHiddenView?.(viewId, !visible)}
             />

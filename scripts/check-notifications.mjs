@@ -109,7 +109,7 @@ const never = await stored();
 console.log(`never=${never}`);
 check("never stored", never === "never");
 
-await page.locator(".switch-row", { hasText: "下载" }).getByRole("button", { name: "测试" }).click();
+await page.locator(".panel", { hasText: "通知" }).getByRole("button", { name: "发送测试通知" }).click();
 await page.waitForTimeout(400);
 const stickyToast = await page.locator(".toast[data-sticky='1']").count();
 console.log(`stickyToast=${stickyToast}`);
@@ -121,7 +121,7 @@ await page.waitForTimeout(300);
 // 7) 回 5 秒档：普通 toast 会自动消失
 await row.locator(".scale-seg", { hasText: "5 秒" }).click();
 await page.waitForTimeout(200);
-await page.locator(".switch-row", { hasText: "下载" }).getByRole("button", { name: "测试" }).click();
+await page.locator(".panel", { hasText: "通知" }).getByRole("button", { name: "发送测试通知" }).click();
 await page.waitForTimeout(400);
 const normalToast = await page.locator(".toast[data-sticky='0']").count();
 console.log(`normalToast=${normalToast}`);

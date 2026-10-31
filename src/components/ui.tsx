@@ -46,7 +46,8 @@ export function SwitchRow({
   action,
 }: {
   title: string;
-  description: string;
+  /** 3E-1：可不传——删掉重复副标题后，单行标题的行不再需要描述。 */
+  description?: string;
   checked: boolean;
   /** 强制开启的行（如冲突通知）不传 onChange，开关本身也 disabled。 */
   onChange?: (checked: boolean) => void;
@@ -57,7 +58,7 @@ export function SwitchRow({
     <div className="switch-row">
       <div>
         <div className="switch-title">{title}</div>
-        <div className="switch-desc">{description}</div>
+        {description ? <div className="switch-desc">{description}</div> : null}
       </div>
       <div className="switch-row-end">
         {action}

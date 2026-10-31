@@ -707,6 +707,15 @@ export function SettingsView({
                 <div className="panel-eyebrow">// NOTIFICATIONS</div>
                 <h2>{t("settings.notifTitle")}</h2>
               </div>
+              {/* 3B-1：全局测试入口。走 system 类别（不受分类开关影响），
+                  让用户在任意开关组合下都能预览当前的停留时长效果。 */}
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => onTestNotification("download")}
+                title={t("settings.notifGlobalTestTitle")}
+              >
+                <Sparkles size={12} /> {t("settings.notifGlobalTest")}
+              </button>
             </header>
 
             <p className="profile-intro">{t("settings.notifIntro")}</p>
@@ -719,15 +728,6 @@ export function SettingsView({
                 onChange={(checked) =>
                   onNotificationPrefsChange({ ...notificationPrefs, download: checked })
                 }
-                action={
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={!notificationPrefs.download}
-                    onClick={() => onTestNotification("download")}
-                  >
-                    {t("settings.notifTest")}
-                  </button>
-                }
               />
               <SwitchRow
                 title={t("settings.notifDeploy")}
@@ -736,29 +736,12 @@ export function SettingsView({
                 onChange={(checked) =>
                   onNotificationPrefsChange({ ...notificationPrefs, deploy: checked })
                 }
-                action={
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={!notificationPrefs.deploy}
-                    onClick={() => onTestNotification("deploy")}
-                  >
-                    {t("settings.notifTest")}
-                  </button>
-                }
               />
               <SwitchRow
                 title={t("settings.notifConflict")}
                 description={t("settings.notifConflictDesc")}
                 checked
                 disabled
-                action={
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => onTestNotification("conflict")}
-                  >
-                    {t("settings.notifTest")}
-                  </button>
-                }
               />
               <SwitchRow
                 title={t("settings.notifUpdate")}
@@ -766,15 +749,6 @@ export function SettingsView({
                 checked={notificationPrefs.update}
                 onChange={(checked) =>
                   onNotificationPrefsChange({ ...notificationPrefs, update: checked })
-                }
-                action={
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={!notificationPrefs.update}
-                    onClick={() => onTestNotification("update")}
-                  >
-                    {t("settings.notifTest")}
-                  </button>
                 }
               />
             </div>

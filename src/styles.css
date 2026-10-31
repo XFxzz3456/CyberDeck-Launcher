@@ -15260,6 +15260,18 @@ body::before {
   text-align: left;
 }
 
+/* 3E：左侧导航栏区块精简——删掉每行重复副标题后行内容只剩单行标题，
+   行内边距与列表间距同步收窄；标题与右侧 Toggle 垂直居中（网格 align-items 已保证）。 */
+.setting-list--nav {
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.setting-list--nav .switch-row {
+  padding: 7px 13px;
+  border-radius: 8px;
+}
+
 .setting-item--stack {
   display: flex;
   flex-direction: column;

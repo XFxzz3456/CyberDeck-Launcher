@@ -331,7 +331,7 @@ export const zhCN = {
     fontPreviewCode: "load_order::apply(195) → archive.xl  [OK]",
     styleLabel: "视觉风格",
     hiddenViewsHint: "隐藏不常用的侧边栏入口，让界面更专注。模组库与设置是固定入口，不可隐藏；隐藏当前所在页面时会自动跳回模组库。",
-    hiddenViewItemDesc: "在侧边栏显示这个入口",
+    // 3E-1：列表项下重复的「在侧边栏显示这个入口」副标题已随 UI 删除，词条一并移除。
   },
   banner: {
     gameUpdated: {
@@ -1577,7 +1577,9 @@ export const zhCN = {
     notifDurationUnit: "秒",
     notifIntro: "关掉的类别不再弹提示条；活动记录仍会保留在铃铛面板里。",
     notifTest: "测试",
-    notifTestDetail: "这是「{cat}」类通知的样子。",
+    notifGlobalTest: "发送测试通知",
+    notifGlobalTestTitle: "弹一条示例通知，预览当前的停留时长效果",
+    notifTestDetail: "这是一条示例通知，会按当前设置的停留时长自动消失。",
     notifTestTitle: "测试通知",
     notifTitle: "通知",
     notifUpdate: "软件更新",

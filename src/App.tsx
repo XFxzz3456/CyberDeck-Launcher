@@ -92,7 +92,6 @@ import {
   saveNotificationDuration,
   saveNotificationPrefs,
   toastTtl,
-  type NotificationCategory,
   type NotificationDuration,
   type NotificationPrefs,
   type ToastCategory,
@@ -359,21 +358,13 @@ export default function App() {
     saveNotificationDuration(value);
   }, []);
 
-  /** 设置页「测试」按钮：直接走通知门，关掉的类别点了也不弹（按钮在设置页已禁用）。 */
-  const handleTestNotification = useCallback(
-    (category: NotificationCategory) => {
-      const catLabel =
-        category === "download"
-          ? t("settings.notifDownload")
-          : category === "deploy"
-            ? t("settings.notifDeploy")
-            : category === "conflict"
-              ? t("settings.notifConflict")
-              : t("settings.notifUpdate");
-      toast("info", t("settings.notifTestTitle"), t("settings.notifTestDetail", { cat: catLabel }), category);
-    },
-    [toast],
-  );
+  /**
+   * 3B-1 全局「发送测试通知」：走 system 类别（不受分类开关影响），
+   * 任何开关组合下都能弹，专门让用户预览当前的停留时长效果。
+   */
+  const handleTestNotification = useCallback(() => {
+    toast("info", t("settings.notifTestTitle"), t("settings.notifTestDetail"), "system");
+  }, [toast]);
 
   // 解除游戏更新熔断：把当前 exe 版本记为已确认版本，随后刷新整个快照。
 
