@@ -207,6 +207,8 @@ fn apply(entry: &mut ModEntry, source: &VortexMod) {
         ),
         version: entry.version.clone(),
         picture_url: source.picture_url.clone(),
+        latest_version: None,
+        last_check: None,
     });
     if entry
         .nexus_cover_url

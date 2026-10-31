@@ -68,6 +68,10 @@ export interface NexusRef {
   version: string | null;
   /** Nexus 官方封面图；只有从 N 网下载的 Mod 才有，本地导入为 null。 */
   pictureUrl?: string | null;
+  /** 上次检查时 Nexus 上的版本号；从未检查过为 null。 */
+  latestVersion?: string | null;
+  /** 上次检查时间（ISO 8601）；从未检查过为 null。 */
+  lastCheck?: string | null;
 }
 
 export interface ModEntry {
@@ -431,6 +435,8 @@ export interface AppStateData {
   lastGameVersion: string | null;
   lastLaunch: string | null;
   backup: BackupInfo | null;
+  /** 最近一次检查 Mod 更新的时间（ISO 8601）；从未查过为 null。 */
+  lastUpdateCheck: string | null;
 }
 
 export interface GameInfo {
@@ -751,6 +757,8 @@ export interface NexusUpdateReport {
   skipped: number;
   failed: number;
   updates: NexusUpdateItem[];
+  /** 有 Nexus 来源但本轮配额用完没查的条数（既非「无更新」也非失败）。 */
+  stale?: number;
   message: string;
   generatedAt: string;
 }

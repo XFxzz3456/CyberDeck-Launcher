@@ -797,6 +797,8 @@ mod tests {
                 url: format!("https://www.nexusmods.com/cyberpunk2077/mods/{mod_id}"),
                 version: Some(version.to_string()),
                 picture_url: None,
+                latest_version: None,
+                last_check: None,
             }),
             staging_path: String::new(),
             cover_path: None,

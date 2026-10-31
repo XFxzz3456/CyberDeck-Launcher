@@ -734,6 +734,8 @@ fn install_task(app: &AppHandle, id: &str, downloads_dir: &Path) {
         url: format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{}", task.mod_id),
         version: None,
         picture_url: None,
+        latest_version: None,
+        last_check: None,
     };
     match installer::install_archive(&store, &target.to_string_lossy(), Some(nexus)) {
         Ok(entry) => {

@@ -538,6 +538,7 @@ function createInitial(): DemoDb {
       gameDir: DEMO_GAME,
       files: ["archive/pc/mod/modlist.txt", "r6/config/settings/UserSettings.json"],
     },
+    lastUpdateCheck: iso(3),
   };
   return { state, gameDir: DEMO_GAME };
 }

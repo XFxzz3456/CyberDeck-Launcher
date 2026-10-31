@@ -31,6 +31,7 @@ mod secret;
 mod store;
 mod translation;
 mod vortex;
+mod vercmp;
 mod wolvenkit;
 
 use config_resolver::{GlobalConfigGroups, ModConfigView};

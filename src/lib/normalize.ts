@@ -178,6 +178,7 @@ function normalizeState(raw: unknown, fallbackSettings: Settings): AppStateData 
     lastGameVersion: optionalText(state.lastGameVersion),
     lastLaunch: optionalText(state.lastLaunch),
     backup: state.backup && typeof state.backup === "object" ? (state.backup as AppStateData["backup"]) : null,
+    lastUpdateCheck: optionalText(state.lastUpdateCheck),
   };
 }
 

@@ -512,6 +512,8 @@ pub fn attach_from_url(store: &Store, entry_id: &str, url: &str) -> AppResult<()
         url: format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{mod_id}"),
         version: entry.version.clone(),
         picture_url: raw.picture_url.clone(),
+        latest_version: None,
+        last_check: None,
     });
     if entry
         .nexus_cover_url
@@ -716,6 +718,8 @@ pub fn enrich_metadata(store: &Store) -> AppResult<crate::schema::NexusEnrichRep
                 url: item.url,
                 version: entry.version.clone(),
                 picture_url: item.picture_url.clone(),
+                latest_version: None,
+                last_check: None,
             });
             if entry
                 .nexus_cover_url
@@ -782,23 +786,55 @@ pub fn update_metadata(
     store.save(&data)
 }
 
-/// 批量检查库内 Nexus 模组的更新（#1）。
+/// Nexus `updated.json` 的条目：只取时间戳，其它字段不关心。
+#[derive(Debug, Clone, Deserialize)]
+struct ApiUpdatedEntry {
+    #[serde(default)]
+    latest_file_update: u64,
+    /// 评论/点赞等「非文件」活跃时间：不参与排序，保留是为了看清 API 形状。
+    #[serde(default)]
+    #[allow(dead_code)]
+    latest_mod_activity: u64,
+}
+
+/// 批量检查库内 Nexus 模组的更新（P5-5A 重构）。
 ///
-/// 边界（与报告 #1 的裁决一致）：只做「发现 + 引导」，不做自动覆盖安装。
-/// 判定信号是版本字符串：Nexus mod.json 的 version 与安装时存下的
-/// `NexusRef.version` 不一致即视为有更新。老记录没存版本的跳过——
-/// 宁可漏报也不把「未知」当成「有更新」误报。
+/// 两段式，目的都是省配额：
+/// 1. 先拉 `mods/updated.json`（**一次**请求）——它只含最近一个月有文件变更的
+///    模组。命中的先查，因为它们最可能有更新。
+/// 2. 再按预算逐条查 `mods/{id}.json` 拿版本号。预算 40 条 + 250ms 节流，
+///    超出的记为 `stale`（「这轮没查完」，不是「没有更新」）。
 ///
-/// 每个模组一个 mod.json 请求（够用：files.json 会翻倍配额却只多拿到文件清单），
-/// 条与条之间 250ms 节流（与 refresh_covers 同理由），单批上限 40 个防止一次点
-/// 击把速率限制吃穿。阻塞调用，命令层要放进 `spawn_blocking`。
+/// 判定用 `vercmp::is_newer` 而不是字符串相等：`1.0` 与 `1.0.0` 是同一版本，
+/// `1.10` 比 `1.9` 新——字符串比会把这两种都判错。
+/// 老记录没存版本号的跳过：宁可漏报也不把「未知」当「有更新」。
+///
+/// 检查结果会写回每条 `NexusRef.latest_version` / `last_check`，
+/// 以及状态里的 `last_update_check`，前端据此显示「上次检查」。
 pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
     const MAX_CHECKS: usize = 40;
     let key = api_key(store)?;
     let client = client()?;
 
-    // 无锁收集目标（快照克隆即放），网络阶段不占 store.data。
-    let mut targets: Vec<(String, u64, Option<String>, String)> = Vec::new();
+    // updated.json 拿不到不致命：退回「全量详情比对」，只是费配额。
+    let updated: std::collections::HashMap<String, ApiUpdatedEntry> = get_json(
+        &client,
+        &key,
+        &format!("{API_BASE}/games/{GAME_DOMAIN}/mods/updated.json"),
+    )
+    .unwrap_or_default();
+
+    struct Target {
+        entry_id: String,
+        mod_id: u64,
+        current_version: String,
+        name: String,
+        recently_updated: bool,
+        /// updated.json 里的最近文件更新时间戳；0 = 不在近一个月窗口内。
+        file_update: u64,
+    }
+
+    let mut targets: Vec<Target> = Vec::new();
     let mut skipped = 0usize;
     {
         let snapshot = store.snapshot_data();
@@ -807,25 +843,25 @@ pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
                 skipped += 1;
                 continue;
             };
-            // 没存安装版本时无从比较，视为跳过而不是误报。
-            let has_version = reference
+            let version = reference
                 .version
                 .as_deref()
-                .is_some_and(|v| !v.trim().is_empty());
-            if !has_version {
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let Some(version) = version else {
+                // 没存安装版本时无从比较，视为跳过而不是误报。
                 skipped += 1;
                 continue;
-            }
-            if targets.len() >= MAX_CHECKS {
-                skipped += 1;
-                continue;
-            }
-            targets.push((
-                entry.id.clone(),
-                reference.mod_id,
-                reference.version.clone(),
-                entry.name.clone(),
-            ));
+            };
+            let hit = updated.get(&reference.mod_id.to_string());
+            targets.push(Target {
+                entry_id: entry.id.clone(),
+                mod_id: reference.mod_id,
+                current_version: version.to_string(),
+                name: entry.name.clone(),
+                recently_updated: hit.is_some(),
+                file_update: hit.map(|item| item.latest_file_update).unwrap_or(0),
+            });
         }
     }
 
@@ -835,6 +871,7 @@ pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
             skipped,
             failed: 0,
             updates: Vec::new(),
+            stale: 0,
             message: if skipped > 0 {
                 "库里没有可比较版本的 Nexus 模组（老记录没存版本号）。重新从 N 网下载一次就能记录版本。".to_string()
             } else {
@@ -844,28 +881,45 @@ pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
         });
     }
 
+    // 最近一个月动过的排前面，同组内按文件更新时间从新到旧：配额有限时
+    // 优先覆盖最可能变的那批（`latest_mod_activity` 是评论/点赞时间，不参与排序）。
+    targets.sort_by(|left, right| {
+        right
+            .recently_updated
+            .cmp(&left.recently_updated)
+            .then(right.file_update.cmp(&left.file_update))
+    });
+
+    let total = targets.len();
     let mut updates: Vec<NexusUpdateItem> = Vec::new();
     let mut failed = 0usize;
-    for (attempt, (entry_id, mod_id, current_version, name)) in targets.iter().enumerate() {
+    let mut checked_ids: Vec<(String, Option<String>, String)> = Vec::new();
+
+    for (attempt, target) in targets.iter().take(MAX_CHECKS).enumerate() {
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(250));
         }
-        let url = format!("{API_BASE}/games/{GAME_DOMAIN}/mods/{mod_id}.json");
+        let url = format!("{API_BASE}/games/{GAME_DOMAIN}/mods/{}.json", target.mod_id);
         match get_json::<ApiMod>(&client, &key, &url) {
             Ok(raw) => {
-                let latest = raw.version.trim();
-                let current = current_version.as_deref().unwrap_or_default().trim();
-                if !latest.is_empty() && !latest.eq_ignore_ascii_case(current) {
-                    let page = raw
-                        .mod_page_url
-                        .clone()
-                        .unwrap_or_else(|| format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{mod_id}"));
+                let latest = raw.version.trim().to_string();
+                let now = crate::store::now_iso();
+                if !latest.is_empty() {
+                    checked_ids.push((target.entry_id.clone(), Some(latest.clone()), now.clone()));
+                }
+                if crate::vercmp::is_newer(&latest, &target.current_version) {
+                    let page = raw.mod_page_url.clone().unwrap_or_else(|| {
+                        format!(
+                            "https://www.nexusmods.com/{GAME_DOMAIN}/mods/{}",
+                            target.mod_id
+                        )
+                    });
                     updates.push(NexusUpdateItem {
-                        entry_id: entry_id.clone(),
-                        mod_id: *mod_id,
-                        name: name.clone(),
-                        current_version: Some(current.to_string()),
-                        latest_version: latest.to_string(),
+                        entry_id: target.entry_id.clone(),
+                        mod_id: target.mod_id,
+                        name: target.name.clone(),
+                        current_version: Some(target.current_version.clone()),
+                        latest_version: latest,
                         page_url: page,
                     });
                 }
@@ -875,20 +929,45 @@ pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
         }
     }
 
-    let checked = targets.len();
+    let attempted = total.min(MAX_CHECKS);
+    let checked = attempted.saturating_sub(failed);
+    let stale = total.saturating_sub(MAX_CHECKS);
     let found = updates.len();
-    let message = if failed == 0 {
-        format!("检查了 {checked} 个模组，{found} 个有新版本。")
-    } else {
-        format!("检查了 {checked} 个模组，{found} 个有新版本，{failed} 个查询失败。")
-    };
+    let generated_at = crate::store::now_iso();
+
+    // 回写检查痕迹：哪条查过、查到的最新版本、什么时候查的。
+    {
+        let mut data = store.data.lock().expect("state mutex poisoned");
+        for (entry_id, latest_version, checked_at) in checked_ids.iter() {
+            if let Some(entry) = data.mods.iter_mut().find(|item| &item.id == entry_id) {
+                if let Some(reference) = entry.nexus.as_mut() {
+                    if latest_version.is_some() {
+                        reference.latest_version = latest_version.clone();
+                    }
+                    reference.last_check = Some(checked_at.clone());
+                }
+            }
+        }
+        data.last_update_check = Some(generated_at.clone());
+        let _ = store.save(&data);
+    }
+
+    let mut message = format!("检查了 {checked} 个模组，{found} 个有新版本。");
+    if failed > 0 {
+        message = format!("检查了 {checked} 个模组，{found} 个有新版本，{failed} 个查询失败。");
+    }
+    if stale > 0 {
+        message.push_str(&format!("还有 {stale} 个这轮没查完，下次再查。"));
+    }
+
     Ok(NexusUpdateReport {
         checked,
         skipped,
         failed,
         updates,
+        stale,
         message,
-        generated_at: crate::store::now_iso(),
+        generated_at,
     })
 }
 
@@ -1085,6 +1164,8 @@ pub fn download_and_install(
         url: format!("https://www.nexusmods.com/{GAME_DOMAIN}/mods/{mod_id}"),
         version: Some(detail.version.clone()).filter(|value| !value.trim().is_empty()),
         picture_url: detail.picture_url.clone(),
+        latest_version: None,
+        last_check: None,
     };
     let entry = installer::install_archive(store, &target.to_string_lossy(), Some(nexus))?;
     {

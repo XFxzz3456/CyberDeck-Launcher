@@ -504,6 +504,13 @@ pub struct NexusRef {
     /// 与 Mod 列表同一张官方封面，下载后直接落到 ModEntry.nexus_cover_url。
     #[serde(default)]
     pub picture_url: Option<String>,
+    /// 最近一次更新检查时 Nexus 上的版本号（P5-5A）。用于「看过但没变」的
+    /// 状态留痕；比只存一份布尔值更容易排查「为什么说没有更新」。
+    #[serde(default)]
+    pub latest_version: Option<String>,
+    /// 最近一次成功比对的时间（ISO 8601）。没有值时表示从未检查过。
+    #[serde(default)]
+    pub last_check: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -774,6 +781,9 @@ pub struct AppStateData {
     pub last_launch: Option<String>,
     #[serde(default)]
     pub backup: Option<BackupInfo>,
+    /// 最近一次「检查 Mod 更新」的时间（ISO 8601，P5）。空 = 从未查过。
+    #[serde(default)]
+    pub last_update_check: Option<String>,
 }
 
 impl AppStateData {
@@ -792,6 +802,7 @@ impl AppStateData {
             last_game_version: None,
             last_launch: None,
             backup: None,
+            last_update_check: None,
         }
     }
 }
@@ -1232,6 +1243,10 @@ pub struct NexusUpdateReport {
     pub skipped: usize,
     pub failed: usize,
     pub updates: Vec<NexusUpdateItem>,
+    /// 有 Nexus 来源、但本轮配额用完没查的条目数（P5）。它们既不算「无更新」
+    /// 也不算失败，界面上单独说明「还有 N 个没查完」。
+    #[serde(default)]
+    pub stale: usize,
     /// 给玩家看的一句话总结（中文）。
     pub message: String,
     /// 本轮检查时间（ISO 8601）。
