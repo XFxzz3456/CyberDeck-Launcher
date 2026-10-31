@@ -8668,6 +8668,27 @@ body ::selection {
   color: var(--accent-ink);
 }
 
+/* ── 3F 全局禁用文本选中（来源 93860c）────────────────────────────
+   桌面应用误触 Ctrl+A / 拖拽把整片 UI 文字选中是「网页感」的最大来源。
+   统一在根节点关掉（不要逐个组件加），白名单按内容类型放行：
+   表单输入 / 代码与日志 / 报错文案 / 显式标注 .selectable-text 的节点。
+   标题栏与顶栏各自更早的 user-select:none 保留（更具体的拖动约束），语义一致。 */
+body,
+#root {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+pre,
+code,
+.toast-copy,
+.selectable-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* Display face for titles and chrome; Inter for every piece of reading text. */
 .logo-copy strong,
 .brand-name,
