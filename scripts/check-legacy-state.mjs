@@ -14,6 +14,8 @@ page.on("pageerror", (err) => errors.push(String(err)));
 
 // 先写一份「旧结构」状态：有 mods/settings，但没有 profiles / activeProfileId
 await page.addInitScript(() => {
+  // 跳过 EULA 门：未同意时整页 inert，点不动播放集开关（r42 起要真点开浮层才能数条目）。
+  localStorage.setItem("ncl.ui.eulaAccepted.v1", "true");
   const oldState = {
     schemaVersion: 1,
     gameDir: "D:\\Games\\Cyberpunk 2077",
@@ -69,7 +71,12 @@ await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil
 await page.waitForTimeout(1200);
 
 const cards = await page.locator(".mod-card").count();
-const picker = await page.locator(".profile-select option").count();
+// 播放集选择器已从原生 <select> 换成自绘浮层（r42）：先点开再数条目。
+await page.locator(".profile-trigger").click();
+await page.waitForTimeout(250);
+const picker = await page.locator(".profile-menu-item").count();
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
 await page.screenshot({ path: "shots/audit/interaction-legacy-state.png" });
 
 // 再进设置页看播放集面板

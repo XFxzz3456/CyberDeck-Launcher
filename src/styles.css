@@ -10955,24 +10955,90 @@ body::before {
   flex: 0 0 auto;
 }
 
-.profile-select {
-  appearance: none;
-  background: transparent;
+.profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 148px;
+  height: 100%;
+  padding: 0;
   border: 0;
-  outline: 0;
+  background: transparent;
   color: var(--text);
   font-family: var(--sans);
   font-size: 12.5px;
   font-weight: var(--fw-label);
   letter-spacing: 0.02em;
-  max-width: 128px;
-  padding: 0 2px;
   cursor: pointer;
+  text-align: left;
 }
 
-.profile-select option {
+.profile-trigger:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+
+.profile-trigger:focus-visible {
+  outline: 1px solid rgba(var(--accent-rgb), 0.55);
+  outline-offset: 2px;
+}
+
+.profile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 自绘浮层：原生 <select> 的展开列表由系统绘制，改不了配色，也按屏幕算边界，
+   窄窗口下会直接飘出应用窗口。这里用 fixed + 视口夹取（见 ProfileMenu.tsx）。 */
+.profile-menu {
+  position: fixed;
+  z-index: 70;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
   background: var(--panel);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.profile-menu:focus {
+  outline: none;
+}
+
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.profile-menu-item[data-active="true"] {
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--text);
+}
+
+.profile-menu-item[aria-selected="true"] {
+  color: var(--accent-text);
+}
+
+.profile-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-menu-check {
+  flex: 0 0 auto;
+  color: var(--accent-text);
 }
 
 .profile-caret {
@@ -10982,8 +11048,8 @@ body::before {
 }
 
 @media (max-width: 1180px) {
-  .profile-select {
-    max-width: 88px;
+  .profile-trigger {
+    max-width: 96px;
   }
 }
 
@@ -12448,6 +12514,15 @@ body::before {
   backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--elev-pop);
+}
+
+/* 播放集浮层与右键菜单同级：都是浮在内容之上的一次性弹层，走同一套玻璃配方。 */
+:root[data-style="modern"] .profile-menu {
+  background: var(--glass-pop);
+  backdrop-filter: blur(var(--glass-blur-pop)) saturate(150%);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: var(--elev-pop);
+  border-radius: 10px;
 }
 
 /* 不支持 backdrop-filter 时退回不透明底色：宁可没有玻璃感，

@@ -24,13 +24,24 @@ await page.addInitScript(() => {
 await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
 await page.waitForTimeout(900);
 
-const select = page.locator(".profile-select");
-const optionCount = await select.locator("option").count();
-const beforeValue = await select.inputValue();
+// 播放集选择器已换成自绘浮层（原生 <select> 在 Windows 下配色与边界都不可控）。
+const trigger = page.locator(".profile-trigger");
+const openMenu = async () => {
+  await trigger.click();
+  await page.waitForTimeout(250);
+};
+const currentLabel = async () => (await trigger.innerText()).trim();
+
+await openMenu();
+const optionCount = await page.locator(".profile-menu-item").count();
+const beforeValue = await currentLabel();
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
 const beforeDeployed = await page.locator(".mod-card .badge, .mod-card .status-badge").count();
 
 // 切到「纯净模式」
-await select.selectOption({ label: "纯净模式" });
+await openMenu();
+await page.locator(".profile-menu-item", { hasText: "纯净模式" }).first().click();
 await page.waitForTimeout(500);
 
 const dialogVisible = await page.locator(".confirm-card, .modal-card, [role='dialog']").count();
@@ -45,7 +56,7 @@ if (!confirmBox) throw new Error("确认弹窗里找不到「开始切换」按�
 await page.mouse.click(confirmBox.x + confirmBox.width / 2, confirmBox.y + confirmBox.height / 2);
 await page.waitForTimeout(1800);
 
-const afterValue = await select.inputValue();
+const afterValue = await currentLabel();
 const toastText = await page.locator(".toast, .toast-item").first().innerText().catch(() => "");
 await page.screenshot({ path: "shots/audit/interaction-profile-switched.png" });
 

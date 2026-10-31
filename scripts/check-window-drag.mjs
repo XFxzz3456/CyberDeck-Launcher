@@ -157,7 +157,7 @@ try {
       topbarBare: probe(".topbar"),
       searchInput: probe(".topbar-search input"),
       searchBox: probe(".topbar-search"),
-      profileSelect: probe(".profile-select"),
+      profileTrigger: probe(".profile-trigger"),
       minimize: probe(".window-btn"),
       bell: probe(".btn-bell"),
     };
@@ -173,10 +173,10 @@ try {
     "输入框/下拉框/按钮均不触发拖动",
     matrix.searchInput === false
       && matrix.searchBox === false
-      && matrix.profileSelect === false
+      && matrix.profileTrigger === false
       && matrix.minimize === false
       && matrix.bell === false,
-    `input=${matrix.searchInput} box=${matrix.searchBox} select=${matrix.profileSelect} min=${matrix.minimize} bell=${matrix.bell}`,
+    `input=${matrix.searchInput} box=${matrix.searchBox} trigger=${matrix.profileTrigger} min=${matrix.minimize} bell=${matrix.bell}`,
     "interactiveBlocked",
   );
 

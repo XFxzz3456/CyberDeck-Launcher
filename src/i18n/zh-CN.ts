@@ -1948,6 +1948,8 @@ export const zhCN = {
     launchNeedsGame: "先定位游戏目录",
     launchTitle: "启动 Cyberpunk 2077",
     openPalette: "打开命令面板",
+    profileEmpty: "无配置集",
+    profileFallback: "选择配置集",
     profilePickerAria: "切换播放集",
     profilePickerTitle: "播放集：一组「启用哪些模组 + 加载顺序」的存档。切换时先撤销当前部署，再按目标播放集部署。",
     searchPlaceholder: "搜索全部模组（受当前分类过滤）…",

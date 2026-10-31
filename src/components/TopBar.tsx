@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, Layers, Play, Search, Square, Upload, X } from "lucide-react";
+import { Bell, Play, Search, Square, Upload, X } from "lucide-react";
 import type { GameInfo, ProfileList } from "../types";
 import type { ActivityItem } from "../lib/tasks";
+import type { View } from "./Sidebar";
+import { ProfileMenu } from "./ProfileMenu";
 import { Kbd, Spinner } from "./ui";
 import { t } from "../i18n";
+
+/**
+ * 只有这几页才有「搜索模组 / 切播放集 / 导入压缩包」的语义。
+ *
+ * 设置、存档、诊断、下载页放这几个控件是噪音：搜索框会把焦点抢走、
+ * 播放集下拉在那里点了也没意义、导入按钮更和当前页无关。
+ * 通知铃铛与「开始游戏」不属于任何页面，永远保留（见下方渲染）。
+ */
+const MOD_TOOL_VIEWS: View[] = ["library", "discover", "loadorder"];
 
 /** 时间格式跟随显示语言；接多语言时把此处的 locale 换成当前 locale 即可。 */
 function clockTime(at: number): string {
@@ -32,6 +43,7 @@ function storeBellSeenAt(at: number) {
 }
 
 export function TopBar({
+  view,
   search,
   onSearch,
   game,
@@ -48,6 +60,8 @@ export function TopBar({
   activities = [],
   updateCount = 0,
 }: {
+  /** 当前页面：决定搜索框 / 播放集 / 导入这三个「模组工具」是否显示。 */
+  view: View;
   search: string;
   onSearch: (value: string) => void;
   game: GameInfo | null;
@@ -69,6 +83,7 @@ export function TopBar({
   updateCount?: number;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
+  const modTools = MOD_TOOL_VIEWS.includes(view);
   const [bellOpen, setBellOpen] = useState(false);
   const [bellSeenAt, setBellSeenAt] = useState<number>(() => loadBellSeenAt());
   const bellRef = useRef<HTMLDivElement>(null);
@@ -107,56 +122,40 @@ export function TopBar({
   // 拖动把手只靠 data-tauri-drag-region="deep"（r41 重构，原因见 TitleBar）。
   // 搜索框 / 档案选择器 / 右侧按钮组都标 "false"：点它们的边缘要聚焦或展开，
   // 不能被窗口拖动吃掉；左内边距、搜索框与档案选择器之间的空档仍可拖。
+  // 非模组工具页隐藏搜索与播放集后，这块空档本身就成了拖动把手（.topbar 是 deep）。
   return (
     <header className="topbar" data-tauri-drag-region="deep">
-      <div className="topbar-search" data-tauri-drag-region="false">
-        <Search size={15} className="search-icon" />
-        <input
-          ref={searchRef}
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder={t("topBar.searchPlaceholder")}
-          spellCheck={false}
-        />
-        {search ? (
-          <button className="search-clear" onClick={() => onSearch("")} aria-label={t("topBar.clearSearch")}>
-            <X size={13} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="search-hint search-palette-trigger"
-            onClick={onOpenPalette}
-            title={t("topBar.openPalette")}
-          >
-            <Kbd>Ctrl</Kbd>
-            <Kbd>K</Kbd>
-          </button>
-        )}
-      </div>
+      {modTools ? (
+        <div className="topbar-search" data-tauri-drag-region="false">
+          <Search size={15} className="search-icon" />
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder={t("topBar.searchPlaceholder")}
+            spellCheck={false}
+          />
+          {search ? (
+            <button className="search-clear" onClick={() => onSearch("")} aria-label={t("topBar.clearSearch")}>
+              <X size={13} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="search-hint search-palette-trigger"
+              onClick={onOpenPalette}
+              title={t("topBar.openPalette")}
+            >
+              <Kbd>Ctrl</Kbd>
+              <Kbd>K</Kbd>
+            </button>
+          )}
+        </div>
+      ) : null}
 
-      <div className="profile-picker" data-switching={switchingProfile ? "true" : "false"} data-tauri-drag-region="false">
-        <Layers size={14} className="profile-icon" />
-        <select
-          className="profile-select"
-          value={profiles?.activeProfileId ?? ""}
-          onChange={(event) => onSwitchProfile(event.target.value)}
-          disabled={switchingProfile || !profiles || profiles.profiles.length === 0}
-          title={t("topBar.profilePickerTitle")}
-          aria-label={t("topBar.profilePickerAria")}
-        >
-          {(profiles?.profiles ?? []).map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-        {switchingProfile ? (
-          <Spinner size={12} />
-        ) : (
-          <ChevronDown size={12} className="profile-caret" />
-        )}
-      </div>
+      {modTools ? (
+        <ProfileMenu profiles={profiles} switching={switchingProfile} onSwitch={onSwitchProfile} />
+      ) : null}
 
       <div className="topbar-actions" data-tauri-drag-region="false">
         <div className="bell-wrap" ref={bellRef}>
@@ -197,10 +196,12 @@ export function TopBar({
             </div>
           ) : null}
         </div>
-        <button className="btn btn-ghost btn-import" onClick={onImport}>
-          <Upload size={15} />
-          {t("topBar.importMods")}
-        </button>
+        {modTools ? (
+          <button className="btn btn-ghost btn-import" onClick={onImport}>
+            <Upload size={15} />
+            {t("topBar.importMods")}
+          </button>
+        ) : null}
         {gameRunning ? (
           <button
             className="btn btn-danger btn-launch btn-stop-game"

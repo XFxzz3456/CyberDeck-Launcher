@@ -2218,6 +2218,7 @@ export default function App() {
 
         <main className="content-shell">
           <TopBar
+            view={view}
             search={search}
             onSearch={(value) => {
               setSearch(value);
