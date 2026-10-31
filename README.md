@@ -22,7 +22,7 @@
 | Mod 设置 | 读取 CET `ModSettings/user.ini`，按 true/false / 数字 / 文本渲染控件；写前备份 `user.ini.bak`，只改目标行，保留注释和顺序；可一键恢复 |
 | 日志查看 | 扫描 `r6/logs`、`red4ext/logs`、CET 日志；末尾 100/300/500 行；级别过滤、错误高亮；「提取错误」只保留每条错误前后 5 行，并可选择性交给 AI |
 | 卡片状态机 | DEPLOYED / STAGED / CONFLICT 角标、状态色边、悬停操作区；平时只显示封面、名称与元数据 |
-| 外观与主题 | NCPD / Netrunner / Arasaka / Militech / Mono / Daylight 六套配色，每套有独立的按钮轮廓、标题装饰、面板走线与封面配色；自定义强调色；90% / 100% / 110% 界面缩放；可收起侧边栏 |
+| 外观与主题 | NCPD / Netrunner / Arasaka / Militech / Modern 五套风格，每套有独立的按钮轮廓、标题装饰、面板走线与封面配色（Modern 支持明暗切换）；自定义强调色；自定义字体；90% / 100% / 110% 界面缩放；可收起侧边栏 |
 | 动效细节 | Inter 正文 + Rajdhani 标题 + JetBrains Mono 等宽；卡片骨架屏、筛选淡入、冲突计数故障闪烁、低透明度扫描线 |
 | 硬件外壳 | 面板 / 卡片 / 主题选择卡使用 CSS 切角；选中主题带电路走线、强调色呼吸与外发光；背景叠加低透明度工业噪点与双层网格 |
 | 警告带 | 未链接游戏目录时显示红黑斜纹工业警告带与纯黑文字；设置页的未链接目录改为虚线接收面板，悬停有扫描反馈 |
@@ -45,6 +45,7 @@
 | Nexus 封面 | 从 Nexus 下载的模组自动带上官方封面图，加载失败回退程序生成封面；设置页「补全封面」可为已有模组批量回查封面地址（不改变已启用的模组） |
 | Mod 名翻译 | 可选 AI 把英文模组名译成中文（原名保留在副行，搜索中英皆可）；框架与底层库自动跳过，不消耗额度 |
 | 渲染容错 | 单张卡片数据异常时只降级该卡片（暗红边框 + `ERROR: DATA CORRUPTED` 并在控制台打印 mod_id），不会整页白屏 |
+| 存档管理 | 每次部署前静默记一份环境快照（当时启用的模组 + 前置框架版本）；读档出问题时选中快照「应用此环境」，把部署状态回溯到那一刻。扫描本地存档目录，能读日志里读档失败报错时高亮「该存档可能依赖已禁用的 Mod」。**全程只读**：绝不读写 `.dat` 存档二进制，结构性修复交给 CyberCAT / Night City Save Editor 等外部工具，界面只提供入口与路径 |
 
 ### 界面
 
@@ -52,9 +53,9 @@
 |---|---|
 | ![外观与主题](docs/screenshots/appearance.png) | ![Netrunner](docs/screenshots/netrunner.png) |
 
-| 收起侧边栏 | 原生 0.7.0 |
+| 收起侧边栏 | Modern 深色 |
 |---|---|
-| ![收起侧边栏](docs/screenshots/sidebar-collapsed.png) | ![原生界面](docs/screenshots/native-070.png) |
+| ![收起侧边栏](docs/screenshots/sidebar-collapsed.png) | ![Modern 深色](docs/screenshots/modern-dark.png) |
 
 | 工业警告带 | 未链接的游戏目录 |
 |---|---|
@@ -92,7 +93,10 @@
 |---|
 | ![详情](docs/screenshots/detail.png) |
 
-### 六套主题
+### 五套主题
+
+> 旧版是六套，`mono` 在 r20 被移除（老配置自动迁到 `modern`），`daylight` 更早下线。
+> 现在只有下面五套，其中 **只有 Modern 支持明暗切换**，其余强制深色。
 
 | NCPD 经典 | NETRUNNER 冰蓝 |
 |---|---|
@@ -100,11 +104,11 @@
 
 | ARASAKA 荒坂红 | MILITECH 军用绿 |
 |---|---|
-| ![Arasaka](docs/screenshots/library.png) | ![Militech](docs/screenshots/militech.png) |
+| ![Arasaka](docs/screenshots/arasaka.png) | ![Militech](docs/screenshots/militech.png) |
 
-| MONO 纯粹极简 | DAYLIGHT 白昼纸面 |
+| MODERN 现代 · 深色 | MODERN 现代 · 浅色 |
 |---|---|
-| ![Mono](docs/screenshots/mono.png) | ![Daylight](docs/screenshots/daylight.png) |
+| ![Modern 深色](docs/screenshots/modern-dark.png) | ![Modern 浅色](docs/screenshots/modern-light.png) |
 
 ### 播放集与容错
 
@@ -116,15 +120,15 @@
 |---|---|
 | ![右键菜单](docs/screenshots/context-menu.png) | ![更新熔断](docs/screenshots/update-lock.png) |
 
-| 环境体检 |
-|---|
-| ![环境体检](docs/screenshots/env-check.png) |
+| 环境体检 | 存档管理 |
+|---|---|
+| ![环境体检](docs/screenshots/env-check.png) | ![存档管理](docs/screenshots/saves.png) |
 
 ## 快速开始
 
 ### 主题与缩放
 
-「设置 → 外观与主题」可以切换 NCPD、Netrunner、Arasaka、Militech、Mono、Daylight 六套配色，也可以直接选一个强调色；标题使用 Rajdhani，正文使用 Inter，日志与数据使用 JetBrains Mono。六套主题不只是换色：按钮切角、标题装饰、导航标记、面板走线、封面配色各自一套，Daylight 是浅色纸面模式（适合白天与投屏），Mono 去饱和成纯灰阶。主题卡片上直接显示该主题的模组库缩略图。界面缩放支持 90% / 100% / 110%，侧边栏可收成图标栏。主题、强调色、缩放和侧栏状态保存在本机 `localStorage`，启动时在首帧前恢复，不会闪回默认黄黑。
+「设置 → 个性化」可以切换 NCPD、Netrunner、Arasaka、Militech、Modern 五套风格，也可以直接选一个强调色；标题使用 Rajdhani，正文使用 Inter，日志与数据使用 JetBrains Mono（字体可换成系统字体，见「排版与缩放」）。五套主题不只是换色：按钮切角、标题装饰、导航标记、面板走线、封面配色各自一套。**Modern 是唯一能在明暗之间切换的风格**，其余四套强制深色；旧版的 Mono 与 Daylight 已下线，老配置会自动迁移到 Modern。主题卡片上直接显示该主题的模组库缩略图。界面缩放支持 90% / 100% / 110%，侧边栏可收成图标栏。主题、强调色、缩放和侧栏状态保存在本机 `localStorage`，启动时在首帧前恢复，不会闪回默认黄黑。
 
 ### 外观
 
@@ -308,7 +312,7 @@ ZIP / 7z / RAR ──解压──> %APPDATA%\...\staging\<id>\payload ──硬�
 - 正文用 Inter，标题和品牌用 Rajdhani，日志/路径/数据用 JetBrains Mono，均由 `@fontsource` 本地打包，不依赖网络字体。
 - 自定义强调色会用 WCAG 亮度计算自动选择黑/白前景，避免用户选深色后按钮文字消失。
 - 90% / 100% / 110% 使用 `body { zoom }`，同时让 `body` 保持 100% 宽高；在 WebView2 的 125% DPI 和 1120×720 窗口下都验证过无横向溢出。
-- Mono 主题关闭扫描线、网格和卡片悬浮阴影；`prefers-reduced-motion` 下所有动画会被压到近乎静止。
+- Modern 主题关闭扫描线、网格和卡片悬浮阴影；`prefers-reduced-motion` 下所有动画会被压到近乎静止。
 
 ### 7. 数据模型
 
