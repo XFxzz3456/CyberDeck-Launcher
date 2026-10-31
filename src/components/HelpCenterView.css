@@ -131,7 +131,8 @@
 
 .help-trigger-text strong {
   font-size: 13.5px;
-  font-weight: 600;
+  /* r42：原 600 在本机字族下会吸附到 700 真字面，和页面大标题一样粗。 */
+  font-weight: var(--fw-title, 500);
   line-height: 1.4;
 }
 

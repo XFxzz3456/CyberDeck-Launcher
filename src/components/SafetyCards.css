@@ -84,7 +84,7 @@
 }
 
 .compat-list li strong {
-  font-weight: 600;
+  font-weight: var(--fw-title, 500);
 }
 
 .compat-list li span {

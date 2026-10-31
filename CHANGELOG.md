@@ -10,6 +10,23 @@
 - 事故复盘、架构决策与里程碑：统一归档在 `docs/PROJECT_HISTORY.md`，按锚点引用；本文件只留摘要与链接。
 - 📁 **2026-10-31 文档合并**：20 份零散报告 / 设计草稿已提炼进 `docs/PROJECT_HISTORY.md`，原文删除（git 历史可回溯）。
 
+### 0.9.0-r42（2026-10-31，待构建：字重与排版层级重构）
+
+| 项 | 内容 |
+|---|---|
+| 根因 | **不是「中文伪粗体」，是 600 被吸附到 700 真字面**。`--font` 栈首 `"Microsoft YaHei UI"` 只有 Regular(400) / Bold(700) 两个字面，Chromium 把 CSS `600`/`650` 映射到最近的**真实** 700（不是合成加粗），`500` 则吸附到 400。全项目原有 35 处 `600` + `650`/`800`/`900` 各若干，导致「区块小标题」和「页面大标题」在中文字形下**一样粗**——塌掉的是层级，不是把正文加粗了。 |
+| 变更 | **字重收拢成三档**：新增 8 个排版令牌 `--fw-display(700)` / `--fw-title(500)` / `--fw-label(500)` / `--fw-body(400)` / `--fw-hint(400)` / `--fw-mono(400)` / `--fw-badge(700)` / `--fw-logo(700)`，另有 4 个字号语义档 `--fs-title/body/hint/micro`。新样式一律引用令牌，不再写字面数字。 |
+| 变更 | **63 处字面字重按行号迁移**（`MIGRATE_OK replaced=63 kept400=12`）：`.page-head h1` → `display`；`.panel-head h2`(2 条规则)、`.mod-title-row h3`(3 条规则)、`.switch-title` → `title`；`.nav-label` 等 15 处 → `label`；`.logo-glyph`/`.boot-logo`/`.fatal-mark` 的 900 → `logo`（本机无 Black 字面，写 900 只是让浏览器退化）；`.nav-alert-mark`/`.bell-badge` 保留 700 → `badge`。12 处显式 `400` **故意保留字面值**（`.kv strong`、`.setting-label strong`、`.log-viewer-title strong` 等 12 个「名词 + 数值」的强调对，它们靠 400 vs 400 的**颜色/字号**区分而非字重）。 |
+| 修复 | **图 1 `load_order::apply(195) → archive.xl [OK]` 看着很粗**：它本来就是 `var(--mono)` + 继承 400，没有加粗。亮黄 `--accent-text` + 深底 + 11.5px 等宽字符，在次像素渲染下笔画膨胀造成错觉。改为次级文字色 `--text-2` + 钉死 `--fw-mono` + `font-feature-settings: normal`（复位从 body 继承的 `cv02/cv03/cv04/cv11`，等宽字体无对应字符变体，只会让字形不伦不类）。字号 11.5px 未动——`ui-theme-test.mjs:57` 有断言。 |
+| 修复 | **图 2 长说明「又大又黑又重」根本不是字重问题**：`.bg-hint` 在 `styles.css` 里**一条规则都没有**（全仓库 0 命中），回落到 `<p>` 默认的 `14px` + `var(--text)`，而同一张卡片里的 `.appearance-hint` 是 `10px` + `--muted-2`——同一语义两个类名，差两档大小、两档明度。改为共用同一规则组（`--fs-hint` / `--fw-hint` / `--muted-2`），并清掉 `.appearance-card-body > .bg-hint:first-child` 的上边距叠层。 |
+| 修复 | **设置项标题比它的说明还小还暗**：`.switch-title` 原为 `10.5px` + `--text-2`，而紧随的 `.switch-desc` 是 `11px` + `--muted`，层级写反。现在标题 `12px/500/--text`，正文 `11px/400/--muted`。 |
+| 重写 | **Toggle 药丸化**：原 `.toggle-track` 是 `border:1px solid #333d49` + 直角 + 开态黄色旋钮外发光，「生硬」是三件事叠出来的。现在 `border:0` + `border-radius:999px`，状态只用轨道背景色表达（中性灰 `rgba(148,163,184,.34)` → `rgba(var(--accent-rgb),.92)`），旋钮统一纯白无发光；补上键盘焦点环（直角时代从来没有）。`[data-style="modern"]` 的覆盖规则原来会用 `var(--line)` 把硬边重新画回来，显式清成 `transparent`。 |
+| 修复 | **组件级 CSS 侧门**：项目共 **7 个 CSS 文件**（不是 1 个 `styles.css`）。首轮门禁在运行期抓到 `strong` 计算字重 600，CDP `CSS.getMatchedStylesForNode` 定位到 `HelpCenterView.css:134`，另有 `SafetyCards.css:87` = 600、`SplashScreen.css:36` = 900。三处一并令牌化（带 `var(--fw-title, 500)` 兜底，防组件 CSS 先于令牌块加载）。 |
+| 变更 | `body` 加 `-webkit-font-smoothing: antialiased` + `-moz-osx-font-smoothing: grayscale` + `text-rendering: optimizeLegibility`：中文方块字在次像素渲染下笔画发胖，400 与 500 拉不开差距，关掉次像素后三档才真看得出来。`body` 的 `font-weight` 由字面 `400` 改为 `var(--fw-body)`（值不变，只是换成单一来源）。 |
+| 新增 | **`font-synthesis: none` + `font-synthesis-weight: none`**（`:root`）：将来若有人再写 600，浏览器会退化到真实字面而不是伪造一个——渲染上直接变细，比静默吸附成 Bold 更容易被肉眼和门禁同时发现。 |
+| 新增 | `scripts/check-typography.mjs`（22 条断言）+ 接入 `scripts/gate.mjs`：静态半部**递归遍历整个 `src/` 的所有 CSS**（跳过 `node_modules`/`dist`）卡「无字面字重（除 12 处白名单 400）」「无 600/650/800/900」「8 个令牌各定义一次且都被引用」「令牌值只有 400/500/700」「`font-synthesis` 已关」「`font-smoothing` 已开」；运行期用 Edge 无头进设置页，全页扫描**任何**计算字重不在三档内的元素，再对 16 个关键选择器断言实际字重/字号/颜色/开关态。 |
+| 验证 | `check-typography` 22/22 PASS · **`node scripts/gate.mjs` 全绿**（cargo test 40.6s · tsc 9.4s · vite build 4.0s · 19 个 UI 脚本全过）· 对比度逆势收紧仍 `contrastFails=0 / contrastLight=0`（`check-ui-audit.mjs:259` 用 `weight>=600` 判「大字 3:1」，降 600→500 反而把这些 14–16px 元素推入 4.5:1 的正文桶，全量复核零失败）· `hScrollMax=0 · overflowTotal=0 · alignSpread=0`。 |
+
 ### 0.9.0-r41（2026-10-31，待构建：标题栏拖动残影修复）
 
 | 项 | 内容 |

@@ -3,6 +3,41 @@
   box-sizing: border-box;
 }
 
+/* ==================== r42 排版层级令牌（字重/字号的单一来源） ====================
+   背景：全局原有 74 处 font-weight，取值散落在 400 / 500 / 600 / 650 / 700 /
+   800 / 900。而 --font 栈首的 "Microsoft YaHei UI" 只有 Regular(400) 与
+   Bold(700) 两个字面，Chromium 会把 600 / 650 吸附到最近的 700 **真字面**——
+   于是「区块小标题」「列表项标题」和「页面大标题」在中文下一样粗，视觉层级整层
+   塌掉。所以观感上的「中文伪粗体」不是浏览器造假，是真 Bold 被滥用。
+
+   因此字重收拢成三档，新增样式一律引用令牌，不要再写字面数字：
+     400  正文 / 副标题 / 说明（禁止加粗）
+     500  标题 / 标签（吸附到 Regular，是唯一不触发加粗的中间档）
+     700  仅页面大标题与极小尺寸角标数字
+   ============================================================================ */
+:root {
+  --fw-display: 700; /* 页面大标题、结论卡主标题 */
+  --fw-title: 500;   /* 区块/卡片/弹窗/列表项标题 */
+  --fw-label: 500;   /* 表单标签、按钮、Tab、导航项 */
+  --fw-body: 400;    /* 正文、副标题、说明 */
+  --fw-hint: 400;    /* 辅助小字（配 --fs-hint + --muted-2） */
+  --fw-mono: 400;    /* 等宽代码/数值 */
+  --fw-badge: 700;   /* 仅小尺寸角标数字（铃铛计数、导航告警点） */
+  --fw-logo: 700;    /* 仅 ASCII 装饰字标 */
+
+  /* 字号：只收敛语义档位，数值沿用既有主流取值（不在本次任务里改版） */
+  --fs-title: 12px;  /* 设置项/列表项标题 */
+  --fs-body: 11px;   /* 说明正文 */
+  --fs-hint: 10.5px; /* 辅助说明 */
+  --fs-micro: 8.5px; /* 极小徽标 */
+
+  /* 禁止浏览器合成粗体。需要 700 的地方软雅黑自带 Bold 字面，不会退化；
+     若某处标题突然变细，说明那个选择器写了一个没有字面对应的字重 —— 正好
+     当成排查信号，而不是让浏览器糊一层假粗体盖过去。 */
+  font-synthesis: none;
+  font-synthesis-weight: none;
+}
+
 html,
 body,
 #root {
@@ -16,7 +51,13 @@ body {
   font-family: var(--font);
   font-size: 14px;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  /* 灰度抗锯齿：中文方块字在次像素渲染下笔画会显得「发胖」，400 与 500 拉不开
+     差距。关掉次像素后 400/500/700 三档才真的看得出来。同 iOS/macOS 构建也
+     一并声明，避免两个平台观感不一致。 */
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-weight: var(--fw-body);
   overflow: hidden;
   width: 100%;
   height: 100%;
@@ -293,7 +334,7 @@ pre {
 }
 
 .brand-name {
-  font-weight: 700;
+  font-weight: var(--fw-display);
   color: var(--text);
 }
 
@@ -446,7 +487,7 @@ pre {
 .logo-glyph {
   font-family: var(--display);
   font-size: 19px;
-  font-weight: 900;
+  font-weight: var(--fw-logo);
   letter-spacing: 0.5px;
   line-height: 1.12;
   transition:
@@ -691,7 +732,7 @@ pre {
 
 .nav-label {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   letter-spacing: 0.2px;
   /* 12.5px 中文在没有 line-height 时会被祖先的 line-height:1 压成"行盒=字号"，
      中文满格字形上下贴死；换字体（T8）后 ascent/descent 变化，两行间距会忽大
@@ -1057,7 +1098,7 @@ pre {
   justify-content: center;
   gap: 7px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   letter-spacing: 0.2px;
   background: transparent;
   color: var(--text-2);
@@ -1250,7 +1291,7 @@ pre {
      直接被行盒裁掉，视觉上像"字飘在框外面"。1.14 给足上下留白，同时不影响
      页面整体高度（只多约 5px）。 */
   line-height: 1.14;
-  font-weight: 600;
+  font-weight: var(--fw-display);
   letter-spacing: 0.2px;
 }
 
@@ -1373,7 +1414,7 @@ pre {
 .panel-head h2 {
   margin: 0;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   letter-spacing: 0.2px;
 }
 
@@ -2051,7 +2092,7 @@ pre {
   min-width: 0;
   font-size: 13px;
   line-height: 1.3;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2163,46 +2204,61 @@ pre {
   vertical-align: 1px;
 }
 
+/* 开关：2026-10-31 r42 重做。
+   原来 .toggle-track 是 border:1px solid #333d49 + 无 border-radius（直角），
+   「生硬」是三件事叠出来的：直角 + 实心细描边 + 开态黄色旋钮外发光。
+   现在按药丸型重做：去掉边框，状态只用轨道背景色表达（中性灰 → 强调色），
+   旋钮统一白色。黄只留给「开」的那个底色，不再和旋钮争第二个色。 */
 .toggle {
   border: 0;
   background: transparent;
   padding: 0;
   display: flex;
   align-items: center;
+  cursor: pointer;
 }
 
 .toggle-track {
-  width: 33px;
-  height: 17px;
-  border: 1px solid #333d49;
-  background: var(--panel-2);
+  width: 36px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.34);
   display: flex;
   align-items: center;
-  padding: 2px;
-  transition: background 0.18s, border-color 0.18s;
+  padding: 3px;
+  transition: background 0.18s ease;
 }
 
 .toggle-knob {
   display: block;
-  width: 11px;
-  height: 11px;
-  background: var(--muted);
-  transition: transform 0.18s, background 0.18s;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s ease, background 0.18s ease;
 }
 
 .toggle.is-on .toggle-track {
-  background: rgba(var(--accent-rgb), 0.13);
-  border-color: rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.92);
 }
 
 .toggle.is-on .toggle-knob {
   transform: translateX(16px);
-  background: var(--yellow);
-  box-shadow: 0 0 7px rgba(var(--accent-rgb), 0.4);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+/* 键盘可达性：直角时代从来没有焦点环，改成圆角后必须补上。 */
+.toggle:focus-visible .toggle-track {
+  outline: 2px solid rgba(var(--accent-rgb), 0.65);
+  outline-offset: 2px;
 }
 
 .toggle:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2606,7 +2662,7 @@ pre {
 .summary-copy h2 {
   margin: 0;
   font-size: 17px;
-  font-weight: 650;
+  font-weight: var(--fw-display);
   line-height: 1.3;
 }
 
@@ -2644,7 +2700,7 @@ pre {
 .summary-metrics strong {
   font-family: var(--mono);
   font-size: 19px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   line-height: 1.1;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -2755,7 +2811,7 @@ pre {
 .issue-copy strong {
   display: block;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
   margin-bottom: 3px;
 }
@@ -2821,7 +2877,7 @@ pre {
 .framework-head span:nth-child(2) {
   flex: 1;
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
@@ -3157,7 +3213,7 @@ pre {
 
 .launch-option strong {
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
 }
 
@@ -3207,7 +3263,7 @@ pre {
 
 .launch-status-copy strong {
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
 }
 
@@ -3248,8 +3304,11 @@ pre {
 }
 
 .switch-title {
-  font-size: 10.5px;
-  color: var(--text-2);
+  /* r42：原来是 10.5px + --text-2 —— 比紧随其后的说明（11px）还小、还暗，
+     标题反而比正文弱，层级写反了。设置项标题现在统一 12px / 500 / 主文字色。 */
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  color: var(--text);
   margin-bottom: 2px;
 }
 
@@ -3257,7 +3316,9 @@ pre {
   /* 原 9.5px：这是设置项的中文说明（「会覆盖 ASCII 加载顺序…」），
      属于要逐字读的正文，不是装饰。中文方块字在 9.5px 下笔画会糊成一团，
      提到 11px 与 .settings-hint 对齐。 */
-  font-size: 11px;
+  font-size: var(--fs-body);
+  /* 显式 400：此前靠继承，一旦某个父级加了粗就会静默连坐（r42）。 */
+  font-weight: var(--fw-body);
   line-height: 1.6;
   color: var(--muted);
 }
@@ -3327,7 +3388,7 @@ pre {
 
 .path-row strong {
   font-size: 10px;
-  font-weight: 500;
+  font-weight: var(--fw-title);
   color: var(--text-2);
 }
 
@@ -3665,7 +3726,7 @@ pre {
 .drawer-section-head h3 {
   margin: 0;
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: #b9c3ce;
   letter-spacing: 0.3px;
 }
@@ -3880,7 +3941,7 @@ pre {
 .modal-head h2 {
   margin: 0;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
 }
 
 .modal-body {
@@ -4032,7 +4093,7 @@ pre {
 
 .import-notes strong {
   color: #b7c1cd;
-  font-weight: 600;
+  font-weight: var(--fw-title);
 }
 
 .import-result-summary {
@@ -4211,7 +4272,7 @@ pre {
 
 .toast-title {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
   margin-bottom: 2px;
 }
@@ -4277,7 +4338,7 @@ pre {
 .empty-state h3 {
   margin: 0 0 5px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
 }
 
 .empty-state p {
@@ -4324,7 +4385,7 @@ pre {
   gap: 1px;
   color: #060708;
   font-family: var(--mono);
-  font-weight: 900;
+  font-weight: var(--fw-logo);
   font-size: 26px;
   letter-spacing: -5px;
   animation: boot-pulse 2s ease-in-out infinite;
@@ -4339,7 +4400,7 @@ pre {
 
 .boot-title {
   font-size: 19px;
-  font-weight: 700;
+  font-weight: var(--fw-display);
   letter-spacing: 4px;
 }
 
@@ -4399,7 +4460,7 @@ pre {
   background: var(--red);
   color: #060708;
   font-family: var(--mono);
-  font-weight: 900;
+  font-weight: var(--fw-logo);
   display: grid;
   place-items: center;
   font-size: 18px;
@@ -4947,7 +5008,7 @@ input::placeholder {
 
 .nexus-tab strong {
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--muted);
 }
 
@@ -5737,7 +5798,7 @@ input::placeholder {
 
 .conflict-row strong {
   color: #d9b8be;
-  font-weight: 500;
+  font-weight: var(--fw-title);
 }
 
 .conflict-block > .btn {
@@ -7063,7 +7124,7 @@ body.is-reordering * {
 
 .mod-title-row h3 {
   font-size: 14.5px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: 0.1px;
 }
 
@@ -7320,7 +7381,7 @@ body.is-reordering * {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: #c7d2de;
 }
 
@@ -7572,7 +7633,7 @@ body.is-reordering * {
 
 .command-copy strong {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: #dbe3ec;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8272,12 +8333,12 @@ body ::selection {
 }
 
 .logo-copy strong {
-  font-weight: 700;
+  font-weight: var(--fw-display);
 }
 
 .nav-label {
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
 }
 
 .nav-en {
@@ -8357,7 +8418,7 @@ body ::selection {
 .mod-title-row h3 {
   font-family: var(--font);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: -0.1px;
 }
 
@@ -8714,7 +8775,7 @@ body ::selection {
 .theme-copy strong {
   font-family: var(--mono);
   font-size: 9.5px;
-  font-weight: 500;
+  font-weight: var(--fw-title);
   letter-spacing: 0.7px;
   color: var(--text-2);
 }
@@ -8799,11 +8860,24 @@ body ::selection {
   color: var(--muted-2);
 }
 
-.appearance-hint {
+/* 辅助说明的统一语义：比正文小一号、次一级灰、400 不许加粗（r42）。
+   注意 .bg-hint 是同一语义的另一个类名（组件里用了两处），此前 styles.css
+   里**一条规则都没有**——它回落到 <p> 默认的 14px + var(--text)，在同一张卡片
+   里比 .appearance-hint 大两档、亮两档，看起来「又大又黑又重」。两者必须共用
+   同一套指标，所以这里写成同一个规则组。 */
+.appearance-hint,
+.bg-hint {
   margin: 7px 0 0;
-  font-size: 10px;
-  line-height: 1.5;
+  font-size: var(--fs-hint);
+  font-weight: var(--fw-hint);
+  line-height: 1.55;
   color: var(--muted-2);
+}
+
+/* 卡片正文里的 .bg-hint 是首个子元素（后面紧跟 .setting-list，其自带 10px
+   上间距），上外边距会叠成双层留白，这里清掉。 */
+.appearance-card-body > .bg-hint:first-child {
+  margin-top: 0;
 }
 
 .scale-row {
@@ -9564,14 +9638,14 @@ body::before {
 .setup-banner-kicker {
   font-family: var(--mono);
   font-size: 8px;
-  font-weight: 500;
+  font-weight: var(--fw-label);
   letter-spacing: 1.8px;
   color: rgba(7, 9, 12, 0.76);
 }
 
 .setup-banner-copy strong {
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--fw-title);
   letter-spacing: 0.3px;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
 }
@@ -9634,7 +9708,7 @@ body::before {
 .state-recovery-kicker {
   font-family: var(--mono);
   font-size: 8px;
-  font-weight: 500;
+  font-weight: var(--fw-label);
   letter-spacing: 1.8px;
   color: var(--hazard);
 }
@@ -9642,7 +9716,7 @@ body::before {
 .state-recovery-copy strong {
   color: var(--text);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: var(--fw-title);
   letter-spacing: 0.3px;
 }
 
@@ -9750,7 +9824,7 @@ body::before {
 /* ------------------------------------------------------------------ */
 
 .page-head h1 {
-  font-weight: 700;
+  font-weight: var(--fw-display);
   letter-spacing: 0.9px;
 }
 
@@ -9759,13 +9833,13 @@ body::before {
 }
 
 .panel-head h2 {
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: 0.95px;
 }
 
 .eyebrow,
 .panel-eyebrow {
-  font-weight: 600;
+  font-weight: var(--fw-label);
   letter-spacing: 2px;
   opacity: 0.82;
 }
@@ -9781,7 +9855,7 @@ body::before {
 }
 
 .appearance-label {
-  font-weight: 500;
+  font-weight: var(--fw-label);
   letter-spacing: 1.35px;
 }
 
@@ -10202,7 +10276,7 @@ body::before {
 
 .update-lock-copy strong {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
 }
 
@@ -10323,7 +10397,7 @@ body::before {
 
 .mod-context-name {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10557,7 +10631,7 @@ body::before {
   color: var(--text);
   font-family: var(--sans);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   letter-spacing: 0.02em;
   max-width: 128px;
   padding: 0 2px;
@@ -10665,7 +10739,7 @@ body::before {
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: 0.02em;
   color: var(--text);
 }
@@ -11017,7 +11091,7 @@ body::before {
   min-width: 16px;
   padding: 0 5px;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--fw-badge);
   line-height: 16px;
 }
 
@@ -11059,7 +11133,7 @@ body::before {
 }
 .switch-step.is-active {
   color: var(--text);
-  font-weight: 600;
+  font-weight: var(--fw-label);
 }
 .switch-step.is-active i {
   border-color: var(--accent);
@@ -11114,7 +11188,7 @@ body::before {
   min-width: 0;
 }
 .activity-copy strong {
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
   white-space: nowrap;
 }
@@ -11157,7 +11231,7 @@ body::before {
   color: var(--accent-ink);
   font-family: var(--mono);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: 0.8px;
 }
 
@@ -11281,7 +11355,7 @@ body::before {
   color: #fff;
   font-size: 9px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: var(--fw-badge);
   line-height: 15px;
   text-align: center;
 }
@@ -11374,7 +11448,7 @@ body::before {
   gap: 6px;
   margin: 0 0 6px;
   color: var(--accent-text);
-  font-weight: 600;
+  font-weight: var(--fw-title);
 }
 .conflict-deepscan-result ul {
   margin: 4px 0 0;
@@ -11897,13 +11971,19 @@ body::before {
   color: var(--accent-text);
 }
 
+/* modern 主题统一走中性灰轨道；这里必须把 border-color 显式清成 transparent，
+   否则上面那条 border:0 会被 var(--line) 重新画出一条硬边（r42 之前的病根）。 */
 :root[data-style="modern"] .toggle-track {
-  border-color: var(--line);
-  background: var(--panel-2);
+  border-color: transparent;
+  background: rgba(148, 163, 184, 0.34);
+}
+
+:root[data-style="modern"] .toggle.is-on .toggle-track {
+  background: rgba(var(--accent-rgb), 0.92);
 }
 
 :root[data-style="modern"] .toggle.is-on .toggle-knob {
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 :root[data-style="modern"] .panel-copy code,
@@ -12273,7 +12353,7 @@ body::before {
 .root-fault-card h1 {
   margin: 0;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--fw-display);
   color: var(--text, #f2f4f8);
 }
 
@@ -12332,7 +12412,7 @@ body::before {
 
 .nxm-block-head strong {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
 }
 
@@ -12387,7 +12467,7 @@ body::before {
 .nxm-intake-head strong {
   flex: 1;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
 }
 
@@ -12620,7 +12700,7 @@ body::before {
   border: 0;
   background: none;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: var(--fw-label);
   color: var(--accent-text);
   cursor: pointer;
   text-decoration: underline;
@@ -12872,7 +12952,7 @@ body::before {
 
 .download-name {
   overflow: hidden;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13019,7 +13099,7 @@ body::before {
   display: block;
   margin-bottom: 2px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
 }
 
@@ -13039,7 +13119,7 @@ body::before {
 
 .mod-config-source-name {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text-2);
 }
 
@@ -13232,7 +13312,7 @@ body::before {
 
 .batch-count {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   margin-right: 4px;
 }
 
@@ -13354,7 +13434,7 @@ body::before {
   place-items: center;
   border-radius: 6px;
   background: var(--panel-3);
-  font-weight: 700;
+  font-weight: var(--fw-label);
   font-size: 13px;
   color: var(--accent);
 }
@@ -13390,7 +13470,7 @@ body::before {
   display: grid;
   place-items: center;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--fw-label);
   color: var(--accent);
 }
 
@@ -13498,7 +13578,7 @@ body::before {
 }
 .tool-nav-item .nav-label {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -13569,7 +13649,7 @@ body::before {
 
 .deps-mod {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: var(--fw-title);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -13702,7 +13782,7 @@ body::before {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: var(--fw-title);
   letter-spacing: 0.04em;
   color: var(--accent-contrast, #04070c);
   background: var(--accent);
@@ -14383,7 +14463,8 @@ body::before {
 
 .font-preview-tag {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-hint);
   letter-spacing: 1.2px;
   color: var(--muted-2);
   text-transform: uppercase;
@@ -14392,6 +14473,7 @@ body::before {
 .font-preview-text {
   margin: 0;
   font-size: 15px;
+  font-weight: var(--fw-body);
   line-height: 1.4;
   color: var(--text);
   overflow: hidden;
@@ -14400,9 +14482,16 @@ body::before {
 }
 
 .font-preview-code {
+  /* r42：这一行（`load_order::apply(195) → archive.xl [OK]`）此前是
+     var(--accent-text) 亮黄 @11.5px 等宽，压在深底上因为膨胀错觉显得很粗。
+     它不是强调信息，是「代码字体长这样」的样张，所以降回次级文字色，
+     并显式钉死 400 + 复位 body 继承来的 Inter 字符变体（cv02/cv03/cv04/cv11
+     在等宽字体上无对应，只会让字形变得不伦不类）。 */
   font-family: var(--mono);
   font-size: 11.5px;
-  color: var(--accent-text);
+  font-weight: var(--fw-mono);
+  font-feature-settings: normal;
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -14436,7 +14525,8 @@ body::before {
 
 .appearance-card-hint {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-body);
   line-height: 1.5;
   color: var(--muted-2);
 }
@@ -14505,7 +14595,7 @@ body::before {
 
 .setting-item-label {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--fw-label);
   color: var(--text);
 }
 

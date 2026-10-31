@@ -331,6 +331,23 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // r42：字重收拢到 400 / 500 / 700 三档。--font 栈首的 "Microsoft YaHei UI"
+    // 只有 Regular(400) / Bold(700) 两个字面，600 会吸附到 700，于是「区块小标题」
+    // 和「页面大标题」一样粗、层级塌掉。这里同时卡住「全量 CSS 无字面字重」和
+    // 「页面计算字重只有三档」两条，别让 600 再从组件级 CSS 侧门溜回来。
+    name: "排版层级（字重三档 / 令牌化 / 开关药丸型）",
+    script: "check-typography.mjs",
+    expect: [
+      "checks_failed=0",
+      "noLiteralWeight=1",
+      "noPhantomWeight=1",
+      "noPhantomComputed=1",
+      "tokensDefined=1",
+      "noSynthWeight=1",
+      "toggleStateColor=1",
+    ],
+  },
+  {
     // bf7889：卡片 ⇄ 列表视图切换（列表也要虚拟滚动，且选择要落盘）。
     name: "模组库视图切换",
     script: "check-library-view.mjs",
