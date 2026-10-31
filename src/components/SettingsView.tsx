@@ -184,6 +184,7 @@ export function SettingsView({
   onAutoDetect,
   onClearGame,
   onSettings,
+  onAdjustBackground,
   onRefreshMods,
   onToggleWrite,
   onOpenPath,
@@ -224,6 +225,8 @@ export function SettingsView({
   onAutoDetect: () => void;
   onClearGame: () => void;
   onSettings: (settings: Settings) => void;
+  /** 3A-3：打开背景构图模态（App 持有 dataUrl，弹窗只能挂在那里）。 */
+  onAdjustBackground: () => void;
   onRefreshMods: () => void;
   onToggleWrite: (enabled: boolean) => void;
   onOpenPath: (path: string) => void;
@@ -396,6 +399,8 @@ export function SettingsView({
       });
       if (typeof picked !== "string" || !picked) return;
       update({ backgroundImage: picked });
+      // 3A-3：选完图直接进构图调整——App 等 dataUrl 就绪后才真正弹窗。
+      onAdjustBackground();
     } catch (error) {
       onError(error, t("appearance.backgroundPickFailed"));
     }
@@ -430,6 +435,7 @@ export function SettingsView({
     onBlur: (value: number) => update({ backgroundBlur: value }),
     onDim: (value: number) => update({ backgroundDim: value }),
     onFit: (value: BackgroundFit) => update({ backgroundFit: value }),
+    onAdjust: onAdjustBackground,
     // 单轴更新：两个滑块各自只改自己那一轴，互不覆盖。
     onPos: (axis: "x" | "y", value: number) =>
       update(axis === "x" ? { backgroundPosX: value } : { backgroundPosY: value }),

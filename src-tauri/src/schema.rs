@@ -574,6 +574,11 @@ pub struct Settings {
     /// 和 background_opacity 是两个维度：不透明度让图变淡，遮罩让图后面垫一层黑。
     #[serde(default = "default_background_dim")]
     pub background_dim: u8,
+    /// 背景图缩放倍率 1.0–3.0（默认 1.0，3A-3 裁切模态）。> 1 时前端把
+    /// background-size 等比放大，配合焦点实现「头像式」拖拽裁切；
+    /// 1.0 表示维持填充模式原样，不引入额外缩放。
+    #[serde(default = "default_background_zoom")]
+    pub background_zoom: f64,
     /// 用户自定义启动参数（#6）：如 `-modded`。空格分隔，支持双引号包裹，
     /// 经 parse_launch_args 白名单校验后逐参传给游戏进程，绝不经过 shell。
     #[serde(default)]
@@ -663,6 +668,11 @@ fn default_background_dim() -> u8 {
     50
 }
 
+fn default_background_zoom() -> f64 {
+    // 1.0 = 不缩放，维持填充模式原样（3A-3 裁切模态的基准档）。
+    1.0
+}
+
 fn default_deploy_mode() -> String {
     "hardlink".to_string()
 }
@@ -705,6 +715,7 @@ impl Default for Settings {
             background_pos_x: default_background_pos(),
             background_pos_y: default_background_pos(),
             background_dim: default_background_dim(),
+            background_zoom: default_background_zoom(),
             deploy_mode: default_deploy_mode(),
             launch_gpu_pref: default_gpu_pref(),
             launch_priority: default_launch_priority(),

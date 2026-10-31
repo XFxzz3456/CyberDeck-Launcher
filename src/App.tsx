@@ -79,6 +79,7 @@ import { ConflictCenter } from "./components/ConflictCenter";
 import { NxmIntake, type NxmItem } from "./components/NxmIntake";
 import { CommandPalette } from "./components/CommandPalette";
 import { AdoptPreviewDialog } from "./components/AdoptPreviewDialog";
+import { BackgroundCropDialog } from "./components/BackgroundCropDialog";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { TaskCenter } from "./components/TaskCenter";
 import { DownloadsView } from "./components/DownloadsView";
@@ -1981,6 +1982,24 @@ export default function App() {
     [showError, snapshot?.state.settings],
   );
 
+  // 3A-3 裁切构图：选完图（或点「调整构图」）打开模态，确认后把拖拽结果
+  // 换算回焦点 0–100 + 缩放倍率走常规设置通道（乐观更新 + 队列落盘）。
+  // 必须定义在 handleSettings 之后：依赖数组要在其初始化之后求值。
+  const [bgCropOpen, setBgCropOpen] = useState(false);
+  const applyBackgroundCrop = useCallback(
+    (next: { posX: number; posY: number; zoom: number }) => {
+      const current = snapshot?.state.settings;
+      if (!current) return;
+      handleSettings({
+        ...current,
+        backgroundPosX: Math.min(100, Math.max(0, Math.round(next.posX))),
+        backgroundPosY: Math.min(100, Math.max(0, Math.round(next.posY))),
+        backgroundZoom: Math.min(3, Math.max(1, next.zoom)),
+      });
+    },
+    [handleSettings, snapshot?.state.settings],
+  );
+
   const handleLaunch = useCallback(async () => {
     if (!snapshot?.game) {
       toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedDetail"), "system", {
@@ -2178,8 +2197,18 @@ export default function App() {
   // 正文压在上面照样读不清。所以遮罩必须是独立的一层「不以图片尺寸为界」。
   const bgSettings = snapshot?.state.settings;
   const bgFit = bgSettings?.backgroundFit ?? "cover";
+  // 3A-3 裁切模态的缩放倍率：>1 时 background-size 等比放大，焦点负责「看哪里」。
+  const bgZoomRaw = Number(bgSettings?.backgroundZoom ?? 1);
+  const bgZoom = Number.isFinite(bgZoomRaw) ? Math.min(3, Math.max(1, bgZoomRaw)) : 1;
   // stretch 用 100% 100% 强行铺满；cover / contain 直接把关键字交给 CSS。
-  const bgSize = bgFit === "stretch" ? "100% 100%" : bgFit;
+  // zoom>1 时改用「宽 = zoom×容器」的百分比尺寸：等比放大、纵向溢出按焦点裁掉，
+  // 与裁切模态里的预览完全同一套公式，做到所见即所得。
+  const bgSize =
+    bgZoom > 1
+      ? `${Math.round(bgZoom * 1000) / 10}% auto`
+      : bgFit === "stretch"
+        ? "100% 100%"
+        : bgFit;
   const bgPosX = Math.min(100, Math.max(0, bgSettings?.backgroundPosX ?? 50));
   const bgPosY = Math.min(100, Math.max(0, bgSettings?.backgroundPosY ?? 50));
   const bgOpacity = Math.min(100, Math.max(0, bgSettings?.backgroundOpacity ?? 45));
@@ -2484,6 +2513,7 @@ export default function App() {
                 onAutoDetect={() => void handleAutoDetect()}
                 onClearGame={handleClearGame}
                 onSettings={handleSettings}
+                onAdjustBackground={() => setBgCropOpen(true)}
                 onRefreshMods={() => void refresh()}
                 onToggleWrite={handleToggleWrite}
                 onOpenPath={(path) => {
@@ -2790,6 +2820,20 @@ export default function App() {
           void handleAdoptScan();
         }}
       />
+
+      {bgCropOpen && backgroundData.dataUrl ? (
+        <BackgroundCropDialog
+          dataUrl={backgroundData.dataUrl}
+          initialPosX={bgPosX}
+          initialPosY={bgPosY}
+          initialZoom={bgZoom}
+          onConfirm={(next) => {
+            applyBackgroundCrop(next);
+            setBgCropOpen(false);
+          }}
+          onClose={() => setBgCropOpen(false)}
+        />
+      ) : null}
 
       <AdoptPreviewDialog
         open={adoptOpen}

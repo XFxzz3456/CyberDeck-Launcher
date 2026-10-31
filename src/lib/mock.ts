@@ -184,6 +184,7 @@ const DEFAULT_SETTINGS: Settings = {
   backgroundPosX: 50,
   backgroundPosY: 50,
   backgroundDim: 50,
+  backgroundZoom: 1,
   deployMode: "hardlink",
   launchGpuPref: "auto",
   launchPriority: "normal",

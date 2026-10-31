@@ -144,6 +144,11 @@ export function normalizeSettings(raw: unknown, fallback: Settings): Settings {
     backgroundPosX: num(settings.backgroundPosX, fallback.backgroundPosX),
     backgroundPosY: num(settings.backgroundPosY, fallback.backgroundPosY),
     backgroundDim: num(settings.backgroundDim, fallback.backgroundDim),
+    // 缩放倍率（3A-3）：1.0–3.0，非有限数 / 越界都钳回合法区间。
+    backgroundZoom: Math.min(
+      3,
+      Math.max(1, Number.isFinite(Number(settings.backgroundZoom)) ? Number(settings.backgroundZoom) : 1),
+    ),
     // 协议是字面量联合，非法值一律回退 openai，不进文本兜底通道。
     aiProtocol: settings.aiProtocol === "anthropic" ? "anthropic" : "openai",
     // 填充模式同理：只认三个合法值，其余（含旧状态里缺字段）回退 cover。
@@ -200,6 +205,7 @@ export const FALLBACK_SETTINGS: Settings = {
   backgroundPosX: 50,
   backgroundPosY: 50,
   backgroundDim: 50,
+  backgroundZoom: 1,
   deployMode: "hardlink",
   launchGpuPref: "auto",
   launchPriority: "normal",

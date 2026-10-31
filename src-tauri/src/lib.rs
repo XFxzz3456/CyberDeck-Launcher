@@ -1387,6 +1387,12 @@ fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settin
     settings.background_pos_x = settings.background_pos_x.min(100);
     settings.background_pos_y = settings.background_pos_y.min(100);
     settings.background_dim = settings.background_dim.min(100);
+    // 缩放倍率（3A-3）：1.0–3.0；NaN/Infinity 一律回到 1.0，避免污染 CSS。
+    if settings.background_zoom.is_finite() {
+        settings.background_zoom = settings.background_zoom.clamp(1.0, 3.0);
+    } else {
+        settings.background_zoom = 1.0;
+    }
     // 存档管理：上限钳制；编辑器路径存在性校验（空 = 未配置，允许）。
     settings.snapshot_limit = settings.snapshot_limit.clamp(1, 100);
     settings.save_editor_path = settings.save_editor_path.trim().to_string();

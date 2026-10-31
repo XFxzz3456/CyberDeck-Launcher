@@ -1,5 +1,6 @@
 import {
   Check,
+  Crop,
   Image as ImageIcon,
   ImageOff,
   MonitorPlay,
@@ -49,6 +50,8 @@ export interface BackgroundControl {
   loading?: boolean;
   onPick: () => void;
   onClear: () => void;
+  /** 3A-3：打开「头像式」构图调整模态。 */
+  onAdjust: () => void;
   onOpacity: (value: number) => void;
   onBlur: (value: number) => void;
   onDim: (value: number) => void;
@@ -588,6 +591,15 @@ export function AppearanceSettings({
                 title={t("appearance.backgroundPickTitle")}
               >
                 <ImageIcon size={12} /> {t("appearance.backgroundPick")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={background.onAdjust}
+                disabled={!background.path || background.loading}
+                title={t("appearance.bgCropTitle")}
+              >
+                <Crop size={12} /> {t("appearance.bgCropOpen")}
               </button>
               <button
                 type="button"

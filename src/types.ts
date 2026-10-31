@@ -273,6 +273,8 @@ export interface Settings {
    * 隔一层黑，正文才有对比度）。只有后者能同时满足「图好看」和「字能读」。
    */
   backgroundDim: number;
+  /** 背景图缩放倍率 1.0–3.0（默认 1.0，3A-3 裁切模态）。>1 时配合焦点做拖拽裁切。 */
+  backgroundZoom: number;
   /** 部署方式（deepseek 任务·模块一）：hardlink / symlink / copy。 */
   deployMode: "hardlink" | "symlink" | "copy";
   /** 启动显卡偏好：auto / dedicated / integrated。 */
