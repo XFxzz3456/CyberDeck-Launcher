@@ -96,7 +96,7 @@
 
 | NCPD 经典 | NETRUNNER 冰蓝 |
 |---|---|
-| ![NCPD](docs/screenshots/cpd.png) | ![Netrunner](docs/screenshots/netrunner.png) |
+| ![NCPD](docs/screenshots/ncpd.png) | ![Netrunner](docs/screenshots/netrunner.png) |
 
 | ARASAKA 荒坂红 | MILITECH 军用绿 |
 |---|---|
