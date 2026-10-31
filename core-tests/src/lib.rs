@@ -14,6 +14,8 @@ pub mod deps;
 pub mod translation;
 #[path = "../../src-tauri/src/schema.rs"]
 pub mod schema;
+#[path = "../../src-tauri/src/modname.rs"]
+pub mod modname;
 #[path = "../../src-tauri/src/store.rs"]
 pub mod store;
 #[path = "../../src-tauri/src/game.rs"]
