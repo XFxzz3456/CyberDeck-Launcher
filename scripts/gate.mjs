@@ -300,6 +300,25 @@ const UI_SCRIPTS = [
     ],
   },
   {
+    // 2026-10-31（deepseek_markdown_20261030 那份 UI 自查任务）：把「肉眼看不出来」的
+    // 三类问题变成数字卡住 —— 超宽屏内容铺满、小字对比度不足、可点控件没有按下反馈。
+    // ultraContentW（2560 屏实际内容宽度）只记录不断言：它取决于 .page 的 max-width，
+    // 属可调设计参数，写死数字会让「改设计」直接判红。这里只卡横向滚动与溢出。
+    name: "UI 量化审查（超宽屏限宽 / 对比度 / 按下反馈）",
+    script: "check-ui-audit.mjs",
+    expect: [
+      "viewports=4",
+      "hScrollMax=0",
+      "narrowHScroll=0",
+      "overflowTotal=0",
+      "scaleBroken=0",
+      "contrastFails=0",
+      "alignSpread=0",
+      "hoverRules=10",
+      "pageErrors=0",
+    ],
+  },
+  {
     name: "窗口拖动（鼠标/触屏/手写笔）",
     script: "check-window-drag.mjs",
     expect: ["checks_failed=0"],
