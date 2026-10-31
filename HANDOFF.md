@@ -841,6 +841,27 @@ ZIP/7z/RAR
 
 ## 5. 环境依赖清单
 
+### 5.0 版本控制（2026-10-31 起）
+
+`src/` **已是 git 仓库**（`main` 分支，首提交 `fbce883`「初始化仓库，纳入 0.9.0-r35 源码基线」，309 文件 / 13.34 MiB）。
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| 仓库根 | `D:\用户\CyberDeck-Launcher\src` | **不含** `release/`、`发布产物/`、`归档/`——这些在同级 `..` 下，属产物不进库 |
+| `core.autocrlf` | `false` | 源码 CRLF/LF 混存（`core-tests/src/lib.rs` 是 CRLF）。设 true 会让首提交后满屏假变更 |
+| `core.quotepath` | `false` | 中文文件名正常显示，不转成 `\344\275\240` |
+| `core.longpaths` | `true` | `src-tauri/target` 深路径超 260 字符 |
+| 局部身份 | `user.name=Arol` / `user.email=arol@localhost` | **只为本地提交临时设的**，接远端前改成真实邮箱 |
+| 远端 | 无 | 尚未配置 |
+
+`.gitignore` 关键约定（改之前先想清楚）：
+
+- 忽略：`node_modules`、`src-tauri/target`、`core-tests/target`、`dist`、`shots`、`.portable-build/`、`.workbuddy/`、`.workbuddy-tmp/`、`.test-tmp/`、`*.exe`、`*.zip`、`*.log`
+- **例外必须保留**：`!testpacks/*.zip` —— `testpack-multi.zip` / `testpack-single.zip` 是集成测试夹具，被 `*.zip` 吃掉后相关测试直接跑不起来
+- `docs/screenshots/`（13 MB / 35 张）**有意入库**，作 UI 历史对比基线
+
+⚠️ `src-tauri/.test-tmp/` 里含测试期生成的 `data/secrets/*.key`，已用 `.test-tmp/` 挡住。若哪天改规则把它放出来，**先确认里面没有真密钥**。
+
 ### 5.1 前端
 
 | 项 | 要求 | 本机实际 |
