@@ -105,7 +105,9 @@ check(
 );
 
 // ── 3. 滑杆实时预览：拖动即改背景层样式（乐观更新，不等写盘） ────────
-const opacitySlider = page.locator('.bg-slider input[type="range"]').first();
+// 按 aria-label 精确定位，不按 DOM 顺序数：r43 在「不透明度/模糊」前面插入了
+// 「水平/垂直焦点」，`.first()` / `.nth(1)` 会抓到焦点滑杆而不是不透明度/模糊。
+const opacitySlider = page.locator('.bg-slider input[aria-label="不透明度"]');
 await opacitySlider.fill("20");
 await page.waitForTimeout(150);
 const opacityAfter = await page
@@ -113,13 +115,42 @@ const opacityAfter = await page
   .evaluate((node) => node.style.opacity);
 check("拖不透明度滑块 → 背景层立即变 20%", opacityAfter === "0.2", opacityAfter, "opacityPreview");
 
-const blurSlider = page.locator('.bg-slider input[type="range"]').nth(1);
+const blurSlider = page.locator('.bg-slider input[aria-label="模糊度"]');
 await blurSlider.fill("0");
 await page.waitForTimeout(150);
 const filterAfter = await page
   .locator(".app-backdrop")
   .evaluate((node) => node.style.filter);
 check("模糊归 0 → filter 移除", filterAfter === "" || filterAfter === "none", filterAfter, "blurPreview");
+
+// ── 3b. r43 新增控件：焦点 / 填充模式 / 暗化遮罩 ─────────────────────
+const focusXSlider = page.locator('.bg-slider input[aria-label*="水平"]');
+await focusXSlider.fill("0");
+await page.waitForTimeout(150);
+const positionAfter = await page
+  .locator(".app-backdrop")
+  .evaluate((node) => node.style.backgroundPosition);
+check(
+  "拖水平焦点 → background-position 左对齐",
+  positionAfter.startsWith("0%"),
+  positionAfter,
+  "focusPreview",
+);
+
+await page.getByRole("button", { name: "完整显示" }).click();
+await page.waitForTimeout(150);
+const sizeAfter = await page
+  .locator(".app-backdrop")
+  .evaluate((node) => node.style.backgroundSize);
+check("切完整显示 → background-size: contain", sizeAfter === "contain", sizeAfter, "fitPreview");
+
+const dimSlider = page.locator('.bg-slider input[aria-label="暗化遮罩"]');
+await dimSlider.fill("100");
+await page.waitForTimeout(150);
+const dimAfter = await page
+  .locator(".app-backdrop-dim")
+  .evaluate((node) => node.style.opacity);
+check("拖暗化遮罩 → 遮罩层 opacity 1", dimAfter === "1", dimAfter, "dimPreview");
 
 // ── 4. 恢复默认：背景层消失、路径清空 ────────────────────────────────
 await page.getByRole("button", { name: "恢复默认" }).click();
