@@ -3399,6 +3399,38 @@ pre {
   min-width: 0;
 }
 
+/* ── 3B-2 / 3C 设置卡片层级（提亮底色 + 极弱分割线 + 背景图毛玻璃）─────
+   两条互斥分支，写在同一处防漂移：
+   - 未开背景图：卡片底色比页面主底色提亮一档（「#111 → #1a1a1c」的相对表达，
+     用 color-mix 往白里混 12%，暗/亮主题方向一致），并给相邻设置行加极细分割线。
+   - 开了背景图（[data-backdrop="on"]）：卡片换成半透明 + backdrop-filter 玻璃，
+     提亮底色被玻璃覆盖（本规则更靠后、优先级同数取胜）。 */
+
+.settings-tab-panel .panel {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-2) 88%, #fff 12%),
+    color-mix(in srgb, var(--panel) 88%, #fff 12%)
+  );
+}
+
+/* 同一卡片内相邻设置行之间的极弱分割线：半透明前景色，明暗主题自动反向。 */
+.settings-tab-panel .switch-row + .switch-row {
+  border-top: 1px solid color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+[data-backdrop="on"] .settings-tab-panel .panel {
+  /* ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。 */
+  background: rgba(20, 20, 24, 0.6);
+  backdrop-filter: blur(16px);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel .panel {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
 .settings-card.span-2 {
   grid-column: span 2;
 }
@@ -9188,6 +9220,11 @@ body ::selection {
   font-weight: var(--fw-hint);
   line-height: 1.55;
   color: var(--muted-2);
+}
+
+/* 3C-1：预览框与它下面的说明文字贴紧一点（原 7px 有一段没必要的空档）。 */
+.font-preview + .bg-hint {
+  margin-top: 4px;
 }
 
 /* 卡片正文里的 .bg-hint 是首个子元素（后面紧跟 .setting-list，其自带 10px
