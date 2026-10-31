@@ -2021,7 +2021,19 @@ async fn compat_scan(
 ) -> AppResult<compat::CompatReport> {
     tauri::async_runtime::spawn_blocking(move || {
         let store = app.state::<Store>();
-        compat::scan(store.inner(), target.as_deref())
+        // 目标版本默认取「当前绑定的游戏 exe 实际版本」。写死 2.5 会把故意降级
+        // 或还在玩 2.21 的玩家整库判成过期，等于给他们一个假警报。
+        let resolved = match target.filter(|value| !value.trim().is_empty()) {
+            Some(value) => Some(value),
+            None => {
+                let data = store.snapshot_data();
+                current_game(&data)
+                    .ok()
+                    .and_then(|game| game.version)
+                    .or_else(|| data.last_game_version.clone())
+            }
+        };
+        compat::scan(store.inner(), resolved.as_deref())
     })
     .await
     .map_err(|e| CommandError::new("COMPAT_TASK", format!("兼容扫描任务异常：{e}")))?

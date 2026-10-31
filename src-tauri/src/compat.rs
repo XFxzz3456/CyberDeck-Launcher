@@ -204,7 +204,9 @@ pub fn scan(store: &Store, target: Option<&str>) -> AppResult<CompatReport> {
                     mod_id: entry.id.clone(),
                     name: entry.name.clone(),
                     declared: Some(declared.clone()),
-                    reason: format!("声明适配 {declared}，低于 {target_raw}"),
+                    // 不在这里拼版本号：目标版本可能是四段内部号，展示层会用
+                    // 社区叫法（2.5 / 2.21）重写这句。
+                    reason: format!("声明适配 {declared}，低于当前游戏版本"),
                 }),
                 Some(_) => {}
                 None => report.warn.push(CompatIssue {
@@ -312,6 +314,24 @@ mod tests {
         assert_eq!(report.stale.len(), 1, "{report:?}");
         assert_eq!(report.stale[0].declared.as_deref(), Some("2.21"));
         assert!(report.warn.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 玩家故意留在 2.21：声明适配 2.21 的 Mod 不能因为「比写死的 2.5 低」被判过期。
+    /// 目标版本由命令层从游戏 exe 实际版本传入，这里直接验 scan 的语义。
+    #[test]
+    fn older_target_does_not_flag_matching_declaration() {
+        let (root, store) = temp_store("old-target");
+        let entry = entry_at(&root, "mod-221", "Mod 221", "m221");
+        fs::write(
+            root.join("staging").join("m221").join("manifest.json"),
+            r#"{"name":"Mod 221","gameVersion":"2.21"}"#,
+        )
+        .unwrap();
+        let store = install(&root, vec![entry]);
+        let report = scan(&store, Some("2.21")).unwrap();
+        assert_eq!(report.target_version, "2.21");
+        assert_eq!(report.stale.len(), 0, "同版本声明不该判过期：{report:?}");
         let _ = fs::remove_dir_all(root);
     }
 

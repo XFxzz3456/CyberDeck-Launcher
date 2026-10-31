@@ -1415,7 +1415,7 @@ export const zhCN = {
   compat: {
     errorScan: "兼容扫描失败",
     scanBtn: "扫描兼容性",
-    staleLabel: "待适配 2.5",
+    staleLabel: "待适配当前版本",
     staleTip: "声明的游戏版本低于目标版本",
     summary: "扫描 {scanned} 个 Mod：{stale} 个待适配 {target}，{warn} 个兼容性未知。",
     warnLabel: "兼容性未知",
@@ -1483,6 +1483,9 @@ export const zhCN = {
     exitDone: "已恢复 {mods} 个 Mod，失败 {failed} 个。",
     foot: "进入安全模式不会删除暂存区文件，也不会改动 Mod 本体。",
     intro: "游戏大版本更新后，先一键回到无 Mod 状态确认游戏能启动，再逐步恢复。",
+    introLegacy: "当前游戏版本 {version}，低于 2.5，不存在「待适配 2.5」这回事。这个开关仍然可以用来快速回到无 Mod 状态。",
+    versionUnknown: "读不到游戏版本",
+    versionNote: "当前游戏版本 {version}",
     partialTitle: "部分操作未完成",
     title: "安全模式",
   },

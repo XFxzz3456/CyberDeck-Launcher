@@ -1373,7 +1373,7 @@ export function SettingsView({
           aria-labelledby="settings-tab-security"
           hidden={activeTab !== "security"}
         >
-          <SafeModeCard onError={onError} />
+          <SafeModeCard onError={onError} gameVersion={game?.version ?? null} />
           <ConfigPackCard onError={onError} />
 
           <section className="panel settings-card">

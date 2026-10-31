@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { safetyApi, type CompatReport, type SafeModeState } from "../lib/apiSafety";
 import { t } from "../i18n";
+import { gameVersionLabel, versionAtLeast } from "../lib/gameVersion";
 import { Badge, Modal, Spinner } from "./ui";
 import "./SafetyCards.css";
 
@@ -11,7 +12,19 @@ import "./SafetyCards.css";
  * 两个操作都必须二次确认，且文案要说清「只断链接、不删文件」——这是这个功能
  * 唯一会被误解的地方。恢复失败时快照会保留，用户可以再试一次。
  */
-export function SafeModeCard({ onError }: { onError: (error: unknown, title?: string) => void }) {
+export function SafeModeCard({
+  onError,
+  gameVersion,
+}: {
+  onError: (error: unknown, title?: string) => void;
+  /** 当前绑定 exe 的文件版本（四段号）。读不到时传 null，界面走中性文案。 */
+  gameVersion?: string | null;
+}) {
+  // 只有 ≥2.5 才谈得上「待适配 2.5」。老版本玩家（2.21 及以下）看到这句
+  // 只会以为自己装了一堆过期模组，而实际上他们只是还没升级游戏。
+  const atLeast25 = versionAtLeast(gameVersion, "2.5");
+  const legacy = atLeast25 === false;
+  const versionLabel = gameVersionLabel(gameVersion)?.label ?? null;
   const [state, setState] = useState<SafeModeState | null>(null);
   const [confirm, setConfirm] = useState<null | "enter" | "exit">(null);
   const [busy, setBusy] = useState(false);
@@ -75,7 +88,9 @@ export function SafeModeCard({ onError }: { onError: (error: unknown, title?: st
     <section className="panel safety-card">
       <header className="panel-head">
         <div>
-          <div className="panel-eyebrow">// SAFE MODE / 2.5</div>
+          <div className="panel-eyebrow">
+            {atLeast25 ? "// SAFE MODE / 2.5" : "// SAFE MODE"}
+          </div>
           <h2>{t("safemode.title")}</h2>
         </div>
         <Badge tone={active ? "yellow" : "muted"}>
@@ -83,7 +98,11 @@ export function SafeModeCard({ onError }: { onError: (error: unknown, title?: st
         </Badge>
       </header>
 
-      <p className="safety-intro">{t("safemode.intro")}</p>
+      <p className="safety-intro">
+        {legacy
+          ? t("safemode.introLegacy", { version: versionLabel ?? t("safemode.versionUnknown") })
+          : t("safemode.intro")}
+      </p>
 
       <div className="safety-actions">
         <button
@@ -120,7 +139,8 @@ export function SafeModeCard({ onError }: { onError: (error: unknown, title?: st
               scanned: scan.scanned,
               stale: scan.stale.length,
               warn: scan.warn.length,
-              target: scan.targetVersion,
+              // 后端给的是 exe 四段号，展示层换成玩家说的 2.5 / 2.21。
+              target: gameVersionLabel(scan.targetVersion)?.label ?? scan.targetVersion,
             })}
           </p>
           {scan.stale.length > 0 ? (

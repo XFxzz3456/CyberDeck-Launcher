@@ -55,3 +55,22 @@ export function gameVersionText(raw: string | null | undefined): string | null {
   const parsed = gameVersionLabel(raw);
   return parsed ? parsed.label : null;
 }
+
+/**
+ * 社区版本号是否达到某个门槛。
+ *
+ * 必须按数值比较：`2.21` 是 2.2 的第 21 个补丁，比 `2.5` 旧；如果按
+ * 「主.次」两段解析成 (2, 21) vs (2, 5)，会得出 2.21 更新的错误结论。
+ * 读不到版本号时返回 null——调用方据此走中性文案，而不是猜一个。
+ */
+export function versionAtLeast(
+  raw: string | null | undefined,
+  floor: string,
+): boolean | null {
+  const current = gameVersionLabel(raw);
+  if (!current) return null;
+  const currentValue = Number.parseFloat(current.label);
+  const floorValue = Number.parseFloat(floor);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(floorValue)) return null;
+  return currentValue >= floorValue;
+}
