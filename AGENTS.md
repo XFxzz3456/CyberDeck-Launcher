@@ -3,10 +3,6 @@
 > 本文件是**执行层**规范：目录约定、版本发布流程、构建与门禁命令。
 > **规则级**长期结论（铁律、环境坑、事故教训）收敛在 `docs/MEMORY-CANON.md`，两者配合阅读。
 > 修改本文件需在 `CHANGELOG.md` 留痕。
->
-> **CodeBuddy 补充守则**：`.codebuddy/rules/cdl-guardrails.md`（单实例锁、端口约定、通知分级、文档同步归属）。
-> 交接现场快照见 `docs/HANDOFF-CODEDBUDDY.md`。**不要在本仓库根创建 `CODEBUDDY.md`**——
-> CodeBuddy 一旦发现它就会停止加载本文件，等于把整套规范静默关掉。
 
 ---
 
