@@ -9136,7 +9136,8 @@ body ::selection {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
-  line-height: 1;
+  /* 1.2 而非 1：门禁把「行盒矮于字号 1.1 倍」判为文字过挤（中文满格字形会贴边）。 */
+  line-height: 1.2;
   cursor: pointer;
   transition: background 0.16s ease, color 0.16s ease;
   white-space: nowrap;
