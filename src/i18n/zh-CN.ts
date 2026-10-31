@@ -1818,6 +1818,8 @@ export const zhCN = {
       cetTitle: "CET 模组已部署",
       conflictTitle: "部署被冲突拦住",
       doneTitle: "{name} 已部署",
+      purgedDetail: "「{name}」的暂存文件已被外部删除，失效记录和残留链接都已清理。需要的话重新导入一次即可。",
+      purgedTitle: "已清理失效记录",
       redscriptDetail: "脚本在游戏启动时编译；未生效看 r6\\logs\\redscript.log。",
       stillConflict: "仍有冲突",
       warningTitle: "部署提示",

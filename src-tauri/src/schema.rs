@@ -870,6 +870,10 @@ pub struct DeployReport {
     pub symlinks: usize,
     pub copies: usize,
     pub warnings: Vec<String>,
+    /// true = 这条模组的暂存文件在外部被删了，记录已被自动清理。前端要把卡片
+    /// 从列表里去掉，而不是当成「部署成功」更新它。
+    #[serde(default)]
+    pub purged: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1284,6 +1288,33 @@ pub struct HealReport {
     pub level: String,
     pub message: String,
 }
+
+/// 物理状态自同步的结果（启动 / 刷新时自动跑）。
+///
+/// 场景：玩家在 Vortex 或资源管理器里直接删了暂存文件，本地数据库还留着记录，
+/// 于是每次启用都报「暂存文件不见了」。这里把数据库拉回和磁盘一致的状态。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysicalSyncReport {
+    /// 本次扫描的模组总数。
+    pub checked: usize,
+    /// 暂存内容已丢失、记录被清理的模组名。
+    pub removed: Vec<String>,
+    /// 暂存目录失效但已从游戏目录恢复成功的模组名（记录保留）。
+    pub repaired: Vec<String>,
+    /// 判定不了 / 无法安全清理，暂时保留记录的模组名。
+    pub deferred: Vec<String>,
+    /// 清理过程中遇到的异常（删除被拒、恢复冲突等）。
+    pub warnings: Vec<String>,
+}
+
+impl PhysicalSyncReport {
+    /// 有没有真的改动过状态：前端据此决定要不要重拉快照。
+    pub fn touched(&self) -> bool {
+        !self.removed.is_empty() || !self.repaired.is_empty()
+    }
+}
+
 /// 播放集：一套「启用哪些 Mod + 加载顺序」的存档。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

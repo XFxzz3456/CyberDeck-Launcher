@@ -1355,10 +1355,20 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
                 store.save(&state)?;
                 plan_for(&entry)?
             } else {
-                return Err(CommandError::new(
-                    "STAGING_MISSING",
-                    "这个模组的暂存文件不见了，且没有可用于恢复的部署清单。请重新导入原始文件。",
-                ));
+                // 源文件在外部被删了（Vortex 清理、手动删目录）。这不是用户的
+                // 操作失误，弹红框只会让人反复点重试：清掉残留链接和失效记录，
+                // 让界面直接回到「库里没这个东西」的状态。
+                let mut notes = purge_links(&entry, &game_root);
+                notes.insert(
+                    0,
+                    "该模组实体文件已被外部删除，系统已自动清理失效记录。".to_string(),
+                );
+                forget_mod(&mut state, &entry);
+                store.save(&state)?;
+                return Ok(DeployReport {
+                    purged: true,
+                    ..report(entry, 0, 0, 0, 0, notes)
+                });
             }
         }
         Err(err) => return Err(err),
@@ -1539,6 +1549,7 @@ fn report(
         symlinks,
         copies,
         warnings,
+        purged: false,
     }
 }
 
@@ -1790,6 +1801,60 @@ pub fn collect_conflicts(mods: &[ModEntry]) -> Vec<ConflictInfo> {
     result
 }
 
+/// 删掉部署清单里的一条落地文件。
+///
+/// 抽出来给 `undeploy_mod` 与孤儿清理共用：**「什么算启动器放的文件」只允许
+/// 有一处判断**。两套实现迟早会漂移，而这里判断失误的代价是删掉玩家的原版文件。
+///
+/// - `Ok(false)`：已删除，且部署后没被外部改过
+/// - `Ok(true)`：已删除，但这是 Copy 部署且部署后被改过（调用方要告知用户）
+/// - `Err(reason)`：跳过，原因给上层拼提示用
+fn remove_deployed_file(file: &DeployedFile, game_root: &Path) -> Result<bool, String> {
+    let target = safe_join(game_root, &file.relative_path)
+        .map_err(|err| format!("跳过不安全路径 {}：{err}", file.relative_path))?;
+    if !is_within(game_root, &target) {
+        return Err(format!(
+            "拒绝删除游戏目录之外的文件：{}",
+            target.display()
+        ));
+    }
+    if !target.exists() && fs::symlink_metadata(&target).is_err() {
+        return Err(format!(
+            "部署清单中的文件已不存在：{}",
+            file.relative_path
+        ));
+    }
+    let symlink_meta = fs::symlink_metadata(&target).ok();
+    let is_symlink = symlink_meta
+        .as_ref()
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false);
+    if !is_symlink && file.link_type == LinkType::HardLink {
+        let source = PathBuf::from(&file.source);
+        if !same_file_identity(&source, &target) {
+            return Err(format!(
+                "目标已不是启动器创建的那个硬链接，拒绝删除：{}",
+                file.relative_path
+            ));
+        }
+    }
+    // Copy 部署的文件与暂存区没有身份关系（自检 P2-2）：用户手改过也无从拒绝删除，
+    // 因为「清单里写着这是启动器放的」。这里不比身份、只比对部署那一刻记下的
+    // 大小/时间，改动过就明确告知——否则用户会以为改动「还在某处」，其实已随文件删除。
+    let mut edited = false;
+    if !is_symlink && file.link_type == LinkType::Copy {
+        let (size, mtime) = file_stamp(&target);
+        let size_changed = matches!((file.size, size), (Some(before), Some(after)) if before != after);
+        let time_changed =
+            matches!((file.modified_time, mtime), (Some(before), Some(after)) if before != after);
+        edited = size_changed || time_changed;
+    }
+    remove_link_or_copy(&target, is_symlink)
+        .map_err(|err| format!("无法删除 {}：{err}", target.display()))?;
+    prune_empty_dirs(target.parent(), game_root);
+    Ok(edited)
+}
+
 pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<Vec<String>> {
     if !game_root.is_dir() {
         return Err(CommandError::new(
@@ -1819,53 +1884,13 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
     let mut edited_copies: Vec<String> = Vec::new();
 
     for file in entry.deployed_files.iter().rev() {
-        let target = match safe_join(game_root, &file.relative_path) {
-
-            Ok(path) => path,
-            Err(err) => {
-                warnings.push(format!("跳过不安全路径 {}：{err}", file.relative_path));
-                continue;
-            }
-        };
-        if !is_within(game_root, &target) {
-            warnings.push(format!("拒绝删除游戏目录之外的文件：{}", target.display()));
-            continue;
-        }
-        if target.exists() || fs::symlink_metadata(&target).is_ok() {
-            let symlink_meta = fs::symlink_metadata(&target).ok();
-            let is_symlink = symlink_meta
-                .as_ref()
-                .map(|meta| meta.file_type().is_symlink())
-                .unwrap_or(false);
-            if !is_symlink && file.link_type == LinkType::HardLink {
-                let source = PathBuf::from(&file.source);
-                if !same_file_identity(&source, &target) {
-                    warnings.push(format!(
-                        "目标已不是启动器创建的那个硬链接，拒绝删除：{}",
-                        file.relative_path
-                    ));
-                    continue;
-                }
-            }
-            // Copy 部署的文件与暂存区没有身份关系（自检 P2-2）：用户手改过也无从拒绝删除，
-            // 因为「清单里写着这是启动器放的」。这里不比身份、只比对部署那一刻记下的
-            // 大小/时间，改动过就明确告知——否则用户会以为改动「还在某处」，其实已随文件删除。
-            if !is_symlink && file.link_type == LinkType::Copy {
-                let (size, mtime) = file_stamp(&target);
-                let size_changed = matches!((file.size, size), (Some(before), Some(after)) if before != after);
-                let time_changed =
-                    matches!((file.modified_time, mtime), (Some(before), Some(after)) if before != after);
-                if size_changed || time_changed {
+        match remove_deployed_file(file, game_root) {
+            Ok(edited) => {
+                if edited {
                     edited_copies.push(file.relative_path.clone());
                 }
             }
-            if let Err(err) = remove_link_or_copy(&target, is_symlink) {
-                warnings.push(format!("无法删除 {}：{err}", target.display()));
-                continue;
-            }
-            prune_empty_dirs(target.parent(), game_root);
-        } else {
-            warnings.push(format!("部署清单中的文件已不存在：{}", file.relative_path));
+            Err(reason) => warnings.push(reason),
         }
     }
 
@@ -1892,6 +1917,198 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
     }
     store.save(&state)?;
     Ok(warnings)
+}
+
+/// 暂存区里的东西还在不在。
+///
+/// 只看目录存在不够：Vortex 删文件后经常留下空壳目录，真去部署才发现一个源文件
+/// 都没有。这里顺便确认目录里至少还有一个真实文件。
+fn staging_present(entry: &ModEntry) -> bool {
+    let root = Path::new(&entry.staging_path);
+    if !root.is_dir() {
+        return false;
+    }
+    WalkDir::new(root)
+        .into_iter()
+        .flatten()
+        .any(|item| item.file_type().is_file())
+}
+
+/// 静默清理一个模组留在游戏目录里的链接。
+///
+/// 返回删不掉的项（空 = 全部清干净）。玩家已经删掉的落地文件直接跳过——那本来
+/// 就没有残留可清，不该混进提示里当异常。
+fn purge_links(entry: &ModEntry, game_root: &Path) -> Vec<String> {
+    let mut notes = Vec::new();
+    for file in entry.deployed_files.iter().rev() {
+        let already_gone = safe_join(game_root, &file.relative_path)
+            .map(|target| !target.exists() && fs::symlink_metadata(&target).is_err())
+            .unwrap_or(false);
+        if already_gone {
+            continue;
+        }
+        if let Err(reason) = remove_deployed_file(file, game_root) {
+            notes.push(reason);
+        }
+    }
+    notes
+}
+
+/// 从状态里彻底忘掉一个模组：删记录、清加载顺序、断开悬空父级引用、清播放集。
+///
+/// **只动数据库，不碰磁盘** —— 调用方必须先把游戏目录里的链接清干净，否则那些
+/// 文件就再也没人认得了。
+pub fn forget_mod(state: &mut crate::schema::AppStateData, entry: &ModEntry) {
+    let id = entry.id.as_str();
+    let vacated: Vec<String> = entry
+        .deployed_files
+        .iter()
+        .map(|file| file.relative_path.clone())
+        .collect();
+    let folder = entry.mod_folder.clone().filter(|value| !value.is_empty());
+    state.mods.retain(|item| item.id != id);
+    state.load_order.retain(|path| {
+        if vacated.iter().any(|owned| owned.eq_ignore_ascii_case(path)) {
+            return false;
+        }
+        let Some(folder) = folder.as_deref() else {
+            return true;
+        };
+        !path.starts_with(&format!("mods/{folder}/"))
+            && !path.starts_with(&format!(
+                "bin/x64/plugins/cyber_engine_tweaks/mods/{folder}/"
+            ))
+    });
+    // 挂在被删模组下的汉化包不能留悬空父级引用：那会让它被永久隐藏。
+    for item in &mut state.mods {
+        if item.parent_mod_id.as_deref() == Some(id) {
+            item.parent_mod_id = None;
+        }
+    }
+    // 播放集里也存了 mod id 列表，一并清掉。
+    for profile in &mut state.profiles {
+        profile.enabled_mod_ids.retain(|owned| owned != id);
+    }
+}
+
+/// 物理状态自同步：把数据库拉回和磁盘一致的状态。
+///
+/// 触发时机是「应用启动」和「手动刷新」——这两个时刻用户的预期都是「界面上的
+/// 就是我实际有的东西」。孤儿判定只有一条：**暂存区里已经没有可部署的文件**。
+/// 判定完先清游戏目录里属于它的链接，再从 mods 里删记录；顺序不能反，反了部署
+/// 清单就丢了，残留链接再也认不出主人。
+///
+/// 红线：只删数据库记录和游戏目录里的链接，**绝不删暂存区里真实存在的文件**。
+pub fn sync_physical_state(
+    store: &Store,
+    game_root: Option<&Path>,
+) -> AppResult<crate::schema::PhysicalSyncReport> {
+    let snapshot = store.snapshot_data();
+    let mut report = crate::schema::PhysicalSyncReport {
+        checked: snapshot.mods.len(),
+        ..Default::default()
+    };
+    // 保护闸一：暂存根目录本身不可用（移动硬盘没插、目录被改到别的盘）时，
+    // 下面每一条都会「暂存丢失」。这时候清理等于一键清库——宁可什么都不做。
+    let staging_root = store.staging_dir();
+    if !staging_root.is_dir() {
+        report.warnings.push(format!(
+            "暂存区不可用（{}），本次跳过物理状态同步。",
+            staging_root.display()
+        ));
+        return Ok(report);
+    }
+    let mut orphans: Vec<ModEntry> = Vec::new();
+    let mut repaired: Vec<ModEntry> = Vec::new();
+
+    for mut entry in snapshot.mods {
+        if staging_present(&entry) {
+            continue;
+        }
+        // 暂存没了、但游戏目录里还有它部署出去的文件：多半只是暂存目录被移位或
+        // 改名，能从清单原样恢复就先恢复，不该当孤儿删掉。
+        if let Some(root) = game_root {
+            match recover_staging(store, &mut entry, root) {
+                Ok(true) => {
+                    report.repaired.push(entry.name.clone());
+                    repaired.push(entry);
+                    continue;
+                }
+                Ok(false) => {}
+                // 部署出去的文件也没了 = 正是孤儿场景，不算异常。
+                Err(err) if err.code == "STAGING_RECOVERY_SOURCE_MISSING" => {}
+                Err(err) => {
+                    report.deferred.push(entry.name.clone());
+                    report.warnings.push(format!("{}：{}", entry.name, err.message));
+                    continue;
+                }
+            }
+        }
+        orphans.push(entry);
+    }
+
+    // 保护闸二：多数模组同时「消失」几乎不可能是玩家逐个删的，更可能是暂存
+    // 目录被换掉或权限掉了。2026-10-26 丢过一次 195 条索引，这种判据要两道。
+    let missing_ratio = orphans.len() as f64 / report.checked.max(1) as f64;
+    if orphans.len() >= 4 && missing_ratio >= 0.5 {
+        report.deferred.extend(orphans.iter().map(|entry| entry.name.clone()));
+        report.warnings.push(format!(
+            "检测到 {} 个模组同时丢失文件（占 {}%），更像暂存目录整体不可用；本次不做清理，请检查暂存区路径。",
+            orphans.len(),
+            (missing_ratio * 100.0).round() as i64
+        ));
+        return Ok(report);
+    }
+
+    // 清游戏目录里的残留链接。删不掉（身份不匹配 / 权限）就整条保留记录，
+    // 否则记录一删，那些文件就永远没人认得了。
+    let mut blocked: HashSet<String> = HashSet::new();
+    for entry in &orphans {
+        if entry.deployed_files.is_empty() {
+            continue;
+        }
+        let Some(root) = game_root else {
+            // 游戏目录还没定位：先不动，等下次能定位了再清。
+            blocked.insert(entry.id.clone());
+            report.deferred.push(entry.name.clone());
+            continue;
+        };
+        for reason in purge_links(entry, root) {
+            blocked.insert(entry.id.clone());
+            report.warnings.push(format!("{}：{reason}", entry.name));
+        }
+    }
+
+    let removed: Vec<ModEntry> = orphans
+        .into_iter()
+        .filter(|entry| !blocked.contains(&entry.id))
+        .collect();
+
+    if removed.is_empty() && repaired.is_empty() {
+        return Ok(report);
+    }
+
+    let mut data = store.data.lock().expect("state mutex poisoned");
+    for entry in &repaired {
+        if let Some(slot) = data.mods.iter_mut().find(|item| item.id == entry.id) {
+            *slot = entry.clone();
+        }
+    }
+    if !removed.is_empty() {
+        for entry in &removed {
+            forget_mod(&mut data, entry);
+        }
+        if data.settings.write_modlist {
+            if let Some(root) = game_root {
+                if let Err(err) = crate::loadorder::write_modlist(&data, root) {
+                    report.warnings.push(format!("更新 modlist.txt 失败：{err}"));
+                }
+            }
+        }
+        report.removed = removed.iter().map(|entry| entry.name.clone()).collect();
+    }
+    store.save(&data)?;
+    Ok(report)
 }
 
 pub fn uninstall_mod(store: &Store, mod_id: &str, game_root: Option<&Path>) -> AppResult<()> {
@@ -2133,6 +2350,169 @@ mod tests {
         let (total, sample, _) = layout_skipped(&dir, &layout, 3);
         assert_eq!(total, 0);
         assert!(sample.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 孤儿清理只看 staging_path / deployed_files / mod_folder 这几项，其余字段
+    /// 按最小可用值填。
+    fn sync_entry(id: &str, staging: &Path, files: Vec<DeployedFile>) -> ModEntry {
+        ModEntry {
+            id: id.to_string(),
+            raw_name: None,
+            name: format!("Mod {id}"),
+            version: None,
+            author: None,
+            category: "其他".to_string(),
+            category_locked: false,
+            description: String::new(),
+            source_zip: None,
+            nexus: None,
+            staging_path: staging.to_string_lossy().to_string(),
+            cover_path: None,
+            enabled: !files.is_empty(),
+            installed_at: "2026-10-31T00:00:00Z".to_string(),
+            updated_at: None,
+            size_bytes: 0,
+            file_count: files.len(),
+            layout: InstallLayout::Archive,
+            mod_folder: None,
+            metadata_source: "filename".to_string(),
+            planned_files: Vec::new(),
+            warnings: Vec::new(),
+            deployed_files: files,
+            has_archive: true,
+            has_redmod: false,
+            has_cet: false,
+            translated_name: None,
+            translated_at: None,
+            translated_by: None,
+            managed: true,
+            origin: "cyberdeck".to_string(),
+            modpack_id: None,
+            nexus_cover_url: None,
+            is_translation: false,
+            parent_mod_id: None,
+            ai_loc: None,
+            ai_fix: Vec::new(),
+        }
+    }
+
+    /// 暂存目录存在不算数：Vortex 删文件后常留空壳目录，那种状态部署时同样没源文件。
+    #[test]
+    fn staging_present_requires_a_real_file() {
+        let dir = fixture("staging-present");
+        let empty = dir.join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        assert!(
+            !staging_present(&sync_entry("a", &empty, Vec::new())),
+            "空目录必须判为丢失"
+        );
+
+        let filled = dir.join("filled");
+        fs::create_dir_all(filled.join("archive")).unwrap();
+        fs::write(filled.join("archive").join("a.archive"), b"x").unwrap();
+        assert!(staging_present(&sync_entry("b", &filled, Vec::new())));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 暂存没了、也没部署过：直接删记录，连带清掉加载顺序里的残留。
+    #[test]
+    fn orphan_without_deployment_is_forgotten() {
+        let dir = fixture("sync-bare");
+        let store = Store::load(dir.join("data")).unwrap();
+        let gone = store.staging_dir().join("gone");
+        fs::create_dir_all(&gone).unwrap(); // 空壳：内容已经没了
+
+        {
+            // Store::save 只落盘、不更新内存；测试要改的正是内存里的那份状态。
+            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut entry = sync_entry("m1", &gone, Vec::new());
+            entry.mod_folder = Some("m1".to_string());
+            data.mods.push(entry);
+            // REDmod / CET 在加载顺序里是目录前缀形态，删记录时必须一起清掉。
+            data.load_order.push("mods/m1/init.lua".to_string());
+        }
+
+        let report = sync_physical_state(&store, None).unwrap();
+        assert_eq!(report.removed, vec!["Mod m1".to_string()]);
+        let after = store.snapshot_data();
+        assert!(after.mods.is_empty(), "失效记录必须被清掉");
+        assert!(after.load_order.is_empty(), "加载顺序不能留下残影");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 暂存没了、部署清单里还剩一部分文件：先清掉游戏目录里的残留，再删记录。
+    /// 顺序反了清单就丢了，那些文件再也没人认得出是启动器放的。
+    ///
+    /// 场景取「清单里有的文件还在、有的已经没了」：只要还能拼出完整副本，
+    /// 上面那条恢复逻辑就会把它救回来，不会走到清理。
+    #[test]
+    fn orphan_purges_game_files_before_forgetting_the_record() {
+        let dir = fixture("sync-deployed");
+        let store = Store::load(dir.join("data")).unwrap();
+        let game = dir.join("game");
+        let kept = game.join("archive").join("pc").join("mod").join("a.archive");
+        fs::create_dir_all(kept.parent().unwrap()).unwrap();
+        fs::write(&kept, b"payload").unwrap();
+        let (size, mtime) = file_stamp(&kept);
+        let deleted = game.join("archive").join("pc").join("mod").join("b.archive");
+
+        let gone = store.staging_dir().join("m1"); // 不创建 = 暂存丢失
+        let files = vec![
+            DeployedFile {
+                source: gone.join("a.archive").to_string_lossy().to_string(),
+                target: kept.to_string_lossy().to_string(),
+                link_type: LinkType::Copy,
+                relative_path: "archive/pc/mod/a.archive".to_string(),
+                size,
+                modified_time: mtime,
+            },
+            DeployedFile {
+                source: gone.join("b.archive").to_string_lossy().to_string(),
+                target: deleted.to_string_lossy().to_string(),
+                link_type: LinkType::Copy,
+                relative_path: "archive/pc/mod/b.archive".to_string(),
+                size: Some(1),
+                modified_time: Some(1),
+            },
+        ];
+
+        {
+            let mut data = store.data.lock().expect("state mutex poisoned");
+            data.game_dir = Some(game.to_string_lossy().to_string());
+            data.mods.push(sync_entry("m1", &gone, files));
+            data.load_order.push("archive/pc/mod/a.archive".to_string());
+        }
+
+        let report = sync_physical_state(&store, Some(&game)).unwrap();
+        assert_eq!(report.removed.len(), 1, "拼不出完整副本 → 按孤儿清理");
+        assert!(!kept.exists(), "游戏目录里的残留必须被清掉");
+        let after = store.snapshot_data();
+        assert!(after.mods.is_empty());
+        assert!(after.load_order.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// 保护闸：多条模组同时「丢失」更像暂存目录整体不可用，一条都不许删。
+    /// 2026-10-26 丢过 195 条索引，这类判据必须有两道。
+    #[test]
+    fn mass_disappearance_is_not_treated_as_a_wipe() {
+        let dir = fixture("sync-guard");
+        let store = Store::load(dir.join("data")).unwrap();
+        let gone = store.staging_dir().join("gone");
+        fs::create_dir_all(&gone).unwrap();
+
+        {
+            let mut data = store.data.lock().expect("state mutex poisoned");
+            for index in 0..5 {
+                data.mods.push(sync_entry(&format!("m{index}"), &gone, Vec::new()));
+            }
+        }
+
+        let report = sync_physical_state(&store, None).unwrap();
+        assert!(report.removed.is_empty(), "批量丢失时不许清理");
+        assert_eq!(report.deferred.len(), 5);
+        assert_eq!(store.snapshot_data().mods.len(), 5, "记录必须原样保留");
         let _ = fs::remove_dir_all(dir);
     }
 }

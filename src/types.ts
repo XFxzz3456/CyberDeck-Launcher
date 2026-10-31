@@ -479,6 +479,8 @@ export interface DeployReport {
   symlinks: number;
   copies: number;
   warnings: string[];
+  /** true = 暂存文件在外部被删了，记录已被自动清理；卡片要从列表移除。 */
+  purged?: boolean;
 }
 
 export interface InstallOutcome {

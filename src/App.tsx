@@ -1277,6 +1277,22 @@ export default function App() {
       setBusyId(mod.id);
       try {
         const report = await api.setModEnabled(mod.id, enabled);
+        // 暂存文件在外部被删了：后端已清掉残留链接和失效记录，这不是错误，
+        // 直接刷新列表并说明一句，别让用户对着红框反复点重试。
+        if (report.purged) {
+          toast(
+            "info",
+            t("toast.deploy.purgedTitle"),
+            t("toast.deploy.purgedDetail", { name: mod.name }),
+            "deploy",
+          );
+          try {
+            await refresh();
+          } catch (error) {
+            showError(error, t("err.refreshAfterAction"));
+          }
+          return;
+        }
         const linkSummary = t("job.linkSummary", {
           hard: report.hardLinks,
           sym: report.symlinks,

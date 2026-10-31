@@ -42,7 +42,8 @@ use schema::{
     LaunchResult, LoadOrderView,
     LogFileInfo, LogTail, ModEntry, ModSettingsView, NexusCoverRefresh,
     NexusUpdateReport,
-    NexusDownloadResult, NexusModDetail, NexusModSummary, NexusStatus, RestoreResult, Settings,
+    NexusDownloadResult, NexusModDetail, NexusModSummary, NexusStatus, PhysicalSyncReport,
+    RestoreResult, Settings,
     Snapshot, TranslateReport,
 };
 use collection::{CollectionDeployReport, CollectionPlan};
@@ -114,8 +115,39 @@ fn build_snapshot(store: &Store) -> AppResult<Snapshot> {
     })
 }
 
+/// 物理状态自同步：把数据库拉回和磁盘一致的状态。
+///
+/// 启动和手动刷新各跑一次。失败只记日志、不阻断启动——这一步是「顺手把脏数据
+/// 擦干净」，不能反过来变成新的启动故障点。
+fn run_physical_sync(store: &Store) -> AppResult<PhysicalSyncReport> {
+    let game_root = store.snapshot_data().game_dir.map(PathBuf::from);
+    let report = installer::sync_physical_state(store, game_root.as_deref())?;
+    if report.touched() || !report.warnings.is_empty() {
+        log_startup(
+            &store.data_dir,
+            &format!(
+                "stage=sync removed={} repaired={} deferred={} warnings={}",
+                report.removed.len(),
+                report.repaired.len(),
+                report.deferred.len(),
+                report.warnings.len()
+            ),
+        );
+    }
+    Ok(report)
+}
+
+#[tauri::command]
+fn sync_physical_state(store: State<'_, Store>) -> AppResult<PhysicalSyncReport> {
+    run_physical_sync(&store)
+}
+
 #[tauri::command]
 fn bootstrap(store: State<'_, Store>) -> AppResult<Snapshot> {
+    // 先把库拉回和磁盘一致：玩家很可能在上次退出后用 Vortex 删过文件。
+    if let Err(err) = run_physical_sync(&store) {
+        eprintln!("physical sync failed: {err:?}");
+    }
     // 前端挂载后第一个调用的命令：这行日志等于"UI 真的起来了"的心跳，
     // 一旦界面白屏/连不上 devUrl，日志里就不会出现 stage=frontend。
     let snapshot = build_snapshot(&store)?;
@@ -128,6 +160,9 @@ fn bootstrap(store: State<'_, Store>) -> AppResult<Snapshot> {
 
 #[tauri::command]
 fn refresh_game(store: State<'_, Store>) -> AppResult<Snapshot> {
+    if let Err(err) = run_physical_sync(&store) {
+        eprintln!("physical sync failed: {err:?}");
+    }
     build_snapshot(&store)
 }
 
@@ -847,6 +882,7 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
                 symlinks: 0,
                 copies: 0,
                 warnings: Vec::new(),
+                purged: false,
             });
         }
         return Err(CommandError::new(
@@ -868,6 +904,7 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
         symlinks: 0,
         copies: 0,
         warnings,
+        purged: false,
     })
 }
 
@@ -3386,6 +3423,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap,
+            sync_physical_state,
             create_env_snapshot,
             list_env_snapshots,
             delete_env_snapshot,
