@@ -17,6 +17,7 @@
 ## 红线
 
 - **密钥永不入库**：任何 API Key、PAT、DPAPI 密文不得进入提交。
+- **更新签名私钥**：`tauri-plugin-updater` 的私钥放在 `.tauri/updater.key`（已在 `.gitignore` 里），发版时通过环境变量 `TAURI_SIGNING_PRIVATE_KEY` 传给构建；公钥写在 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`，可公开。私钥或密码丢失后，老版本将无法自动更新到新版本。
 - **产物不入库**：`release/`、`发布产物/`、`node_modules`、`target`、`dist`、exe/zip 一律不提交（`testpacks/*.zip` 测试夹具除外）。
 - **禁止倒卖**：本项目 MIT 开源、永久免费。任何形式打包收费、去除署名后二次分发均违反许可证与作者意愿。
 
