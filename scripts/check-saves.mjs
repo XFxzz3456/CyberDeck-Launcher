@@ -104,6 +104,16 @@ check("no horizontal overflow", await page.evaluate(
 ));
 await page.screenshot({ path: path.join(out, "saves-scanned.png") });
 
+// 4b) 切走再切回来：缓存必须有效，不能重扫。
+// 重扫会先把列表清成骨架屏（.save-card.is-skeleton），所以「没有骨架 + 卡片还在」
+// 这一条同时证明了两件事：缓存命中、且没有偷偷触发扫描。
+await page.getByRole("button", { name: "模组库", exact: true }).click();
+await page.waitForTimeout(500);
+await page.getByRole("button", { name: "存档管理", exact: true }).click();
+await page.waitForTimeout(300);
+check("saves 返回时直接渲染缓存", (await page.locator(".save-card:not(.is-skeleton)").count()) >= 1);
+check("saves 返回时不显示骨架屏", (await page.locator(".save-card.is-skeleton").count()) === 0);
+
 // 5) 设置页有「存档与工具」卡 + 三项
 await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(400);

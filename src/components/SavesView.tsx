@@ -24,10 +24,28 @@ import {
   Wrench,
 } from "lucide-react";
 import type { EnvSnapshot, SaveGameEntry, SaveScanReport } from "../types";
-import { api } from "../lib/api";
+import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
 import { Spinner } from "./ui";
 import { formatBytes } from "../lib/format";
+
+/**
+ * 上一次存档扫描结果。刻意放在模块作用域而不是 App 全局状态：
+ * 它只服务这一个页面，且必须「整个应用生命周期内有效」——从存档管理切到
+ * 模组库再切回来，几秒内文件不会变，重扫只是白等几秒。
+ */
+let saveScanCache: { report: SaveScanReport; at: number } | null = null;
+
+/** 「上次扫描：刚刚 / 5 分钟前」。 */
+function lastScanLabel(at: number): string {
+  const minutes = Math.floor((Date.now() - at) / 60000);
+  if (minutes < 1) return t("saves.scannedJustNow");
+  if (minutes < 60) return t("saves.scannedMinutesAgo", { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t("saves.scannedHoursAgo", { count: hours });
+  return t("saves.scannedDaysAgo", { count: Math.floor(hours / 24) });
+}
+
 
 function timeLabel(iso: string): string {
   const d = new Date(iso);
@@ -64,8 +82,12 @@ export function SavesView({
   const [confirmApply, setConfirmApply] = useState<EnvSnapshot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [scan, setScan] = useState<SaveScanReport | null>(null);
+  // 缓存命中就直接拿它当初始值：进页面瞬间就能看到上次的列表。
+  const [scan, setScan] = useState<SaveScanReport | null>(saveScanCache?.report ?? null);
+  const [scannedAt, setScannedAt] = useState<number | null>(saveScanCache?.at ?? null);
   const [scanning, setScanning] = useState(false);
+  // 静默扫描失败只留按钮旁的黄色感叹号，不打断用户。
+  const [scanError, setScanError] = useState<string | null>(null);
   const [openingEditor, setOpeningEditor] = useState(false);
 
   const flash = (message: string) => {
@@ -126,16 +148,38 @@ export function SavesView({
     }
   };
 
-  const runScan = async () => {
-    setScanning(true);
-    try {
-      setScan(await api.scanSaveGames());
-    } catch (error) {
-      onError(error, t("saves.scanFailed"));
-    } finally {
-      setScanning(false);
-    }
-  };
+  /**
+   * 扫描存档。
+   *
+   * `mode` 决定失败时的表现：manual = 用户点了按钮，弹红框；auto = 进页面时
+   * 的后台静默刷新，失败只在按钮旁挂个感叹号——玩家可能正看着上一次的列表，
+   * 一个红框弹出来会把「上次扫描」的上下文全冲掉。
+   */
+  const runScan = useCallback(
+    async (mode: "auto" | "manual" = "manual") => {
+      setScanning(true);
+      setScanError(null);
+      try {
+        const report = await api.scanSaveGames();
+        const at = Date.now();
+        saveScanCache = { report, at };
+        setScan(report);
+        setScannedAt(at);
+      } catch (error) {
+        setScanError(normalizeError(error).message);
+        if (mode === "manual") onError(error, t("saves.scanFailed"));
+      } finally {
+        setScanning(false);
+      }
+    },
+    [onError],
+  );
+
+  // 只有「从来没扫过」才自动扫一次。有缓存就不动：来回切页面重扫等于每次白等几秒。
+  useEffect(() => {
+    if (saveScanCache) return;
+    void runScan("auto");
+  }, [runScan]);
 
   const openEditor = async () => {
     setOpeningEditor(true);
@@ -227,14 +271,41 @@ export function SavesView({
             <div className="panel-eyebrow">// LOCAL SAVES / DIAGNOSIS</div>
             <h2>{t("saves.savesTitle")}</h2>
           </div>
-          <button className="btn btn-primary" onClick={() => void runScan()} disabled={scanning}>
-            {scanning ? <Spinner size={14} /> : <ScanLine size={14} />}
-            {t("saves.scanSaves")}
-          </button>
+          <div className="saves-scan-actions">
+            {scannedAt ? (
+              <span className="saves-scanned-at">
+                {t("saves.lastScan", { time: lastScanLabel(scannedAt) })}
+              </span>
+            ) : null}
+            {scanError ? (
+              <span className="saves-scan-warn" title={scanError} role="status">
+                <AlertTriangle size={13} />
+              </span>
+            ) : null}
+            <button
+              className="btn btn-primary"
+              onClick={() => void runScan("manual")}
+              disabled={scanning}
+            >
+              {scanning ? <Spinner size={14} /> : <ScanLine size={14} />}
+              {t("saves.scanSaves")}
+            </button>
+          </div>
         </div>
         <p className="saves-panel-hint">{t("saves.savesHint")}</p>
 
-        {scan === null ? (
+        {scan === null && scanning ? (
+          // 第一次进来还没数据：给骨架屏，不要一片空白让人以为页面挂了。
+          <div className="save-grid saves-skeleton" aria-busy="true">
+            {Array.from({ length: 8 }, (_, index) => (
+              <div className="save-card is-skeleton" key={index} aria-hidden="true">
+                <span className="skeleton-line title" />
+                <span className="skeleton-line meta" />
+                <span className="skeleton-line text" />
+              </div>
+            ))}
+          </div>
+        ) : scan === null ? (
           <div className="saves-empty">
             <HardDriveDownload size={20} />
             <p>{t("saves.scanEmpty")}</p>

@@ -653,6 +653,11 @@ export const zhCN = {
 
   saves: {
     title: "存档管理",
+    lastScan: "上次扫描：{time}",
+    scannedDaysAgo: "{count} 天前",
+    scannedHoursAgo: "{count} 小时前",
+    scannedJustNow: "刚刚",
+    scannedMinutesAgo: "{count} 分钟前",
     pageSub: "环境快照、存档诊断与外部修复工具。只读存档，不改二进制。",
     loadFailed: "快照列表读取失败",
     loading: "读取中…",

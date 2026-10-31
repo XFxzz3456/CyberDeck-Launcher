@@ -15232,6 +15232,42 @@ body::before {
   background: color-mix(in srgb, var(--warning, #ffb020) 6%, var(--panel));
 }
 
+/* 扫描按钮左侧的「上次扫描」与失败感叹号：都属于次要信息，不能抢按钮的视觉重心。 */
+.saves-scan-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saves-scanned-at {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+
+/* 静默扫描失败：黄色感叹号常驻，鼠标悬停看原因。这比弹红框温和，
+   但比什么都不说强——用户至少知道「上次扫描」已经不可信了。 */
+.saves-scan-warn {
+  display: inline-flex;
+  align-items: center;
+  color: var(--warning, #ffb020);
+  cursor: help;
+}
+
+/* 首次进页面的骨架卡：沿用全局 skeleton-line 的呼吸扫光。 */
+.save-card.is-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 84px;
+}
+
+.save-card.is-skeleton .skeleton-line {
+  width: 100%;
+}
+
 .save-card-top {
   display: flex;
   align-items: center;
