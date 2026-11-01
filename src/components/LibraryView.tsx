@@ -1001,21 +1001,25 @@ export function LibraryView({
                 </button>
                 {overflowOpen ? (
                   <div className="toolbar-menu-panel" role="menu">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setOverflowOpen(false);
-                        if (selectMode) {
-                          exitSelectMode();
-                        } else {
-                          setSelectMode(true);
-                        }
-                      }}
-                    >
-                      <ListChecks size={13} />
-                      {t("library.selectMode")}
-                    </button>
+                    {/* 多选只在 mini 档（按钮已被收起）时补在这里，
+                        否则会和工具栏上常驻的「多选」重复。 */}
+                    {density === "mini" ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOverflowOpen(false);
+                          if (selectMode) {
+                            exitSelectMode();
+                          } else {
+                            setSelectMode(true);
+                          }
+                        }}
+                      >
+                        <ListChecks size={13} />
+                        {t("library.selectMode")}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       role="menuitem"

@@ -2161,6 +2161,9 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+  /* 与下方卡片留出呼吸：重构时把原来这条 margin-bottom 弄丢了，
+     工具栏直接压在卡片封面上（用户 2026-11-01 反馈「太靠下面了」）。 */
+  margin-bottom: 10px;
   position: relative;
   z-index: 30;
 }

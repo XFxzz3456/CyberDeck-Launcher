@@ -136,13 +136,19 @@ check(
   `items=${moreItems.join(" | ").slice(0, 50)}`,
   "moreItems",
 );
+// 多选不能两边都有：tight 档下常驻按钮还在，「更多」里就不该再出现一次
+//（用户 2026-11-01 反馈「多选重复了，常驻有个，更多里也有」）。
 check(
-  "「更多」里含多选（mini 档下多选按钮会收起，不能让它没入口）",
-  moreItems.some((t) => t.includes("多选")),
+  "「更多」里不重复列出常驻按钮（多选）",
+  !moreItems.some((t) => t.includes("多选")),
   `items=${moreItems.join(" | ").slice(0, 60)}`,
-  "moreSelect",
+  "noDupSelect",
 );
 await page.keyboard.press("Escape");
+
+// mini 档（应用最小窗口 1000，内容区 607）多选按钮会收起，此时「更多」里必须补上
+await page.setViewportSize({ width: 1000, height: 900 });
+
 
 /* 回归：任意宽度下控件互不重叠（用户 2026-11-01 反馈「列表和补全按钮重叠」，175% 缩放触发）。
  *
@@ -203,6 +209,35 @@ check(
   layout.map((i) => `${i.width}:${i.density}`).join(" "),
   "densityTiers",
 );
+
+// mini 档：多选按钮收起后，「更多」里必须出现同名入口，功能不能丢
+const miniState = await page.evaluate(() => {
+  const bar = document.querySelector(".library-toolbar");
+  const selectBtn = [...bar.querySelectorAll(".is-mini-hide")][0];
+  return {
+    density: bar.dataset.density,
+    selectHidden: !selectBtn || getComputedStyle(selectBtn).display === "none",
+  };
+});
+const miniMoreBtn = page.locator(".toolbar-overflow > button").first();
+if ((await miniMoreBtn.count()) > 0) {
+  await miniMoreBtn.click();
+  await page.waitForTimeout(400);
+}
+const miniItems = await page.locator(".toolbar-overflow .toolbar-menu-panel [role=menuitem]").allInnerTexts();
+check(
+  "mini 档多选按钮收起",
+  miniState.density === "mini" && miniState.selectHidden,
+  `density=${miniState.density} hidden=${miniState.selectHidden}`,
+  "miniSelectHidden",
+);
+check(
+  "mini 档「更多」里补上多选入口",
+  miniItems.some((t) => t.includes("多选")),
+  `items=${miniItems.join(" | ").slice(0, 60)}`,
+  "miniMoreSelect",
+);
+await page.keyboard.press("Escape");
 
 check("pageerrors=0", pageErrors.length === 0, pageErrors.slice(0, 2).join("；"), "pageErrors");
 
