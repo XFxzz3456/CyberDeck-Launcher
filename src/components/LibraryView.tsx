@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownUp,
@@ -51,6 +51,16 @@ export type SortMode = "name" | "recent" | "size" | "status";
 
 /** 列表视图的状态筛选。分类型筛选（左侧导航）和状态筛选是两条独立维度，可以叠加。 */
 type StatusFilter = "all" | "enabled" | "disabled" | "missing";
+
+/**
+ * 工具栏密度三档（按实测溢出逐级收紧）：
+ *   full    全部显示
+ *   compact 收起低频（补全 / 导入方式）→ 换成「更多 ▾」
+ *   tight   再收起「归类」与 RESULTS 文字
+ *   mini    连「多选」与结果数也收起（多选在「更多」里有入口）
+ * 按钮本身永不收缩，只靠这几档腾空间——收缩会让命中区盖住邻居（踩过两次）。
+ */
+type ToolbarDensity = "full" | "compact" | "tight" | "mini";
 
 const STATUS_FILTERS: Array<{ id: StatusFilter; labelKey: MessageKey }> = [
   { id: "all", labelKey: "library.statusAll" },
@@ -386,6 +396,9 @@ export function LibraryView({
   // 靠 CSS 切换显示，避免「折叠后事件丢失」那类老坑。
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef<HTMLDivElement | null>(null);
+  // 工具栏密度：按实测溢出逐级收紧（见下方 useToolbarDensity）。不写死像素阈值。
+  const [density, setDensity] = useState<ToolbarDensity>("full");
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
   // 批量改分类：选中后直接从工具栏下拉里挑目标分类，一步到位（不弹二次确认）。
   const [catMenuOpen, setCatMenuOpen] = useState(false);
   const catMenuRef = useRef<HTMLDivElement | null>(null);
@@ -461,6 +474,53 @@ export function LibraryView({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [overflowOpen]);
+
+  /* 工具栏密度自适应（2026-11-01 用户反馈「列表和补全按钮重叠」）。
+   *
+   * 为什么不用 @container 固定阈值：全显示实际需要 927px，之前写的 860 留下
+   * 860–927 这段「以为装得下、其实装不下」的区间；而 175% 系统缩放、字体渲染差异、
+   * 按钮里的数字（归类 (61) / 检查更新 +3）都会改变这个宽度，阈值永远追不上。
+   *
+   * 这里改为实测：从最宽松一档开始试，量 scrollWidth 是否超过 clientWidth，
+   * 装不下就降一档再量，最多三档。收档只改 data-density，按钮本身不收缩，
+   * 所以任何时候都不会出现「按钮被压扁、命中区盖住邻居」。
+   * 用 rAF 节流 + ResizeObserver（容器变宽变窄）+ MutationObserver（文字/数字变化）。
+   */
+  // 用 useLayoutEffect：首帧就能定好档位，避免窄窗口下先闪一下「全显示然后溢出」。
+  useLayoutEffect(() => {
+    const bar = toolbarRef.current;
+    if (!bar) return;
+    const tiers: ToolbarDensity[] = ["full", "compact", "tight", "mini"];
+    let frame = 0;
+    const fit = () => {
+      // 兜底取最紧一档：全试完还装不下（内容区 < 约 560px，窗口已窄到不像桌面端），
+      // 宁可裁掉最右一格，也不要回落到宽松档造成大面积溢出。
+      let chosen: ToolbarDensity = "mini";
+      for (const tier of tiers) {
+        bar.dataset.density = tier;
+        if (bar.scrollWidth <= bar.clientWidth + 1) {
+          chosen = tier;
+          break;
+        }
+      }
+      bar.dataset.density = chosen;
+      setDensity((prev) => (prev === chosen ? prev : chosen));
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    schedule();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(bar);
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(bar, { subtree: true, childList: true, characterData: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      mutations.disconnect();
+    };
+  }, []);
 
   /**
    * 选一个集合清单文件（.collection / .json）。
@@ -682,7 +742,13 @@ export function LibraryView({
           {/* 工具栏：左「看什么」/ 右「做什么」，两组之间 24px、组内 8px。
               窄窗口不折行：低频按钮（补全信息 / 导入 / 分组）由 CSS 收进右侧「更多 ▾」，
               两个版本都在 DOM 里，只是显示/隐藏切换，事件不会丢。 */}
-          <div className="library-toolbar" role="toolbar" aria-label={t("library.toolbarAria")}>
+          <div
+            className="library-toolbar"
+            role="toolbar"
+            aria-label={t("library.toolbarAria")}
+            ref={toolbarRef}
+            data-density={density}
+          >
             {/* ── 视图与过滤组（控制"怎么看"）────────────────────── */}
             <div className="toolbar-group toolbar-group--view">
               <div className="result-line">
@@ -770,7 +836,7 @@ export function LibraryView({
 
               <button
                 type="button"
-                className={`btn btn-ghost btn-sm ${selectMode ? "btn-accent" : ""}`}
+                className={`btn btn-ghost btn-sm is-mini-hide ${selectMode ? "btn-accent" : ""}`}
                 onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
                 aria-pressed={selectMode}
                 title={t("library.selectModeTitle")}
@@ -935,6 +1001,21 @@ export function LibraryView({
                 </button>
                 {overflowOpen ? (
                   <div className="toolbar-menu-panel" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        if (selectMode) {
+                          exitSelectMode();
+                        } else {
+                          setSelectMode(true);
+                        }
+                      }}
+                    >
+                      <ListChecks size={13} />
+                      {t("library.selectMode")}
+                    </button>
                     <button
                       type="button"
                       role="menuitem"

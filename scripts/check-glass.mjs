@@ -141,13 +141,13 @@ check("A 设置页主容器不叠模糊（无嵌套）", contentBlur === "none",
 // L3：下拉菜单
 await page.getByRole("button", { name: "模组库", exact: true }).first().click();
 await page.waitForTimeout(700);
-const menuTrigger = page.getByRole("button", { name: /^AI 汉化/ }).first();
+const menuTrigger = page.getByRole("button", { name: /^AI\s*工具/ }).first();
 if ((await menuTrigger.count()) > 0) {
   await menuTrigger.click();
   await page.waitForTimeout(400);
 }
 const menu = await page
-  .locator(".import-menu")
+  .locator(".toolbar-menu-panel")
   .first()
   .evaluate((n) => {
     const cs = getComputedStyle(n);

@@ -136,6 +136,73 @@ check(
   `items=${moreItems.join(" | ").slice(0, 50)}`,
   "moreItems",
 );
+check(
+  "「更多」里含多选（mini 档下多选按钮会收起，不能让它没入口）",
+  moreItems.some((t) => t.includes("多选")),
+  `items=${moreItems.join(" | ").slice(0, 60)}`,
+  "moreSelect",
+);
+await page.keyboard.press("Escape");
+
+/* 回归：任意宽度下控件互不重叠（用户 2026-11-01 反馈「列表和补全按钮重叠」，175% 缩放触发）。
+ *
+ * 根因是 .toolbar-group 可收缩（flex:0 1 auto + min-width:0），容器一紧盒子就小于内容，
+ * 里面的按钮溢出盒子压到另一组上。现在分组盒子与按钮都 flex:0 0 auto，
+ * 只靠 data-density 降档腾空间，所以这里断言的是：
+ *   ① 相邻控件矩形零重叠；② 每个分组盒子不小于自己的内容宽（没溢出）；③ 工具栏本身不溢出。
+ * 覆盖 1000（应用最小窗口，内容区仅 607px）到 1440。 */
+const layout = [];
+for (const width of [1440, 1280, 1100, 1000]) {
+  await page.setViewportSize({ width, height: 900 });
+  await page.waitForTimeout(550);
+  layout.push(
+    await page.evaluate(() => {
+      const bar = document.querySelector(".library-toolbar");
+      const groups = [...bar.querySelectorAll(".toolbar-group")];
+      const kids = [...bar.querySelectorAll(".toolbar-group > *")]
+        .filter((n) => n.offsetParent !== null && n.getBoundingClientRect().width > 0)
+        .map((n) => n.getBoundingClientRect())
+        .sort((a, b) => a.x - b.x);
+      let overlaps = 0;
+      for (let i = 1; i < kids.length; i += 1) {
+        if (kids[i].x < kids[i - 1].x + kids[i - 1].width - 1) overlaps += 1;
+      }
+      return {
+        width: bar.clientWidth,
+        density: bar.dataset.density || "",
+        overlaps,
+        spill: groups.reduce((sum, g) => sum + Math.max(0, g.scrollWidth - g.clientWidth - 1), 0),
+        overX: bar.scrollWidth - bar.clientWidth,
+        height: Math.round(bar.getBoundingClientRect().height),
+      };
+    }),
+  );
+}
+const overlapSum = layout.reduce((sum, item) => sum + item.overlaps, 0);
+check(
+  "四档宽度下控件零重叠",
+  overlapSum === 0,
+  layout.map((i) => `${i.width}:${i.overlaps}`).join(" "),
+  "noOverlap",
+);
+check(
+  "分组盒子不溢出内容（按钮不会压到隔壁组）",
+  layout.every((i) => i.spill === 0),
+  layout.map((i) => `${i.width}:${i.spill}`).join(" "),
+  "noSpill",
+);
+check(
+  "工具栏任何宽度都不横向溢出",
+  layout.every((i) => i.overX <= 1),
+  layout.map((i) => `${i.width}:${i.overX}`).join(" "),
+  "noOverflowAny",
+);
+check(
+  "密度档随宽度自动收紧",
+  layout[0].density === "full" && layout[layout.length - 1].density !== "full",
+  layout.map((i) => `${i.width}:${i.density}`).join(" "),
+  "densityTiers",
+);
 
 check("pageerrors=0", pageErrors.length === 0, pageErrors.slice(0, 2).join("；"), "pageErrors");
 
