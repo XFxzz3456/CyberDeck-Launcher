@@ -20,6 +20,7 @@
 - **2026-11-01 14:55 第四次重建（毛玻璃隔离 + 赛博纯黑）**：exe 11,172,352 B / md5 `c10feb39f63bc89f23e5504aa8fb26c3`，冒烟 `2026-11-01T06:55:24Z stage=frontend mods=186`。
 - **2026-11-01 17:23 第五次重建（赛博碳灰层次）**：exe 11,172,352 B / md5 `97f6da28fca0aceeef7bfa3723c99be5`，冒烟 `2026-11-01T09:23:06Z stage=frontend mods=186`。
   便携版已重打包：`发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,319,062 B，内含 exe md5 校验一致 `97f6da28…`）。
+- **2026-11-01 20:09 回滚赛博主题颜色覆盖后重建**：exe md5 `7bc36f4f96997c23c298622e21048214`，冒烟 `2026-11-01T12:09:08Z stage=frontend mods=186`。此版删掉全部 `--cyber-*` 与元素覆盖，赛博四主题回到 `tokens.css` 各自调色板；玻璃只对「有背景图 且 非赛博主题」生效。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
