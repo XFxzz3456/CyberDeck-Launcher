@@ -162,7 +162,38 @@ const offTopbar = await page.locator(".topbar").evaluate((n) => getComputedStyle
 const offCard = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => getComputedStyle(n).backgroundColor);
 const offAlpha = Number((offTopbar.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
 check("无背景时顶栏回到不透明档", offAlpha >= 0.7, `bg=${offTopbar}`, "offTopbarSolid");
-check("无背景时卡片不是毛玻璃底色", !/rgba\(\s*25\s*,\s*25/.test(offCard), `bg=${offCard}`, "offCardSolid");
+// 无背景图 + 赛博主题 ⇒ data-glass 必须是 off，且退回纯黑实体
+const glassAttr = await page.locator(".app-shell").getAttribute("data-glass");
+check("赛博主题无背景时 glass 关闭", glassAttr === "off", `data-glass=${glassAttr}`, "glassOff");
+
+const offCardFull = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
+  const cs = getComputedStyle(n);
+  return { bg: cs.backgroundColor, blur: cs.backdropFilter };
+});
+const opaque = /^rgb\(/.test(offCardFull.bg) || /rgba\([^)]*,\s*1\)$/.test(offCardFull.bg);
+check("卡片完全不透明（非 rgba 半透）", opaque, `bg=${offCardFull.bg}`, "offCardOpaque");
+check("卡片无任何 backdrop-filter", offCardFull.blur === "none", `blur=${offCardFull.blur}`, "offCardNoBlur");
+
+const shell = await page.locator(".app-shell").evaluate((n) => {
+  const cs = getComputedStyle(n);
+  return { bg: cs.backgroundImage + " | " + cs.backgroundColor };
+});
+check("主背景没有径向光晕（幽灵灰圈已除）", !/radial-gradient/.test(shell.bg), `bg=${shell.bg.slice(0, 60)}`, "noGhostGlow");
+
+// ── 6. 现代主题：没有背景图也要有玻璃（条件 A）────────────────────
+await page.evaluate(() => {
+  const key = "ncl.ui.preferences.v1";
+  const prefs = JSON.parse(localStorage.getItem(key) || "{}");
+  prefs.theme = "modern";
+  localStorage.setItem(key, JSON.stringify(prefs));
+});
+await page.reload({ waitUntil: "networkidle" });
+await page.waitForTimeout(1200);
+
+const modernGlass = await page.locator(".app-shell").getAttribute("data-glass");
+check("现代主题无背景时 glass 开启", modernGlass === "on", `data-glass=${modernGlass}`, "modernGlassOn");
+const modernTopbar = await page.locator(".topbar").evaluate((n) => getComputedStyle(n).backdropFilter);
+check("现代主题顶栏有毛玻璃", /blur\((20|24)px\)/.test(modernTopbar), `blur=${modernTopbar}`, "modernTopbarBlur");
 
 await page.screenshot({ path: "shots/audit/glass-no-background.png" });
 

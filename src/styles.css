@@ -291,13 +291,13 @@ pre {
   text-shadow: none;
 }
 
-[data-backdrop="on"] .app-shell {
+.app-shell[data-glass="on"] {
   background:
     radial-gradient(900px 500px at 72% -10%, rgba(49, 230, 255, 0.055), transparent 60%),
     radial-gradient(1100px 600px at 30% 110%, rgba(var(--accent-rgb), 0.035), transparent 60%);
 }
 
-[data-backdrop="on"] .sidebar {
+[data-glass="on"] .sidebar {
   /* L1 容器层。原来用 88%/84% 的两段渐变，边界处会透出背景图的亮块，
      统一成单层半透明 + 大模糊后，侧栏与主内容区的接缝干净了。 */
   background: var(--glass-l1-bg);
@@ -366,7 +366,7 @@ pre {
    WebView2(Chromium) 不认前缀 ⇒ 毛玻璃整条失效。（H 阶段的 tabs/搜索玻璃就是
    这样在构建后被静默干掉的，源码里看着有、跑起来没有。）本项目只跑 Chromium，
    只用标准属性。 */
-[data-backdrop="on"] .content {
+[data-glass="on"] .content {
   /* L1 容器层。⚠️ 例外：这里**只取模糊、不取 L1 的底色**。
      3A-2 已定案「暗化只由 .app-backdrop-dim 那唯一一层控制」，
      若再叠 0.6 黑底，用户把暗化滑块拉到 0% 屏幕依然是黑的（旧 bug 复原）。
@@ -377,8 +377,8 @@ pre {
 
 /* 主内容区里的卡片：不再叠毛玻璃，改成「较高不透明度 + 极细高光边框」，
    让它们像浮在毛玻璃底座上，而不是和底座糊成一片。 */
-[data-backdrop="on"] .content .panel,
-[data-backdrop="on"] .content .mod-card {
+[data-glass="on"] .content .panel,
+[data-glass="on"] .content .mod-card {
   /* L2 卡片层：底色够实（0.85）压住背景图高光，只留 8px 极轻模糊，
      再加一圈 1px 高光描边把卡片从 L1 底座上「提」起来。 */
   background: var(--glass-l2-bg);
@@ -386,8 +386,8 @@ pre {
   border: var(--glass-l2-border);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .content .panel,
-:root[data-mode="light"] [data-backdrop="on"] .content .mod-card {
+:root[data-mode="light"] [data-glass="on"] .content .panel,
+:root[data-mode="light"] [data-glass="on"] .content .mod-card {
   /* 亮色走 --glass-l2-* 令牌（0.9 白 + 黑 0.07 描边），不再重复写值。 */
   border: var(--glass-l2-border);
 }
@@ -434,22 +434,82 @@ pre {
   --glass-l3-solid: var(--panel-2);
 }
 
+/* ══ 赛博主题硬质感（data-glass="off" 时）══════════════════════════
+   为什么单独一段：赛博主题（ncpd / netrunner / arasaka / militech）的立身之本
+   是「纯黑 + 硬边 + 高对比」，玻璃那套半透柔光在它身上就是脏。
+   用户 2026-11-01 拍板：这四套主题在**没开自定义背景图**时（data-glass="off"）
+   一律回纯黑实体，卡片禁止任何 backdrop-filter。
+
+   注意选择器顺序：这一段必须排在 L1/L2 的玻璃规则**之后**才能覆盖，
+   所以放在玻璃工具类之后（见下方 placement 注释）。关键字面值：
+   背景 #050505 / 卡片 #131316 / 边框 #232327。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  .app-shell[data-glass="off"] {
+  /* 干掉那三层 radial（含中间那个「幽灵灰圈」）：纯黑只留一个颜色。 */
+  background: #050505;
+}
+
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .panel,
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .mod-card,
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .settings-tab-panel .panel {
+  /* 完全不透明（不是 rgba），且明确关掉模糊 —— 即便某条上层规则手滑加了也要被压回。 */
+  background: #131316;
+  backdrop-filter: none;
+  border: 1px solid #232327;
+}
+
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .sidebar {
+  /* 侧栏也压成同一个黑：默认是 --bg-2→--bg 的渐变，在纯黑主题下会亮出半档，
+     和主内容区拼出一条灰缝。 */
+  background: #050505;
+  border-right: 1px solid #1a1a1e;
+}
+
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .topbar {
+  background: #0a0a0c;
+  backdrop-filter: none;
+  border-bottom: 1px solid #1e1e22;
+}
+
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .settings-tabs {
+  background: #0a0a0c;
+  backdrop-filter: none;
+  border-bottom: 1px solid #1e1e22;
+}
+
+/* 纯黑底上的灰字必须是**实色**：半透明灰叠在黑上会发虚，
+   对比度还随背景明暗漂移。这里直接钉成 #8a8a8a / #c9c9cc。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"]) {
+  --muted: #8a8a8a;
+  /* 作者名/次要标签用的是 --muted-2：原来由主题里偏蓝灰的混色算出来（#717E8D），
+     压在 #131316 卡片上只有 4.48:1，正好卡在 4.5 线下（check-ui-audit 抓到的
+     「Hanako」就是这处）。提一档到 #9aa4b0 ≈ 6.2:1，仍是同一档次的灰。 */
+  --muted-2: #9aa4b0;
+  --text-2: #c9c9cc;
+}
+
 /* ── L1 容器：透 + 大模糊，无描边 ────────────────────────────── */
-[data-backdrop="on"] .glass-l1 {
+[data-glass="on"] .glass-l1 {
   background: var(--glass-l1-bg);
   backdrop-filter: var(--glass-l1-blur);
   border-color: transparent;
 }
 
 /* ── L2 卡片：实 + 极轻模糊 + 高光描边（**不再叠第二层 blur**）────── */
-[data-backdrop="on"] .glass-l2 {
+[data-glass="on"] .glass-l2 {
   background: var(--glass-l2-bg);
   backdrop-filter: var(--glass-l2-blur);
   border: var(--glass-l2-border);
 }
 
 /* ── L3 悬浮层：半透 + 高模糊 + 大范围柔和阴影 ────────────────── */
-[data-backdrop="on"] .glass-l3 {
+[data-glass="on"] .glass-l3 {
   background: var(--glass-l3-bg);
   backdrop-filter: var(--glass-l3-blur);
   border: var(--glass-l3-border);
@@ -460,10 +520,10 @@ pre {
    这四类原先都是**完全不透明**的 var(--panel-2)（像贴在玻璃上的一块塑料），
    统一改成半透 + 高模糊 + 大范围柔和阴影，让它们真的「浮」在 L1/L2 之上。
    只在开了背景图时生效：默认态保持实心，避免无谓合成。 */
-[data-backdrop="on"] .import-menu,
-[data-backdrop="on"] .mod-context-menu,
-[data-backdrop="on"] .modal,
-[data-backdrop="on"] .toast {
+[data-glass="on"] .import-menu,
+[data-glass="on"] .mod-context-menu,
+[data-glass="on"] .modal,
+[data-glass="on"] .toast {
   background: var(--glass-l3-bg);
   backdrop-filter: var(--glass-l3-blur);
   border: var(--glass-l3-border);
@@ -471,21 +531,21 @@ pre {
 }
 
 /* 降级：没开背景图时三层都回纯色，且不产生任何合成层。 */
-[data-backdrop="off"] .glass-l1,
-.app-shell:not([data-backdrop="on"]) .glass-l1 {
+[data-glass="off"] .glass-l1,
+.app-shell:not([data-glass="on"]) .glass-l1 {
   background: var(--glass-l1-solid);
   backdrop-filter: none;
 }
 
-[data-backdrop="off"] .glass-l2,
-.app-shell:not([data-backdrop="on"]) .glass-l2 {
+[data-glass="off"] .glass-l2,
+.app-shell:not([data-glass="on"]) .glass-l2 {
   background: var(--glass-l2-solid);
   backdrop-filter: none;
   border: 1px solid var(--line);
 }
 
-[data-backdrop="off"] .glass-l3,
-.app-shell:not([data-backdrop="on"]) .glass-l3 {
+[data-glass="off"] .glass-l3,
+.app-shell:not([data-glass="on"]) .glass-l3 {
   background: var(--glass-l3-solid);
   backdrop-filter: none;
   box-shadow: var(--shadow);
@@ -500,40 +560,40 @@ pre {
    ⚠️ 性能：设置页把 .content 那层 blur(20px) 关掉，否则「大容器模糊 + 卡片再模糊」
    是典型嵌套毛玻璃，滚动时每帧重采样两遍。现在设置页只有 Tabs 与卡片两层，
    且卡片各自只覆盖自己那块区域，比一张全屏模糊更便宜。 */
-[data-backdrop="on"] .topbar {
+[data-glass="on"] .topbar {
   /* L1 容器层：透 + 大模糊，与窗口边缘融合 */
   background: var(--glass-l1-bg);
   backdrop-filter: var(--glass-l1-blur);
   border-bottom-color: rgba(255, 255, 255, 0.05);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .topbar {
+:root[data-mode="light"] [data-glass="on"] .topbar {
   background: rgba(255, 255, 255, 0.62);
   border-bottom-color: rgba(0, 0, 0, 0.06);
 }
 
 /* Tabs 条：比卡片更透，让背景图透出来一点，避免整条横杠压在图中间。 */
-[data-backdrop="on"] .settings-tabs {
+[data-glass="on"] .settings-tabs {
   /* Tabs 条是容器不是卡片（用户拍板）：归 L1，和顶栏同一档玻璃。 */
   background: var(--glass-l1-bg);
   backdrop-filter: var(--glass-l1-blur);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .settings-tabs {
+:root[data-mode="light"] [data-glass="on"] .settings-tabs {
   background: rgba(255, 255, 255, 0.52);
 }
 
 /* 选中项底色：只加一层很淡的填充，下划线/发光仍由主题规则负责。 */
-[data-backdrop="on"] .settings-tab.active {
+[data-glass="on"] .settings-tab.active {
   background: rgba(255, 255, 255, 0.07);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .settings-tab.active {
+:root[data-mode="light"] [data-glass="on"] .settings-tab.active {
   background: rgba(0, 0, 0, 0.05);
 }
 
 /* 设置页：主容器不再模糊（见上方性能说明），玻璃交给 Tabs 与卡片。 */
-[data-backdrop="on"][data-page="settings"] .content {
+[data-glass="on"][data-page="settings"] .content {
   backdrop-filter: none;
 }
 
@@ -3586,7 +3646,7 @@ pre {
   border-top: 1px solid color-mix(in srgb, var(--text) 5%, transparent);
 }
 
-[data-backdrop="on"] .settings-tab-panel .panel {
+[data-glass="on"] .settings-tab-panel .panel {
   /* ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。
      L2 卡片层：0.85 + blur(8) + 高光描边。设置页主容器已关掉 blur，
      卡片是这一页**唯一**的玻璃层，不存在嵌套。 */
@@ -3595,7 +3655,7 @@ pre {
   border: var(--glass-l2-border);
 }
 
-:root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel .panel {
+:root[data-mode="light"] [data-glass="on"] .settings-tab-panel .panel {
   background: var(--glass-l2-bg);
   border: var(--glass-l2-border);
 }
@@ -4831,8 +4891,8 @@ pre {
 /* 空状态页 /「正在连接 Nexus…」这类加载态的中心提亮层：中心一圈极淡的
    高光把身后的网格压下去，保证加载图标和文案是全场对比度最高的东西
    （任务 §二）。两类容器共用一条规则，样式不会各自走偏。 */
-.empty-state::before,
-.diagnostics-loading::before {
+[data-glass="on"] .empty-state::before,
+[data-glass="on"] .diagnostics-loading::before {
   content: "";
   position: absolute;
   inset: -60px -40px;
