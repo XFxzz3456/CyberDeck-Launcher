@@ -115,6 +115,8 @@ export function LibraryView({
   updateChecking = false,
   onApplyUpdates,
   applyingUpdates = false,
+  onAiLocBatch,
+  aiLocBusy = false,
   onEnrichMetadata,
   enriching = false,
   onVortexImport,
@@ -148,6 +150,9 @@ export function LibraryView({
   /** P5-5B：一次性更新所有命中的模组（后端会先备份旧版本）。 */
   onApplyUpdates?: (entryIds: string[]) => void;
   applyingUpdates?: boolean;
+  /** AI 汉化批量入口：传入选中的（或全库的）模组 id，进度由 App 里的任务条呈现。 */
+  onAiLocBatch?: (entryIds: string[]) => void;
+  aiLocBusy?: boolean;
   onEnrichMetadata?: () => void;
   enriching?: boolean;
   /** 从 Vortex 本地数据库导入元数据（需关闭 Vortex）。 */
@@ -370,6 +375,9 @@ export function LibraryView({
   // 工具栏「导入 ▼」下拉：低频导入动作收进来，给右侧高频操作腾地方。
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const importMenuRef = useRef<HTMLDivElement | null>(null);
+  // AI 汉化下拉：与导入下拉同构，但动作是批量任务（进度走任务中心）。
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const aiMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!importMenuOpen) return;
@@ -388,6 +396,24 @@ export function LibraryView({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [importMenuOpen]);
+
+  useEffect(() => {
+    if (!aiMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (aiMenuRef.current && !aiMenuRef.current.contains(event.target as Node)) {
+        setAiMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAiMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [aiMenuOpen]);
 
   /**
    * 选一个集合清单文件（.collection / .json）。
@@ -698,6 +724,50 @@ export function LibraryView({
                   <List size={13} />
                 </button>
               </div>
+              {/* AI 汉化批量入口：选中优先，其次全库。真正执行在 App（任务中心可见进度）。 */}
+              <div className="import-dropdown" ref={aiMenuRef}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setAiMenuOpen((value) => !value)}
+                  aria-expanded={aiMenuOpen}
+                  title={t("library.aiLocMenuTitle")}
+                  disabled={!onAiLocBatch}
+                >
+                  <Languages size={13} />
+                  {t("library.aiLocMenu")}
+                  <ChevronDown size={12} className={`dropdown-caret ${aiMenuOpen ? "is-open" : ""}`} />
+                </button>
+                {aiMenuOpen ? (
+                  <div className="import-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={selectedIds.size === 0 || aiLocBusy}
+                      onClick={() => {
+                        setAiMenuOpen(false);
+                        onAiLocBatch?.([...selectedIds]);
+                      }}
+                    >
+                      {aiLocBusy ? <Spinner size={13} /> : <Languages size={13} />}
+                      {t("library.aiLocSelected", { count: selectedIds.size })}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={aiLocBusy || mods.length === 0}
+                      onClick={() => {
+                        setAiMenuOpen(false);
+                        onAiLocBatch?.(mods.map((mod) => mod.id));
+                      }}
+                    >
+                      <Languages size={13} />
+                      {t("library.aiLocAll", { count: mods.length })}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               {/* 低频导入收成下拉：Vortex 元数据 + 集合清单 ZIP */}
               <div className="import-dropdown" ref={importMenuRef}>
                 <button

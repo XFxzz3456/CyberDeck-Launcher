@@ -21,6 +21,7 @@ export function ModCard({
   conflicts,
   missingDeps = [],
   translationCount = 0,
+  aiLocated = false,
   hasUpdate = false,
   updateVersion,
   busy,
@@ -36,6 +37,8 @@ export function ModCard({
   missingDeps?: string[];
   /** 已绑定的汉化子包数量：>0 时封面上打「中」徽标。 */
   translationCount?: number;
+  /** 已生成 AI 汉化覆盖层：徽标显示「中·AI」，区别于人工汉化包。 */
+  aiLocated?: boolean;
   /** #1 更新检查命中：封面上打 UPD 徽标。 */
   hasUpdate?: boolean;
   updateVersion?: string;
@@ -151,7 +154,14 @@ export function ModCard({
                 {t("modCard.updBadge")}
               </span>
             ) : null}
-            {translationCount > 0 ? (
+            {aiLocated ? (
+              <span
+                className="cover-lang cover-lang-ai"
+                title={t("modCard.aiLocTitle")}
+              >
+                {t("modCard.aiLocBadge")}
+              </span>
+            ) : translationCount > 0 ? (
               <span
                 className="cover-lang"
                 title={t("modCard.translationTitle", { count: translationCount })}

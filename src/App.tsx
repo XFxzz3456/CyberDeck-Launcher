@@ -79,6 +79,7 @@ import { ConflictCenter } from "./components/ConflictCenter";
 import { NxmIntake, type NxmItem } from "./components/NxmIntake";
 import { CommandPalette } from "./components/CommandPalette";
 import { AdoptPreviewDialog } from "./components/AdoptPreviewDialog";
+import { AiToolsDialog } from "./components/AiToolsDialog";
 import { BackgroundCropDialog } from "./components/BackgroundCropDialog";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { TaskCenter } from "./components/TaskCenter";
@@ -282,6 +283,26 @@ export default function App() {
   const [applyingUpdates, setApplyingUpdates] = useState(false);
   const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
   const [appUpdating, setAppUpdating] = useState(false);
+  // AI 汉化：接口是否可用 + 单条弹窗目标 + 批量是否在跑（进度走任务中心）。
+  const [aiReady, setAiReady] = useState(false);
+  const [aiLocMod, setAiLocMod] = useState<ModEntry | null>(null);
+  const [aiLocBusy, setAiLocBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void api
+      .aiStatus()
+      .then((status) => {
+        if (alive) setAiReady(status.configured);
+      })
+      .catch(() => {
+        if (alive) setAiReady(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const [updateChecking, setUpdateChecking] = useState(false);
   const [enriching, setEnriching] = useState(false);
   // 收编（Adopt）：扫描结果 / 执行进度 / 执行结果 / 任务行 id。
@@ -538,6 +559,74 @@ export default function App() {
     setSnapshot(next);
     return next;
   }, []);
+
+  /**
+   * 批量 AI 汉化：逐个跑，进度写进任务中心（kind=translate）。
+   *
+   * 为什么在 App 里而不是 LibraryView：任务条是全局的（顶栏下方），
+   * 页面切走也要能看进度；LibraryView 只负责下指令。
+   * 单条失败不连坐，最后汇总「成功 N / 失败 M」并刷新库。
+   */
+  const handleAiLocBatch = useCallback(
+    async (entryIds: string[]) => {
+      if (aiLocBusy || entryIds.length === 0) return;
+      const targets = entryIds
+        .map((id) => snapshot?.state.mods.find((mod) => mod.id === id))
+        .filter((mod): mod is ModEntry => Boolean(mod));
+      if (targets.length === 0) return;
+      if (!aiReady) {
+        toast("warn", t("toast.aiLoc.noKeyTitle"), t("toast.aiLoc.noKeyDetail"), "update");
+        return;
+      }
+      setAiLocBusy(true);
+      const taskId = addTask(
+        "translate",
+        t("job.aiLocTitle", { count: targets.length }),
+        t("job.aiLocDetail"),
+      );
+      let ok = 0;
+      let failed = 0;
+      try {
+        for (let index = 0; index < targets.length; index += 1) {
+          const mod = targets[index];
+          patchTask(taskId, {
+            status: "running",
+            progress: Math.round((index / targets.length) * 100),
+            detail: t("job.aiLocProgress", {
+              current: index + 1,
+              total: targets.length,
+              name: mod.name,
+            }),
+          });
+          try {
+            await api.aiLocApply(mod.id, true, true);
+            ok += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        patchTask(taskId, {
+          status: failed > 0 ? "error" : "success",
+          progress: 100,
+          detail: t("job.aiLocDone", { ok, failed }),
+        });
+        await refresh();
+        if (failed > 0) {
+          toast(
+            "warn",
+            t("toast.aiLoc.partialTitle", { ok, failed }),
+            t("toast.aiLoc.partialDetail"),
+            "update",
+          );
+        } else {
+          toast("ok", t("toast.aiLoc.doneTitle"), t("toast.aiLoc.doneDetail", { ok }), "update");
+        }
+      } finally {
+        setAiLocBusy(false);
+      }
+    },
+    [addTask, aiLocBusy, aiReady, patchTask, refresh, snapshot?.state.mods, t, toast],
+  );
 
   // ── NXM 协议接收（计划【3】） ─────────────────────────────────
   //
@@ -2537,6 +2626,8 @@ export default function App() {
                 updateChecking={updateChecking}
                 onApplyUpdates={(ids) => void handleApplyUpdates(ids)}
                 applyingUpdates={applyingUpdates}
+                onAiLocBatch={(ids) => void handleAiLocBatch(ids)}
+                aiLocBusy={aiLocBusy}
                 onEnrichMetadata={() => void runEnrichMetadata()}
                 enriching={enriching}
                 onVortexImport={() => void runVortexImport()}
@@ -2699,6 +2790,8 @@ export default function App() {
           backupInfo={
             updateBackups.find((item) => item.entryId === detailMod.id) ?? null
           }
+          aiReady={aiReady}
+          onAiTranslate={() => setAiLocMod(detailMod)}
           onApplyUpdate={() => void handleApplyUpdates([detailMod.id])}
           onRollbackUpdate={() => void handleRollbackUpdate(detailMod.id)}
           applyingUpdate={applyingUpdates}
@@ -2960,6 +3053,16 @@ export default function App() {
           onClose={() => setBgCropOpen(false)}
         />
       ) : null}
+
+      <AiToolsDialog
+        open={aiLocMod !== null}
+        mod={aiLocMod}
+        mode="loc"
+        onClose={() => setAiLocMod(null)}
+        onDone={() => {
+          void refresh();
+        }}
+      />
 
       <AdoptPreviewDialog
         open={adoptOpen}

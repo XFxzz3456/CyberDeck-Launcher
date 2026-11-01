@@ -241,6 +241,7 @@ export function VirtualModGrid({
                     conflicts={conflicts}
                     missingDeps={missingDependencyNames(mod, dependencyReport, frameworks)}
                     translationCount={translationCounts?.get(mod.id) ?? 0}
+              aiLocated={mod.aiLoc != null}
                     hasUpdate={updateIds?.has(mod.id) ?? false}
                     busy={busyId === mod.id}
                     onToggle={(enabled) => onToggle(mod, enabled)}

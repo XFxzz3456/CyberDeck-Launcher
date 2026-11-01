@@ -384,6 +384,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // T5 暴露：详情页按钮 / 工具栏批量下拉 / 卡片「中·AI」徽标。
+    name: "AI 汉化入口",
+    script: "check-ailoc-entry.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     name: "游戏更新熔断",
     script: "check-update-lock.mjs",
     expect: ["banners=1", "after_click=0"],

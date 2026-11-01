@@ -36,6 +36,8 @@ export function ModDetailDrawer({
   conflicts,
   missingDeps = [],
   updateInfo,
+  aiReady = false,
+  onAiTranslate,
   backupInfo,
   onApplyUpdate,
   onRollbackUpdate,
@@ -71,6 +73,10 @@ export function ModDetailDrawer({
   onUnbindTranslation?: (childId: string) => void;
   /** #1 更新检查命中时传入，抽屉里给出「查看新版本」入口。 */
   updateInfo?: { currentVersion: string | null; latestVersion: string; pageUrl: string } | null;
+  /** AI 接口是否已配置（未配置时汉化按钮禁用并说明原因）。 */
+  aiReady?: boolean;
+  /** 打开 AI 汉化流程（复用 AiToolsDialog 的 loc 模式）。 */
+  onAiTranslate?: () => void;
   /** 这个模组可回滚的备份（有值才显示「回滚」按钮）。 */
   backupInfo?: UpdateBackup | null;
   onApplyUpdate?: () => void;
@@ -451,6 +457,30 @@ export function ModDetailDrawer({
               <span>{t("modDetail.statUpdated")}</span>
               <strong>{relativeTime(mod.updatedAt ?? mod.installedAt)}</strong>
             </div>
+          </div>
+
+          {/* AI 汉化入口（放在部署状态统计条附近）：已汉化时显示状态与「重新生成」，
+              未汉化时给主按钮；AI 接口没配就禁用并直接写清原因，不让用户点了才发现。 */}
+          <div className="drawer-ai" data-located={mod.aiLoc ? "true" : "false"}>
+            <div className="drawer-ai-copy">
+              <strong>
+                {mod.aiLoc ? t("modDetail.aiLocDoneTitle") : t("modDetail.aiLocTitle")}
+              </strong>
+              <span>
+                {mod.aiLoc ? t("modDetail.aiLocDoneDetail") : t("modDetail.aiLocDetail")}
+              </span>
+              {!aiReady ? <em className="drawer-ai-warn">{t("modDetail.aiLocNoKey")}</em> : null}
+            </div>
+            <button
+              type="button"
+              className={`btn btn-sm ${mod.aiLoc ? "btn-ghost" : "btn-primary"}`}
+              onClick={onAiTranslate}
+              disabled={!aiReady || !onAiTranslate}
+              title={aiReady ? t("modDetail.aiLocActionTitle") : t("modDetail.aiLocNoKey")}
+            >
+              <Languages size={12} />
+              {mod.aiLoc ? t("modDetail.aiLocAgain") : t("modDetail.aiLocAction")}
+            </button>
           </div>
 
           <div className="drawer-section">

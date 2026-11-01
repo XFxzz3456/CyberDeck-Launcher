@@ -11899,6 +11899,56 @@ body::before {
   line-height: 1.5;
   color: var(--muted);
 }
+/* AI 汉化入口（T5 暴露到详情页）：和更新块同一种「左文右钮」节奏，
+   但用弱化的中性描边——它不是升级提醒，而是可选的增强操作。 */
+.drawer-ai {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+}
+
+.drawer-ai[data-located="true"] {
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.05);
+}
+
+.drawer-ai-copy {
+  min-width: 0;
+}
+
+.drawer-ai-copy strong {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.drawer-ai-copy span {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* 「需先配置 AI 接口」：用警告色而不是灰色，否则用户会以为按钮坏了。 */
+.drawer-ai-warn {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-style: normal;
+  color: var(--warn, #d9a441);
+}
+
+/* 卡片徽标：AI 覆盖层用描边区分，避免和人工汉化包的实心「中」混淆。 */
+.cover-lang-ai {
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  background: rgba(var(--accent-rgb), 0.16);
+}
+
 /* P5-5B：更新块里的按钮组（更新 / 打开下载页 / 回滚）允许换行，
    窄抽屉里不会把文字挤成两行半。 */
 .drawer-update-actions {
