@@ -434,94 +434,6 @@ pre {
   --glass-l3-solid: var(--panel-2);
 }
 
-/* ══ 赛博主题碳灰层次（data-glass="off" 时）══════════════════════════
-   历史：先是全面玻璃（赛博被糊成灰蒙蒙），再一刀切成死黑（硬边、没层次）。
-   现在这一版是第三稿，目标「深碳灰 + 明暗分层 + 边缘微光」：
-
-   层级（越靠前越亮一档，靠明度拉开，不靠模糊）：
-     主背景   #0a0a0c  ← 碳灰，不是纯黑（纯黑会让卡片无处落脚）
-     顶栏/侧栏 #08080a  ← 比主背景再深一档，靠极细的线切出边界
-     设置面板  #151518
-     Mod 卡片  #18181b  ← 比面板再亮一档，网格视图里才浮得起来
-
-   边框统一用 rgba(255,255,255,0.08)：实色 #232327 会糊成一条生硬的灰线，
-   半透明白边在深底上是「微光」而不是「描边」。
-   阴影用纯黑硬投影（0 4px 12px rgba(0,0,0,.5)），不要 Modern 那种弥散大柔光。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"]) {
-  --cyber-bg: #0a0a0c;
-  --cyber-chrome: #08080a;
-  --cyber-panel: #151518;
-  --cyber-panel-lift: #18181b;
-  --cyber-border: rgba(255, 255, 255, 0.08);
-  --cyber-line: #1d1d21;
-  --cyber-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-
-  /* 纯黑底上的灰字必须实色：半透明灰叠在黑上会发虚，对比度还随背景漂移。 */
-  --muted: #8a8a8a;
-  --muted-2: #9aa4b0;
-  --text-2: #c9c9cc;
-
-  /* 网格层（.app-shell::after）在这四套主题里原先没定义这个变量，
-     靠 opacity 回退 1 侥幸生效；这里显式钉死，避免以后改动把它变成不可见。 */
-  --grid-opacity: 1;
-}
-
-/* 主背景：碳灰纯色（网格由 .app-shell::after 叠，不再需要 radial 提亮）。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  .app-shell[data-glass="off"] {
-  background: var(--cyber-bg);
-}
-
-/* 侧栏与顶栏：比主背景深一档，靠 1px 实线切边（不是阴影，赛博要硬）。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .sidebar {
-  background: var(--cyber-chrome);
-  border-right: 1px solid var(--cyber-line);
-}
-
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .topbar {
-  background: var(--cyber-chrome);
-  backdrop-filter: none;
-  border-bottom: 1px solid var(--cyber-line);
-}
-
-/* Tabs：不再是一条实心横杠，底部分割线 + 激活项主题色下划线（下划线原本就有）。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .settings-tabs {
-  background: transparent;
-  backdrop-filter: none;
-  border-bottom: 1px solid var(--cyber-line);
-}
-
-/* 卡片：面板 #151518、Mod 卡片 #18181b，彼此差一档明度；边框是半透明白的微光。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .panel,
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .settings-tab-panel .panel {
-  background: var(--cyber-panel);
-  backdrop-filter: none;
-  border: 1px solid var(--cyber-border);
-  box-shadow: var(--cyber-shadow);
-}
-
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .mod-card {
-  background: var(--cyber-panel-lift);
-  backdrop-filter: none;
-  border: 1px solid var(--cyber-border);
-  box-shadow: var(--cyber-shadow);
-}
-
-/* 选中的卡片：保留主题色发光，但边框仍细（1px），只加亮不外扩。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .mod-card.is-enabled,
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .mod-card.state-deployed {
-  border-color: rgba(var(--edge-rgb), 0.45);
-  box-shadow: var(--cyber-shadow), 0 0 0 1px rgba(var(--edge-rgb), 0.12);
-}
-
 /* ── L1 容器：透 + 大模糊，无描边 ────────────────────────────── */
 [data-glass="on"] .glass-l1 {
   background: var(--glass-l1-bg);
@@ -4919,8 +4831,8 @@ pre {
 /* 空状态页 /「正在连接 Nexus…」这类加载态的中心提亮层：中心一圈极淡的
    高光把身后的网格压下去，保证加载图标和文案是全场对比度最高的东西
    （任务 §二）。两类容器共用一条规则，样式不会各自走偏。 */
-[data-glass="on"] .empty-state::before,
-[data-glass="on"] .diagnostics-loading::before {
+.empty-state::before,
+.diagnostics-loading::before {
   content: "";
   position: absolute;
   inset: -60px -40px;

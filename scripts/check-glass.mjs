@@ -1,21 +1,27 @@
-// 毛玻璃补齐验收（用户反馈：顶栏 / Tabs / 设置卡片像实心黑块）。
+// 主题 × 背景 的四象限验收（2026-11-01 定稿规则）。
 //
-// 只测「开了自定义背景图」这一支：读计算样式，确认
-//   1) 顶栏是半透明 + 有 blur + 底部有极淡边框；
-//   2) Tabs 条半透明 + blur；
-//   3) 设置卡片半透明 + blur + 高光描边；
-//   4) 设置页主容器不再叠一层 blur（避免嵌套毛玻璃）；
-//   5) 关掉背景图后这些毛玻璃一律消失（默认态保持实心，不乱）。
+// 规则：玻璃 = 有自定义背景图 **且** 主题不是赛博四套（ncpd/netrunner/arasaka/militech）。
+// 赛博主题无论有没有背景图都不吃 backdrop-filter / 半透明 rgba —— 它们的质感来自
+// tokens.css 里各自的调色板（NCPD 蓝灰、Arasaka 血褐、Netrunner 冷青、Militech 军绿）。
+//
+// 四个场景各验一遍：
+//   A modern + 有图  → glass=on，L1/L2/L3 全部按令牌生效，设置页主容器不叠模糊
+//   B ncpd   + 有图  → glass=off，卡片回 tokens 渐变，没有任何 backdrop-filter
+//   C ncpd   + 无图  → glass=off，同上
+//   D modern + 无图  → glass=off（定稿：Modern 也要有背景图才玻璃）
 
 import { chromium } from "playwright-core";
 
 const KEY = "cyberdeck-launcher-demo-state-v1";
+const PREFS = "ncl.ui.preferences.v1";
 const edge = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 
 const results = [];
 function check(name, ok, detail = "", key = "") {
   results.push({ name, ok });
-  console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}${key ? ` ${key}=${ok ? 1 : 0}` : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}${key ? ` ${key}=${ok ? 1 : 0}` : ""}`,
+  );
 }
 
 const browser = await chromium.launch({
@@ -24,190 +30,183 @@ const browser = await chromium.launch({
   args: ["--no-sandbox", "--disable-gpu"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await page.addInitScript((key) => {
-  localStorage.setItem("ncl.ui.eulaAccepted.v1", "true");
-  if (!localStorage.getItem("ncl.ui.preferences.v1")) {
-    localStorage.setItem(
-      "ncl.ui.preferences.v1",
-      JSON.stringify({
-        theme: "arasaka",
-        useCustomAccent: false,
-        accent: "#ff4058",
-        scale: 1,
-        sidebarCollapsed: false,
-        animations: false,
-        splash: false,
-      }),
-    );
-  }
-}, KEY);
+const pageErrors = [];
+page.on("pageerror", (err) => pageErrors.push(err.message));
 
-await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
-await page.waitForTimeout(1000);
-
-// 打开背景图（mock 的 settings.backgroundImage 非空即进 [data-backdrop="on"]）
-await page.evaluate((key) => {
-  const db = JSON.parse(localStorage.getItem(key) || "null");
-  if (db?.state?.settings) {
-    db.state.settings.backgroundImage = "C:\\fake\\wallpaper.png";
-    db.state.settings.backgroundOpacity = 70;
-    db.state.settings.backgroundBlur = 0;
-    db.state.settings.backgroundDim = 45;
-    localStorage.setItem(key, JSON.stringify(db));
-  }
-}, KEY);
-await page.reload({ waitUntil: "networkidle" });
-await page.waitForTimeout(1200);
-
-const shellBackdrop = await page.locator(".app-shell").getAttribute("data-backdrop");
-check("进入有背景图状态", shellBackdrop === "on", `data-backdrop=${shellBackdrop}`, "backdropOn");
-
-// ── 1. 顶栏 ────────────────────────────────────────────────────────
-const topbar = await page.locator(".topbar").evaluate((node) => {
-  const cs = getComputedStyle(node);
-  return { bg: cs.backgroundColor, blur: cs.backdropFilter, border: cs.borderBottomColor };
-});
-const topbarAlpha = Number((topbar.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("顶栏半透明", topbarAlpha > 0 && topbarAlpha < 0.8, `bg=${topbar.bg}`, "topbarAlpha");
-check("顶栏有毛玻璃", /blur\((1[2-9]|2\d)px\)/.test(topbar.blur), `blur=${topbar.blur}`, "topbarBlur");
-check(
-  "顶栏底部有极淡描边",
-  /rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0?\.0[3-9]/.test(topbar.border),
-  `border=${topbar.border}`,
-  "topbarBorder",
+await page.addInitScript(
+  ({ prefsKey }) => {
+    localStorage.setItem("ncl.ui.eulaAccepted.v1", "true");
+    if (!localStorage.getItem(prefsKey)) {
+      localStorage.setItem(
+        prefsKey,
+        JSON.stringify({
+          theme: "modern",
+          useCustomAccent: false,
+          accent: "#ff4058",
+          scale: 1,
+          sidebarCollapsed: false,
+          animations: false,
+          splash: false,
+        }),
+      );
+    }
+  },
+  { prefsKey: PREFS },
 );
 
-// ── 1b. 侧边栏与主内容区（L1）────────────────────────────────────
-const sidebar = await page.locator(".sidebar").evaluate((node) => {
-  const cs = getComputedStyle(node);
+const alphaOf = (value) => Number((value.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
+
+async function setTheme(theme) {
+  await page.evaluate(
+    ({ prefsKey, next }) => {
+      const prefs = JSON.parse(localStorage.getItem(prefsKey) || "{}");
+      prefs.theme = next;
+      localStorage.setItem(prefsKey, JSON.stringify(prefs));
+    },
+    { prefsKey: PREFS, next: theme },
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(1200);
+}
+
+async function setBackground(on) {
+  await page.evaluate(
+    ({ key, enabled }) => {
+      const db = JSON.parse(localStorage.getItem(key) || "null");
+      if (!db?.state?.settings) return;
+      db.state.settings.backgroundImage = enabled ? "C:\\fake\\wallpaper.png" : "";
+      db.state.settings.backgroundOpacity = 70;
+      db.state.settings.backgroundBlur = 0;
+      db.state.settings.backgroundDim = 45;
+      localStorage.setItem(key, JSON.stringify(db));
+    },
+    { key: KEY, enabled: on },
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(1200);
+}
+
+async function openSettings() {
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.waitForTimeout(800);
+}
+
+// ── A. modern + 有背景图 ⇒ 玻璃 ─────────────────────────────────────
+await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
+await page.waitForTimeout(1000);
+await setBackground(true);
+
+const glassA = await page.locator(".app-shell").getAttribute("data-glass");
+check("A modern+有图：glass=on", glassA === "on", `data-glass=${glassA}`, "A_glassOn");
+
+const topbar = await page.locator(".topbar").evaluate((n) => {
+  const cs = getComputedStyle(n);
+  return { bg: cs.backgroundColor, blur: cs.backdropFilter, border: cs.borderBottomColor };
+});
+check("A 顶栏 L1 半透明", alphaOf(topbar.bg) > 0 && alphaOf(topbar.bg) < 0.8, `bg=${topbar.bg}`, "A_topbarAlpha");
+check("A 顶栏有毛玻璃（20/24px）", /blur\((20|24)px\)/.test(topbar.blur), `blur=${topbar.blur}`, "A_topbarBlur");
+check(
+  "A 顶栏底部极淡描边",
+  /rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*0?\.0[3-9]/.test(topbar.border),
+  `border=${topbar.border}`,
+  "A_topbarBorder",
+);
+
+const sidebar = await page.locator(".sidebar").evaluate((n) => {
+  const cs = getComputedStyle(n);
   return { bg: cs.backgroundColor, blur: cs.backdropFilter };
 });
-const sidebarAlpha = Number((sidebar.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("侧边栏走 L1 半透明", sidebarAlpha > 0.4 && sidebarAlpha < 0.75, `bg=${sidebar.bg}`, "sidebarAlpha");
-check("侧边栏 blur(24)", /blur\(24px\)/.test(sidebar.blur), `blur=${sidebar.blur}`, "sidebarBlur");
+check("A 侧栏 L1 半透明", alphaOf(sidebar.bg) > 0.4 && alphaOf(sidebar.bg) < 0.75, `bg=${sidebar.bg}`, "A_sidebarAlpha");
+check("A 侧栏有毛玻璃（20/24px）", /blur\((20|24)px\)/.test(sidebar.blur), `blur=${sidebar.blur}`, "A_sidebarBlur");
 
-// ── 2. 设置页 Tabs ─────────────────────────────────────────────────
-await page.getByRole("button", { name: "设置", exact: true }).click();
-await page.waitForTimeout(900);
-
-const tabs = await page.locator(".settings-tabs").evaluate((node) => {
-  const cs = getComputedStyle(node);
+await openSettings();
+const tabs = await page.locator(".settings-tabs").evaluate((n) => {
+  const cs = getComputedStyle(n);
   return { bg: cs.backgroundColor, blur: cs.backdropFilter };
 });
-const tabsAlpha = Number((tabs.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("Tabs 条半透明", tabsAlpha > 0 && tabsAlpha < 0.8, `bg=${tabs.bg}`, "tabsAlpha");
-check("Tabs 条有毛玻璃", /blur\((1[0-9]|2\d)px\)/.test(tabs.blur), `blur=${tabs.blur}`, "tabsBlur");
+check("A Tabs L1 半透明", alphaOf(tabs.bg) > 0 && alphaOf(tabs.bg) < 0.8, `bg=${tabs.bg}`, "A_tabsAlpha");
+check("A Tabs blur(24)", /blur\(24px\)/.test(tabs.blur), `blur=${tabs.blur}`, "A_tabsBlur");
 
-const activeTabBg = await page.locator(".settings-tab.active").first().evaluate((n) => getComputedStyle(n).backgroundColor);
-const activeAlpha = Number((activeTabBg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("选中项底色带透明度", activeAlpha > 0 && activeAlpha < 0.5, `bg=${activeTabBg}`, "tabActiveAlpha");
-
-// ── 3. 设置卡片 ────────────────────────────────────────────────────
-const card = await page.locator(".settings-tab-panel .panel").first().evaluate((node) => {
-  const cs = getComputedStyle(node);
+const cardA = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
+  const cs = getComputedStyle(n);
   return { bg: cs.backgroundColor, blur: cs.backdropFilter, border: `${cs.borderTopWidth} ${cs.borderTopColor}` };
 });
-const cardAlpha = Number((card.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-// L2 规范：底色要「够实」（0.85），模糊只留极轻的 8px
-check("卡片走 L2 实底（0.7–0.9）", cardAlpha > 0.7 && cardAlpha <= 0.9, `bg=${card.bg}`, "cardAlpha");
-check("卡片 blur(8) 极轻", /blur\(([4-9]|1[0-5])px\)/.test(card.blur), `blur=${card.blur}`, "cardBlur");
-check("卡片有 1px 高光描边", /^1px/.test(card.border), `border=${card.border}`, "cardBorder");
+check("A 卡片 L2 实底 0.7–0.9", alphaOf(cardA.bg) > 0.7 && alphaOf(cardA.bg) <= 0.9, `bg=${cardA.bg}`, "A_cardAlpha");
+check("A 卡片 blur(8)", /blur\(8px\)/.test(cardA.blur), `blur=${cardA.blur}`, "A_cardBlur");
+check("A 卡片 1px 高光描边", /^1px/.test(cardA.border), `border=${cardA.border}`, "A_cardBorder");
 
-// ── 3b. L3 悬浮层：下拉菜单 ─────────────────────────────────────────
-// 悬浮层在「模组库」页更容易触发（工具栏有导入/AI 汉化两个下拉）。
-const libraryBtn = page.getByRole("button", { name: "模组库", exact: true }).first();
-if ((await libraryBtn.count()) > 0) {
-  await libraryBtn.click();
-  await page.waitForTimeout(700);
-}
-// 用「AI 汉化」下拉触发：它在模组库页常驻，菜单结构与其它下拉一致。
+const contentBlur = await page.locator(".content").first().evaluate((n) => getComputedStyle(n).backdropFilter);
+check("A 设置页主容器不叠模糊（无嵌套）", contentBlur === "none", `content=${contentBlur}`, "A_noNested");
+
+// L3：下拉菜单
+await page.getByRole("button", { name: "模组库", exact: true }).first().click();
+await page.waitForTimeout(700);
 const menuTrigger = page.getByRole("button", { name: /^AI 汉化/ }).first();
 if ((await menuTrigger.count()) > 0) {
   await menuTrigger.click();
   await page.waitForTimeout(400);
 }
-const menu = await page.locator(".import-menu").first().evaluate((node) => {
-  const cs = getComputedStyle(node);
-  return { bg: cs.backgroundColor, blur: cs.backdropFilter, shadow: cs.boxShadow };
-}).catch(() => ({ bg: "", blur: "", shadow: "" }));
-const menuAlpha = Number((menu.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("下拉菜单走 L3 半透明", menuAlpha > 0.5 && menuAlpha < 0.9, `bg=${menu.bg}`, "menuAlpha");
-check("下拉菜单 blur(32)", /blur\(32px\)/.test(menu.blur), `blur=${menu.blur}`, "menuBlur");
-check("下拉菜单有大范围阴影", menu.shadow !== "none" && /40px/.test(menu.shadow), `shadow=${menu.shadow.slice(0, 40)}`, "menuShadow");
+const menu = await page
+  .locator(".import-menu")
+  .first()
+  .evaluate((n) => {
+    const cs = getComputedStyle(n);
+    return { bg: cs.backgroundColor, blur: cs.backdropFilter, shadow: cs.boxShadow };
+  })
+  .catch(() => ({ bg: "", blur: "", shadow: "" }));
+check("A 下拉 L3 半透明", alphaOf(menu.bg) > 0.5 && alphaOf(menu.bg) < 0.9, `bg=${menu.bg}`, "A_menuAlpha");
+check("A 下拉 blur(32)", /blur\(32px\)/.test(menu.blur), `blur=${menu.blur}`, "A_menuBlur");
+check("A 下拉大范围阴影", /40px/.test(menu.shadow), `shadow=${menu.shadow.slice(0, 40)}`, "A_menuShadow");
 await page.keyboard.press("Escape");
-// 回到设置页，后面的「主容器不叠 blur」断言要在设置页上量。
-await page.getByRole("button", { name: "设置", exact: true }).click();
-await page.waitForTimeout(800);
 
-// ── 4. 不叠嵌套毛玻璃 ──────────────────────────────────────────────
-const contentBlur = await page.locator(".content").first().evaluate((n) => getComputedStyle(n).backdropFilter);
-check("设置页主容器不再叠 blur", contentBlur === "none", `content.blur=${contentBlur}`, "noNestedBlur");
-const pageAttr = await page.locator(".app-shell").getAttribute("data-page");
-check("设置页有 data-page 标记", pageAttr === "settings", `data-page=${pageAttr}`, "pageAttr");
+// ── B. ncpd + 仍有背景图 ⇒ 赛博不吃玻璃 ────────────────────────────
+await setTheme("ncpd");
+const glassB = await page.locator(".app-shell").getAttribute("data-glass");
+check("B ncpd+有图：glass=off（赛博永不玻璃）", glassB === "off", `data-glass=${glassB}`, "B_glassOff");
 
-// ── 5. 关掉背景图后回落实心 ────────────────────────────────────────
-await page.evaluate((key) => {
-  const db = JSON.parse(localStorage.getItem(key) || "null");
-  if (db?.state?.settings) {
-    db.state.settings.backgroundImage = "";
-    localStorage.setItem(key, JSON.stringify(db));
-  }
-}, KEY);
-await page.reload({ waitUntil: "networkidle" });
-await page.waitForTimeout(1200);
-await page.getByRole("button", { name: "设置", exact: true }).click();
-await page.waitForTimeout(800);
+await openSettings();
+const cardB = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
+  const cs = getComputedStyle(n);
+  return { bgImage: cs.backgroundImage, blur: cs.backdropFilter };
+});
+check("B 卡片无 backdrop-filter", cardB.blur === "none", `blur=${cardB.blur}`, "B_cardNoBlur");
+check(
+  "B 卡片回 tokens 渐变（不是单一 rgba）",
+  /linear-gradient/.test(cardB.bgImage),
+  `bgImage=${cardB.bgImage.slice(0, 48)}`,
+  "B_cardTokenGradient",
+);
 
-const offTopbar = await page.locator(".topbar").evaluate((n) => getComputedStyle(n).backgroundColor);
-const offCard = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => getComputedStyle(n).backgroundColor);
-const offAlpha = Number((offTopbar.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("无背景时顶栏回到不透明档", offAlpha >= 0.7, `bg=${offTopbar}`, "offTopbarSolid");
-// 无背景图 + 赛博主题 ⇒ data-glass 必须是 off，且退回纯黑实体
-const glassAttr = await page.locator(".app-shell").getAttribute("data-glass");
-check("赛博主题无背景时 glass 关闭", glassAttr === "off", `data-glass=${glassAttr}`, "glassOff");
-
-const offCardFull = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
+const topbarB = await page.locator(".topbar").evaluate((n) => {
   const cs = getComputedStyle(n);
   return { bg: cs.backgroundColor, blur: cs.backdropFilter };
 });
-const opaque = /^rgb\(/.test(offCardFull.bg) || /rgba\([^)]*,\s*1\)$/.test(offCardFull.bg);
-check("卡片完全不透明（非 rgba 半透）", opaque, `bg=${offCardFull.bg}`, "offCardOpaque");
-check("卡片无任何 backdrop-filter", offCardFull.blur === "none", `blur=${offCardFull.blur}`, "offCardNoBlur");
+check("B 顶栏无 backdrop-filter", topbarB.blur === "none", `blur=${topbarB.blur}`, "B_topbarNoBlur");
+check("B 顶栏实色（NCPD #07090c 0.78）", /rgba\(7, 9, 12, 0\.78\)/.test(topbarB.bg), `bg=${topbarB.bg}`, "B_topbarTokenBg");
 
-const shell = await page.locator(".app-shell").evaluate((n) => {
+const shellB = await page.locator(".app-shell").evaluate((n) => getComputedStyle(n).backgroundImage);
+check("B 主背景恢复原设计柔光（radial）", /radial-gradient/.test(shellB), `bg=${shellB.slice(0, 40)}`, "B_shellRadial");
+
+// ── C. ncpd + 无背景图 ⇒ 与 B 一致 ─────────────────────────────────
+await setBackground(false);
+const glassC = await page.locator(".app-shell").getAttribute("data-glass");
+check("C ncpd+无图：glass=off", glassC === "off", `data-glass=${glassC}`, "C_glassOff");
+await openSettings();
+const cardC = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
   const cs = getComputedStyle(n);
-  return { bg: cs.backgroundImage + " | " + cs.backgroundColor };
+  return { bgImage: cs.backgroundImage, blur: cs.backdropFilter };
 });
-check("主背景没有径向光晕（幽灵灰圈已除）", !/radial-gradient/.test(shell.bg), `bg=${shell.bg.slice(0, 60)}`, "noGhostGlow");
+check("C 卡片仍是 tokens 渐变", /linear-gradient/.test(cardC.bgImage), `bgImage=${cardC.bgImage.slice(0, 40)}`, "C_cardToken");
+check("C 卡片无 blur", cardC.blur === "none", `blur=${cardC.blur}`, "C_cardNoBlur");
 
-// 碳灰层次（第三稿）：背景不是死黑，卡片比背景亮一档，边框是半透明白微光
-const shellBg = await page.locator(".app-shell").evaluate((n) => getComputedStyle(n).backgroundColor);
-check("主背景是碳灰 #0a0a0c", /rgb\(10, 10, 12\)/.test(shellBg), `bg=${shellBg}`, "cyberShellCarbon");
-check("卡片比背景亮一档 #151518", /rgb\(21, 21, 24\)/.test(offCardFull.bg), `bg=${offCardFull.bg}`, "cyberCardLift");
+// ── D. modern + 无背景图 ⇒ 定稿规则下也不玻璃 ──────────────────────
+await setTheme("modern");
+const glassD = await page.locator(".app-shell").getAttribute("data-glass");
+check("D modern+无图：glass=off", glassD === "off", `data-glass=${glassD}`, "D_glassOff");
+const topbarD = await page.locator(".topbar").evaluate((n) => getComputedStyle(n).backdropFilter);
+check("D 顶栏不叠加额外玻璃层", !/blur\(24px\)/.test(topbarD), `blur=${topbarD}`, "D_topbarNoL1");
 
-const cardSkin = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
-  const cs = getComputedStyle(n);
-  return { border: cs.borderTopColor, shadow: cs.boxShadow };
-});
-check("卡片边框是半透明白（非实色）", /rgba\(255, 255, 255, 0\.08\)/.test(cardSkin.border), `border=${cardSkin.border}`, "cyberCardBorder");
-check("卡片是硬投影（4px 12px）", /4px 12px/.test(cardSkin.shadow), `shadow=${cardSkin.shadow.slice(0, 48)}`, "cyberCardShadow");
-
-// ── 6. 现代主题：没有背景图也要有玻璃（条件 A）────────────────────
-await page.evaluate(() => {
-  const key = "ncl.ui.preferences.v1";
-  const prefs = JSON.parse(localStorage.getItem(key) || "{}");
-  prefs.theme = "modern";
-  localStorage.setItem(key, JSON.stringify(prefs));
-});
-await page.reload({ waitUntil: "networkidle" });
-await page.waitForTimeout(1200);
-
-const modernGlass = await page.locator(".app-shell").getAttribute("data-glass");
-check("现代主题无背景时 glass 开启", modernGlass === "on", `data-glass=${modernGlass}`, "modernGlassOn");
-const modernTopbar = await page.locator(".topbar").evaluate((n) => getComputedStyle(n).backdropFilter);
-check("现代主题顶栏有毛玻璃", /blur\((20|24)px\)/.test(modernTopbar), `blur=${modernTopbar}`, "modernTopbarBlur");
-
-await page.screenshot({ path: "shots/audit/glass-no-background.png" });
+check("pageerrors=0", pageErrors.length === 0, pageErrors.slice(0, 2).join("；"), "pageErrors");
 
 const failed = results.filter((r) => !r.ok).length;
 console.log(`checks_failed=${failed}`);

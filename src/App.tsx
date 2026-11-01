@@ -2430,9 +2430,16 @@ export default function App() {
         detailMod ? "has-drawer" : ""
       }`}
       data-backdrop={backgroundData.dataUrl ? "on" : "off"}
-      // 玻璃开关：只认「现代主题」或「开了自定义背景图」。赛博主题不开背景图时
-      // 这里是 off，一条玻璃规则都不命中，退回纯黑硬质感（用户 2026-11-01 拍板）。
-      data-glass={preferences.theme === "modern" || backgroundData.dataUrl ? "on" : "off"}
+      // 玻璃开关（2026-11-01 定稿）：**有自定义背景图、且不是赛博主题**才开。
+      // 赛博四主题无论在什么情况下都不吃 backdrop-filter / 半透明 rgba ——
+      // 它们的质感来自 tokens.css 里各自的调色板（NCPD 蓝灰、Arasaka 血褐、
+      // Netrunner 冷青、Militech 军绿），不需要也不该叠玻璃。
+      data-glass={
+        backgroundData.dataUrl &&
+        !["ncpd", "netrunner", "arasaka", "militech"].includes(preferences.theme)
+          ? "on"
+          : "off"
+      }
       // 供 CSS 按页面裁剪毛玻璃层（设置页的卡片自带玻璃，主容器不再叠一层）。
       data-page={view}
       // 协议门未过时把底层整块设为 inert：鼠标与键盘都进不去（遮罩本身在它外面，不受影响）。
