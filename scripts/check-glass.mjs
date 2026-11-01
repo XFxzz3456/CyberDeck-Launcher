@@ -199,12 +199,12 @@ const cardC = await page.locator(".settings-tab-panel .panel").first().evaluate(
 check("C 卡片仍是 tokens 渐变", /linear-gradient/.test(cardC.bgImage), `bgImage=${cardC.bgImage.slice(0, 40)}`, "C_cardToken");
 check("C 卡片无 blur", cardC.blur === "none", `blur=${cardC.blur}`, "C_cardNoBlur");
 
-// ── D. modern + 无背景图 ⇒ 定稿规则下也不玻璃 ──────────────────────
+// ── D. modern + 无背景图 ⇒ 方案 A：仍然玻璃 ────────────────────────
 await setTheme("modern");
 const glassD = await page.locator(".app-shell").getAttribute("data-glass");
-check("D modern+无图：glass=off", glassD === "off", `data-glass=${glassD}`, "D_glassOff");
+check("D modern+无图：glass=on（方案 A）", glassD === "on", `data-glass=${glassD}`, "D_glassOn");
 const topbarD = await page.locator(".topbar").evaluate((n) => getComputedStyle(n).backdropFilter);
-check("D 顶栏不叠加额外玻璃层", !/blur\(24px\)/.test(topbarD), `blur=${topbarD}`, "D_topbarNoL1");
+check("D 顶栏有玻璃层", /blur\((20|24)px\)/.test(topbarD), `blur=${topbarD}`, "D_topbarGlass");
 
 check("pageerrors=0", pageErrors.length === 0, pageErrors.slice(0, 2).join("；"), "pageErrors");
 
