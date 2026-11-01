@@ -298,11 +298,10 @@ pre {
 }
 
 [data-backdrop="on"] .sidebar {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--bg-2) 88%, transparent),
-    color-mix(in srgb, var(--bg) 84%, transparent)
-  );
+  /* L1 容器层。原来用 88%/84% 的两段渐变，边界处会透出背景图的亮块，
+     统一成单层半透明 + 大模糊后，侧栏与主内容区的接缝干净了。 */
+  background: var(--glass-l1-bg);
+  backdrop-filter: var(--glass-l1-blur);
 }
 
 /* ── 毛玻璃底板（可读性任务·二）──────────────────────────────────
@@ -368,25 +367,29 @@ pre {
    这样在构建后被静默干掉的，源码里看着有、跑起来没有。）本项目只跑 Chromium，
    只用标准属性。 */
 [data-backdrop="on"] .content {
-  background: var(--content-frost-bg);
-  backdrop-filter: var(--content-frost-blur);
+  /* L1 容器层。⚠️ 例外：这里**只取模糊、不取 L1 的底色**。
+     3A-2 已定案「暗化只由 .app-backdrop-dim 那唯一一层控制」，
+     若再叠 0.6 黑底，用户把暗化滑块拉到 0% 屏幕依然是黑的（旧 bug 复原）。
+     模糊不变暗，所以只加 blur 是安全的。 */
+  background: transparent;
+  backdrop-filter: var(--glass-l1-blur);
 }
 
 /* 主内容区里的卡片：不再叠毛玻璃，改成「较高不透明度 + 极细高光边框」，
    让它们像浮在毛玻璃底座上，而不是和底座糊成一片。 */
 [data-backdrop="on"] .content .panel,
 [data-backdrop="on"] .content .mod-card {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--panel-2) 92%, transparent),
-    color-mix(in srgb, var(--panel) 94%, transparent)
-  );
-  border-color: rgba(255, 255, 255, 0.07);
+  /* L2 卡片层：底色够实（0.85）压住背景图高光，只留 8px 极轻模糊，
+     再加一圈 1px 高光描边把卡片从 L1 底座上「提」起来。 */
+  background: var(--glass-l2-bg);
+  backdrop-filter: var(--glass-l2-blur);
+  border: var(--glass-l2-border);
 }
 
 :root[data-mode="light"] [data-backdrop="on"] .content .panel,
 :root[data-mode="light"] [data-backdrop="on"] .content .mod-card {
-  border-color: rgba(0, 0, 0, 0.07);
+  /* 亮色走 --glass-l2-* 令牌（0.9 白 + 黑 0.07 描边），不再重复写值。 */
+  border: var(--glass-l2-border);
 }
 
 /* ══ 玻璃层级令牌（L1 / L2 / L3）═══════════════════════════════════
@@ -453,6 +456,20 @@ pre {
   box-shadow: var(--glass-l3-shadow);
 }
 
+/* ── L3 悬浮层套用：下拉菜单 / 右键菜单 / 弹窗 / Toast ─────────────
+   这四类原先都是**完全不透明**的 var(--panel-2)（像贴在玻璃上的一块塑料），
+   统一改成半透 + 高模糊 + 大范围柔和阴影，让它们真的「浮」在 L1/L2 之上。
+   只在开了背景图时生效：默认态保持实心，避免无谓合成。 */
+[data-backdrop="on"] .import-menu,
+[data-backdrop="on"] .mod-context-menu,
+[data-backdrop="on"] .modal,
+[data-backdrop="on"] .toast {
+  background: var(--glass-l3-bg);
+  backdrop-filter: var(--glass-l3-blur);
+  border: var(--glass-l3-border);
+  box-shadow: var(--glass-l3-shadow);
+}
+
 /* 降级：没开背景图时三层都回纯色，且不产生任何合成层。 */
 [data-backdrop="off"] .glass-l1,
 .app-shell:not([data-backdrop="on"]) .glass-l1 {
@@ -484,8 +501,9 @@ pre {
    是典型嵌套毛玻璃，滚动时每帧重采样两遍。现在设置页只有 Tabs 与卡片两层，
    且卡片各自只覆盖自己那块区域，比一张全屏模糊更便宜。 */
 [data-backdrop="on"] .topbar {
-  background: rgba(20, 20, 24, 0.5);
-  backdrop-filter: blur(20px);
+  /* L1 容器层：透 + 大模糊，与窗口边缘融合 */
+  background: var(--glass-l1-bg);
+  backdrop-filter: var(--glass-l1-blur);
   border-bottom-color: rgba(255, 255, 255, 0.05);
 }
 
@@ -496,8 +514,9 @@ pre {
 
 /* Tabs 条：比卡片更透，让背景图透出来一点，避免整条横杠压在图中间。 */
 [data-backdrop="on"] .settings-tabs {
-  background: rgba(15, 15, 17, 0.4);
-  backdrop-filter: blur(16px);
+  /* Tabs 条是容器不是卡片（用户拍板）：归 L1，和顶栏同一档玻璃。 */
+  background: var(--glass-l1-bg);
+  backdrop-filter: var(--glass-l1-blur);
 }
 
 :root[data-mode="light"] [data-backdrop="on"] .settings-tabs {
@@ -1406,7 +1425,8 @@ pre {
   padding: 0 24px;
   border-bottom: 1px solid var(--line-soft);
   background: rgba(8, 11, 15, 0.78);
-  backdrop-filter: blur(12px);
+  /* 不带 backdrop-filter：模糊只在开了自定义背景图时由 .glass-l1 施加，
+     否则默认态（纯色）也在为一张不存在的图做合成，纯浪费。 */
   /* r41：与标题栏同一套拖动约束——这块区域也是拖动把手，同样不能起选区。 */
   user-select: none;
   -webkit-user-select: none;
@@ -3568,16 +3588,16 @@ pre {
 
 [data-backdrop="on"] .settings-tab-panel .panel {
   /* ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。
-     4A 调整：0.6→0.65 提一档不透明度保文字可读，模糊 16→12px 减负
-     （设置页已经把 .content 那层 20px 关掉，卡片是唯一一层玻璃）。 */
-  background: rgba(25, 25, 28, 0.65);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+     L2 卡片层：0.85 + blur(8) + 高光描边。设置页主容器已关掉 blur，
+     卡片是这一页**唯一**的玻璃层，不存在嵌套。 */
+  background: var(--glass-l2-bg);
+  backdrop-filter: var(--glass-l2-blur);
+  border: var(--glass-l2-border);
 }
 
 :root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel .panel {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: var(--glass-l2-bg);
+  border: var(--glass-l2-border);
 }
 
 .settings-card.span-2 {

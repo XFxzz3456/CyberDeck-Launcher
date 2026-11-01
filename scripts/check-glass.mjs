@@ -77,6 +77,15 @@ check(
   "topbarBorder",
 );
 
+// ── 1b. 侧边栏与主内容区（L1）────────────────────────────────────
+const sidebar = await page.locator(".sidebar").evaluate((node) => {
+  const cs = getComputedStyle(node);
+  return { bg: cs.backgroundColor, blur: cs.backdropFilter };
+});
+const sidebarAlpha = Number((sidebar.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
+check("侧边栏走 L1 半透明", sidebarAlpha > 0.4 && sidebarAlpha < 0.75, `bg=${sidebar.bg}`, "sidebarAlpha");
+check("侧边栏 blur(24)", /blur\(24px\)/.test(sidebar.blur), `blur=${sidebar.blur}`, "sidebarBlur");
+
 // ── 2. 设置页 Tabs ─────────────────────────────────────────────────
 await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(900);
@@ -99,9 +108,36 @@ const card = await page.locator(".settings-tab-panel .panel").first().evaluate((
   return { bg: cs.backgroundColor, blur: cs.backdropFilter, border: `${cs.borderTopWidth} ${cs.borderTopColor}` };
 });
 const cardAlpha = Number((card.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
-check("卡片半透明（不高于 0.7）", cardAlpha > 0.4 && cardAlpha <= 0.7, `bg=${card.bg}`, "cardAlpha");
-check("卡片有毛玻璃", /blur\((1[0-5])px\)/.test(card.blur), `blur=${card.blur}`, "cardBlur");
+// L2 规范：底色要「够实」（0.85），模糊只留极轻的 8px
+check("卡片走 L2 实底（0.7–0.9）", cardAlpha > 0.7 && cardAlpha <= 0.9, `bg=${card.bg}`, "cardAlpha");
+check("卡片 blur(8) 极轻", /blur\(([4-9]|1[0-5])px\)/.test(card.blur), `blur=${card.blur}`, "cardBlur");
 check("卡片有 1px 高光描边", /^1px/.test(card.border), `border=${card.border}`, "cardBorder");
+
+// ── 3b. L3 悬浮层：下拉菜单 ─────────────────────────────────────────
+// 悬浮层在「模组库」页更容易触发（工具栏有导入/AI 汉化两个下拉）。
+const libraryBtn = page.getByRole("button", { name: "模组库", exact: true }).first();
+if ((await libraryBtn.count()) > 0) {
+  await libraryBtn.click();
+  await page.waitForTimeout(700);
+}
+// 用「AI 汉化」下拉触发：它在模组库页常驻，菜单结构与其它下拉一致。
+const menuTrigger = page.getByRole("button", { name: /^AI 汉化/ }).first();
+if ((await menuTrigger.count()) > 0) {
+  await menuTrigger.click();
+  await page.waitForTimeout(400);
+}
+const menu = await page.locator(".import-menu").first().evaluate((node) => {
+  const cs = getComputedStyle(node);
+  return { bg: cs.backgroundColor, blur: cs.backdropFilter, shadow: cs.boxShadow };
+}).catch(() => ({ bg: "", blur: "", shadow: "" }));
+const menuAlpha = Number((menu.bg.match(/rgba?\([^)]*?([\d.]+)\)$/) || [])[1] ?? 1);
+check("下拉菜单走 L3 半透明", menuAlpha > 0.5 && menuAlpha < 0.9, `bg=${menu.bg}`, "menuAlpha");
+check("下拉菜单 blur(32)", /blur\(32px\)/.test(menu.blur), `blur=${menu.blur}`, "menuBlur");
+check("下拉菜单有大范围阴影", menu.shadow !== "none" && /40px/.test(menu.shadow), `shadow=${menu.shadow.slice(0, 40)}`, "menuShadow");
+await page.keyboard.press("Escape");
+// 回到设置页，后面的「主容器不叠 blur」断言要在设置页上量。
+await page.getByRole("button", { name: "设置", exact: true }).click();
+await page.waitForTimeout(800);
 
 // ── 4. 不叠嵌套毛玻璃 ──────────────────────────────────────────────
 const contentBlur = await page.locator(".content").first().evaluate((n) => getComputedStyle(n).backdropFilter);
