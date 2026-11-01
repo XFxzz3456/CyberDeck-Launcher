@@ -35,6 +35,27 @@ const currentLabel = async () => (await trigger.innerText()).trim();
 await openMenu();
 const optionCount = await page.locator(".profile-menu-item").count();
 const beforeValue = await currentLabel();
+
+// 浮层左边界必须与外层胶囊（.profile-picker）左边界对齐。
+// 曾经拿内层 .profile-trigger 当锚点：那个按钮从图标右侧才开始（图标 14px + 7px 间距），
+// 菜单整体右飘约 11px，用户报的「播放集下拉歪了」就是这个。锚点换成外层胶囊后 Δ=0。
+const align = await page.evaluate(() => {
+  const picker = document.querySelector(".profile-picker")?.getBoundingClientRect();
+  const menu = document.querySelector(".profile-menu")?.getBoundingClientRect();
+  if (!picker || !menu) return null;
+  return {
+    dLeft: Math.round(menu.left - picker.left),
+    dWidth: Math.round(menu.width - picker.width),
+    inViewport: menu.left >= 0 && menu.right <= window.innerWidth,
+  };
+});
+if (!align) throw new Error("播放集浮层没渲染出来，无法校验对齐");
+console.log(
+  `alignLeft=${align.dLeft} alignWidth=${align.dWidth} alignInViewport=${align.inViewport ? 1 : 0}`,
+);
+if (Math.abs(align.dLeft) > 1) throw new Error(`播放集浮层左边界未与胶囊对齐：Δleft=${align.dLeft}px`);
+if (!align.inViewport) throw new Error("播放集浮层超出窗口边界");
+
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
 const beforeDeployed = await page.locator(".mod-card .badge, .mod-card .status-badge").count();

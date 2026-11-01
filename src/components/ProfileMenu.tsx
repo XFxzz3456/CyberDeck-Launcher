@@ -39,14 +39,18 @@ export function ProfileMenu({
   const [pos, setPos] = useState<MenuPos | null>(null);
   const [cursor, setCursor] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // 定位锚点用**外层胶囊**（.profile-picker），不是内层按钮。
+  // 内层 .profile-trigger 从图标右侧才开始（图标 14px + 7px 间距），
+  // 拿它当锚点会让菜单整体右飘 11px——用户看到的「下拉歪了」就是这个。
+  const pickerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const disabled = switching || items.length === 0;
 
   /** 以触发按钮为锚点算浮层位置：左侧超界就往右夹，右侧超界就往左推。 */
   const place = () => {
-    const button = triggerRef.current;
-    if (!button) return;
-    const rect = button.getBoundingClientRect();
+    const anchor = pickerRef.current ?? triggerRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
     const width = Math.min(Math.max(Math.round(rect.width), MENU_MIN_WIDTH), window.innerWidth - VIEWPORT_MARGIN * 2);
     const left = Math.min(
       Math.max(VIEWPORT_MARGIN, Math.round(rect.left)),
@@ -134,7 +138,12 @@ export function ProfileMenu({
   const label = current?.name ?? (items.length === 0 ? t("topBar.profileEmpty") : t("topBar.profileFallback"));
 
   return (
-    <div className="profile-picker" data-switching={switching ? "true" : "false"} data-tauri-drag-region="false">
+    <div
+      className="profile-picker"
+      data-switching={switching ? "true" : "false"}
+      data-tauri-drag-region="false"
+      ref={pickerRef}
+    >
       <button
         ref={triggerRef}
         type="button"
