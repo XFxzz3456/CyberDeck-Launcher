@@ -305,6 +305,8 @@ export default function App() {
 
   const [updateChecking, setUpdateChecking] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  /** 补全封面（工具栏下拉入口）：与 enriching 互斥，共用一个禁用判定。 */
+  const [refreshingCovers, setRefreshingCovers] = useState(false);
   // 收编（Adopt）：扫描结果 / 执行进度 / 执行结果 / 任务行 id。
   const [adoptOpen, setAdoptOpen] = useState(false);
   const [adoptScan, setAdoptScan] = useState<AdoptScanReport | null>(null);
@@ -2013,6 +2015,29 @@ export default function App() {
   }, [enriching, recordActivity, refresh, showError, toast]);
 
   /** 从 Vortex 数据库导入元数据（A 方案）。 */
+  /** 批量补全封面：后端会对丢失 Nexus 引用的收编模组先做 ID 溯源再回查。 */
+  const runRefreshCovers = useCallback(async () => {
+    if (refreshingCovers) return;
+    setRefreshingCovers(true);
+    try {
+      const report = await api.refreshNexusCovers();
+      if (report.updated > 0) await refresh();
+      recordActivity("system", t("activity.refreshCovers"), report.message);
+      toast(
+        report.updated > 0 ? "ok" : "info",
+        report.updated > 0
+          ? t("toast.metadata.coversUpdatedTitle", { count: report.updated })
+          : t("toast.metadata.noneTitle"),
+        report.message,
+      );
+    } catch (error) {
+      showError(error, t("nexusSettings.coverRefreshFailed"));
+    } finally {
+      setRefreshingCovers(false);
+    }
+  }, [refreshingCovers, recordActivity, refresh, showError, toast]);
+
+  /** 从 Vortex 数据库导入元数据（A 方案）。 */
   const runVortexImport = useCallback(async () => {
     if (enriching) return;
     setEnriching(true);
@@ -2640,6 +2665,8 @@ export default function App() {
                 aiLocBusy={aiLocBusy}
                 onEnrichMetadata={() => void runEnrichMetadata()}
                 enriching={enriching}
+                onRefreshCovers={() => void runRefreshCovers()}
+                refreshingCovers={refreshingCovers}
                 onVortexImport={() => void runVortexImport()}
                 onReclassify={() => void handleReclassify()}
                 reclassifying={reclassifying}

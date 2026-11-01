@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Crown, ExternalLink, ImageDown, KeyRound, Link2, RefreshCw, Trash2 } from "lucide-react";
-import type { NexusCoverRefresh, NexusStatus, NxmStatus, Settings } from "../types";
+import { AlertTriangle, CheckCircle2, Crown, ExternalLink, KeyRound, Link2, RefreshCw, Trash2 } from "lucide-react";
+import type { NexusStatus, NxmStatus, Settings } from "../types";
 import { api } from "../lib/api";
 import { notifyNexusStatusChanged, onNexusStatusChanged } from "../lib/nexusBus";
 import { t } from "../i18n";
@@ -13,20 +13,16 @@ export function NexusSettingsCard({
   settings,
   onSettings,
   onError,
-  onRefresh,
 }: {
   settings: Settings;
   onSettings: (settings: Settings) => void;
   onError: (error: unknown, title?: string) => void;
   /** 补到封面后让上层重新拉快照，卡片才会真正换图。 */
-  onRefresh?: () => void;
 }) {
   const [status, setStatus] = useState<NexusStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
-  // 补封面的结果：null = 还没跑过，不显示状态条。
-  const [coverResult, setCoverResult] = useState<NexusCoverRefresh | null>(null);
   // nxm:// 协议归属：真机读注册表，浏览器预览走 mock。
   const [nxm, setNxm] = useState<NxmStatus | null>(null);
   const [nxmBusy, setNxmBusy] = useState(false);
@@ -72,8 +68,6 @@ export function NexusSettingsCard({
     setBusy(true);
     try {
       setStatus(await api.clearNexusKey());
-      // 断开后连账号都没有了，旧的补封面结果留着会误导人。
-      setCoverResult(null);
       notifyNexusStatusChanged(SOURCE);
     } catch (error) {
       onError(error, t("nexusSettings.keyRemoveFailed"));
@@ -82,23 +76,7 @@ export function NexusSettingsCard({
     }
   };
 
-  // 批量回查封面可能比较慢，复用 busy 挡住重复点击；结果不弹窗，
-  // 只写进卡片里的状态条。
-  const refreshCovers = async () => {
-    setBusy(true);
-    setCoverResult(null);
-    try {
-      const result = await api.refreshNexusCovers();
-      setCoverResult(result);
-      // 后端只写了记录，卡片上的封面要等前端重新拉一次快照才会变。
-      // 只在真的补到了才刷新，避免白白重排整个模组库。
-      if (result.updated > 0) onRefresh?.();
-    } catch (error) {
-      onError(error, t("nexusSettings.coverRefreshFailed"));
-    } finally {
-      setBusy(false);
-    }
-  };
+  // 批量回查封面入口已挪到模组库工具栏（2026-11-01），状态与处理函数一并移除。
 
   const takeoverNxm = async () => {
     setNxmBusy(true);
@@ -199,29 +177,8 @@ export function NexusSettingsCard({
         </div>
       ) : null}
 
-      {/* 补封面是连上账号之后才有意义的次要操作，放在账号区之后、开关组之前。 */}
-      {status?.connected ? (
-        <>
-          <div className="inline-actions">
-            <button className="btn btn-ghost btn-sm" onClick={() => void refreshCovers()} disabled={busy}>
-              {busy ? <Spinner size={13} /> : <ImageDown size={12} />} {t("nexusSettings.refreshCovers")}
-            </button>
-          </div>
-          <p className="panel-note">{t("nexusSettings.refreshCoversNote")}</p>
-          {coverResult ? (
-            coverResult.failed > 0 ? (
-              <div className="inline-warning compact">
-                <AlertTriangle size={13} /> {coverResult.message}
-              </div>
-            ) : (
-              <div className="inline-ok">
-                <CheckCircle2 size={13} /> {coverResult.message}
-              </div>
-            )
-          ) : null}
-        </>
-      ) : null}
-
+      {/* 补全封面入口已挪到「模组库 → 工具栏 → 补全 ▾」（用户反馈设置页太深找不到）。
+          这里保留账号连接状态区，不再放重复按钮。 */}
       <div className="switch-stack integration-switch">
         <SwitchRow
           title={t("nexusSettings.hideAdult")}

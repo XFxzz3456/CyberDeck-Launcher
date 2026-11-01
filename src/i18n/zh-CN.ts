@@ -19,6 +19,7 @@ export const zhCN = {
     updateRolledBack: "回滚模组更新",
     backupCreatedDetail: "已保存 modlist.txt 与 r6/config",
     enrichMetadata: "补全 Nexus 信息",
+    refreshCovers: "补全封面",
     importArchives: "导入 {count} 个压缩包",
     importStaged: "{ok} 个进入暂存区",
     importStagedFailed: "{ok} 个进入暂存区 · {failed} 个失败",
@@ -949,9 +950,12 @@ export const zhCN = {
     rollbackUpdate: "回滚失败",
     updateApplied: "更新模组",
     updateRolledBack: "回滚模组更新",
-    applyAll: "全部更新",
-    aiLocMenu: "AI 汉化",
-    batchCategory: "分类",
+    applyAll: "全部更新",
+
+    aiLocMenu: "AI 汉化",
+
+    batchCategory: "分类",
+
     toolbarAria: "模组库工具栏",
     aiTools: "AI 工具",
     aiToolsTitle: "翻译列表名称 / 汉化 Mod 本体（覆盖层，不改原文件）",
@@ -991,6 +995,9 @@ export const zhCN = {
     emptyStagingKicker: "SYSTEM READY",
     emptyStagingTitle: "还没有任何模组",
     enrich: "补全",
+    enrichCovers: "补全封面",
+    enrichCoversTitle: "回查 Nexus 官方封面；丢了引用的收编模组会先按文件名溯源 ModId",
+    enrichInfo: "补全信息",
     enrichTitle: "按文件名里的 Nexus ModId 反查官方信息（名称、作者、版本、分类、封面）",
     eyebrow: "// MOD LIBRARY / CYBERDECK",
     goDiscover: "去发现",
@@ -1958,6 +1965,7 @@ export const zhCN = {
     metadata: {
       attachedDetail: "名称、作者、版本、封面都已更新。",
       attachedTitle: "已按 Nexus 链接补全",
+      coversUpdatedTitle: "补全了 {count} 个封面",
       enrichedTitle: "补全了 {count} 个模组",
       noneTitle: "没有补全任何模组",
       savedDetail: "{name} 已更新。",

@@ -515,6 +515,21 @@ pre {
 /* 设置页特例已删：.content 在所有页面都不再模糊（ea94b5 定案，
    见上方「主内容区」注释），玻璃由 Tabs / 卡片 / 侧栏 / 顶栏自己承担。 */
 
+/* ── 卡片防「文字裸奔」+ 封面占比（2026-11-01 批次：05ffe5 / 160664）────
+   开了自定义背景图后，卡片文字信息区原本跟着主题渐变一起半透明，
+   名字/作者/大小直接糊在背景图上。这里给文字区（.mod-body）与底部
+   操作条（.mod-footer）垫一层 94% 不透明的主题色底板：仍用各主题自己的
+   --panel，赛博主题的调色板不受影响，只是不再透出背景图。 */
+[data-backdrop="on"] .mod-body,
+[data-backdrop="on"] .mod-footer {
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .mod-body,
+:root[data-mode="light"] [data-backdrop="on"] .mod-footer {
+  background: rgba(255, 255, 255, 0.95);
+}
+
 /* ── 毛玻璃质感打磨（2026-11-01 深夜批次：04c646 / f9cdb5 / b6d532）────
    目标：顶部浑然一体、状态栏数字锐利、边界分明、亮色不泛白、控件不成死黑块。
    全部只在玻璃态生效，赛博主题变量一律不碰。 */
@@ -2491,7 +2506,8 @@ pre {
 /* ------------------------------------------------------------------ */
 
 .mod-card {
-  height: 292px;
+  /* 2026-11-01：封面 140→160，卡片随之 +20，封面占比更饱满（用户反馈文字区太空）。 */
+  height: 312px;
   background: linear-gradient(180deg, var(--panel-2) 0%, var(--bg) 100%);
   border: 1px solid var(--line);
   display: flex;
@@ -2555,8 +2571,8 @@ pre {
 }
 
 .mod-cover {
-  height: 140px;
-  flex: 0 0 140px;
+  height: 160px;
+  flex: 0 0 160px;
   position: relative;
   overflow: hidden;
   background: var(--bg);
@@ -7665,7 +7681,7 @@ body.is-reordering * {
 /* Mod cards: state is readable before hover; actions appear on intent. */
 
 .mod-card {
-  height: 300px;
+  height: 320px;
   overflow: hidden;
 }
 
@@ -9116,12 +9132,12 @@ code,
 
 /* Cards: name first, metadata deliberately quieter. */
 .mod-card {
-  height: 310px;
+  height: 330px;
 }
 
 .mod-cover {
-  height: 148px;
-  flex-basis: 148px;
+  height: 168px;
+  flex-basis: 168px;
 }
 
 .mod-title-row h3 {

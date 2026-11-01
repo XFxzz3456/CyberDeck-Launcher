@@ -369,15 +369,39 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
 
     // 这一轮可能跑几十秒（每条之间还要主动 sleep），所以先只收集下标和 id，
     // 收完立刻放掉快照进网络阶段：握着 store.data 会把快照、部署这些命令一起堵死。
-    let mut pending: Vec<(usize, String, u64)> = Vec::new();
+    //
+    // 溯源增强（2026-11-01 用户反馈）：只看 entry.nexus 会漏掉一大批「明明是 N 网
+    // 下载、接管进库时丢了引用」的模组——它们被整体计入 skipped，于是一条封面都
+    // 不补还报告「所有 Nexus 模组都已经有封面了」，正是用户撞到的误报。现在对没有
+    // nexus 引用的条目也尝试从文件名 / 来源包名 / 暂存目录名解析 ModId（收编流程
+    // 保留 Nexus 的 `名称-ModId-FileId-版本` 命名），认得出就一起进补全队列，并把
+    // 解析出的引用写回 entry.nexus，下次更新检查也能用上。
+    let mut pending: Vec<(usize, String, u64, Option<u64>, bool)> = Vec::new();
     let mut skipped = 0usize;
     let mut nexus_total = 0usize;
     {
         let snapshot = store.snapshot_data();
         for (index, entry) in snapshot.mods.iter().enumerate() {
             let Some(reference) = entry.nexus.as_ref() else {
-                // 本地导入、游戏目录扫描来的 Mod 没有官方封面可补。
-                skipped += 1;
+                // 没有官方引用：先溯源，认不出才真正跳过（本地导入、游戏目录扫描）。
+                let candidates = [
+                    Some(entry.name.clone()),
+                    entry.source_zip.clone(),
+                    entry
+                        .staging_path
+                        .trim_end_matches(['/', '\\'])
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .map(str::to_string),
+                ];
+                let Some((mod_id, file_id)) =
+                    candidates.iter().flatten().find_map(|text| parse_nexus_ids(text))
+                else {
+                    skipped += 1;
+                    continue;
+                };
+                nexus_total += 1;
+                pending.push((index, entry.id.clone(), mod_id, file_id, false));
                 continue;
             };
             nexus_total += 1;
@@ -387,14 +411,18 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
                 .as_deref()
                 .is_some_and(|url| !url.trim().is_empty());
             if !has_cover {
-                pending.push((index, entry.id.clone(), reference.mod_id));
+                pending.push((index, entry.id.clone(), reference.mod_id, reference.file_id, true));
             }
         }
     }
 
     if pending.is_empty() {
         let message = if nexus_total == 0 {
-            "库里还没有从 Nexus 安装的模组，不需要补封面。".to_string()
+            "库里还没有认出 Nexus 模组，不需要补封面。".to_string()
+        } else if skipped > 0 {
+            format!(
+                "已关联的 {nexus_total} 个 Nexus 模组都有封面；另有 {skipped} 个模组认不出 Nexus ID（本地包或目录名没有 ID 特征），无法自动补全。"
+            )
         } else {
             "所有 Nexus 模组都已经有封面了。".to_string()
         };
@@ -407,9 +435,9 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
     }
 
     let client = client()?;
-    let mut updates: Vec<(usize, String, String)> = Vec::new();
+    let mut updates: Vec<(usize, String, String, bool, u64, Option<u64>)> = Vec::new();
     let mut failed = 0usize;
-    for (attempt, (index, entry_id, mod_id)) in pending.into_iter().enumerate() {
+    for (attempt, (index, entry_id, mod_id, file_id, had_ref)) in pending.into_iter().enumerate() {
         if attempt > 0 {
             // Nexus 对 API 有速率限制，连续无缝请求很容易吃到 429；批量场景下
             // 一条被限流会连带拖坏后面几条，用 250ms 间隔换整批稳定更划算。
@@ -425,7 +453,7 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
                     .filter(|url| !url.is_empty())
                     .map(str::to_string);
                 match cover {
-                    Some(cover) => updates.push((index, entry_id, cover)),
+                    Some(cover) => updates.push((index, entry_id, cover, had_ref, mod_id, file_id)),
                     // 官网这条 Mod 本来就没传图，重试多少次都一样，只能记失败。
                     None => failed += 1,
                 }
@@ -439,12 +467,26 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
     let updated = updates.len();
     if !updates.is_empty() {
         let mut data = store.data.lock().expect("state mutex poisoned");
-        for (index, entry_id, cover) in updates {
+        for (index, entry_id, cover, had_ref, mod_id, file_id) in updates {
             // 请求期间库可能被别的命令改过（比如正好卸掉一个 Mod），
             // 下标命中后还要核对 id，否则封面会写到别的模组身上。
             if let Some(entry) = data.mods.get_mut(index) {
                 if entry.id == entry_id {
-                    entry.nexus_cover_url = Some(cover);
+                    entry.nexus_cover_url = Some(cover.clone());
+                    if !had_ref {
+                        // 溯源成功：把解析出的引用一并落盘（与「粘贴链接」同构），
+                        // 封面地址也写进引用里，保持两条路径的数据形状一致。
+                        entry.nexus = Some(NexusRef {
+                            mod_id,
+                            file_id,
+                            url: format!("https://www.nexusmods.com/cyberpunk2077/mods/{mod_id}"),
+                            version: entry.version.clone(),
+                            picture_url: Some(cover),
+                            latest_version: None,
+                            last_check: None,
+                        });
+                        entry.updated_at = Some(crate::store::now_iso());
+                    }
                 }
             }
         }

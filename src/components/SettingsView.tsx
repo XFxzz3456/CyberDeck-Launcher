@@ -1308,7 +1308,7 @@ export function SettingsView({
             ) : null}
           </section>
 
-          <NexusSettingsCard settings={settings} onSettings={onSettings} onError={onError} onRefresh={onRefreshMods} />
+          <NexusSettingsCard settings={settings} onSettings={onSettings} onError={onError} />
 
           {/* 外部工具链管理器（deepseek 任务·模块三） */}
           <ExternalToolsCard onError={onError} />

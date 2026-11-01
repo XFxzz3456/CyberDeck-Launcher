@@ -5,6 +5,7 @@ import {
   ChevronDown,
   FileJson,
   FolderTree,
+  ImageDown,
   Languages,
   Sparkles,
   Tag,
@@ -132,6 +133,9 @@ export function LibraryView({
   aiLocBusy = false,
   onEnrichMetadata,
   enriching = false,
+  /** 补全封面（2026-11-01 从设置页挪进工具栏下拉）。 */
+  onRefreshCovers,
+  refreshingCovers = false,
   onVortexImport,
   onRefresh,
   onReclassify,
@@ -168,6 +172,9 @@ export function LibraryView({
   aiLocBusy?: boolean;
   onEnrichMetadata?: () => void;
   enriching?: boolean;
+  /** 批量回查 Nexus 封面（含给丢了引用的收编模组做 ID 溯源）。 */
+  onRefreshCovers?: () => void;
+  refreshingCovers?: boolean;
   /** 从 Vortex 本地数据库导入元数据（需关闭 Vortex）。 */
   onVortexImport?: () => void;
   /** 智能归类：默认只动「其他 / 工具」；传 true 时重算全部分类。 */
@@ -389,6 +396,9 @@ export function LibraryView({
   // 工具栏「导入 ▼」下拉：低频导入动作收进来，给右侧高频操作腾地方。
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const importMenuRef = useRef<HTMLDivElement | null>(null);
+  // 补全下拉：补全信息 + 补全封面合并（原「补全封面」藏在设置页，用户找不到）。
+  const [enrichMenuOpen, setEnrichMenuOpen] = useState(false);
+  const enrichMenuRef = useRef<HTMLDivElement | null>(null);
   // AI 汉化下拉：与导入下拉同构，但动作是批量任务（进度走任务中心）。
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
@@ -420,6 +430,24 @@ export function LibraryView({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [importMenuOpen]);
+
+  useEffect(() => {
+    if (!enrichMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (enrichMenuRef.current && !enrichMenuRef.current.contains(event.target as Node)) {
+        setEnrichMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEnrichMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [enrichMenuOpen]);
 
   useEffect(() => {
     if (!aiMenuOpen) return;
@@ -932,17 +960,52 @@ export function LibraryView({
                 </button>
               ) : null}
 
-              {/* 低频：宽屏直显，窄屏由容器查询收进「更多 ▾」。 */}
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm is-low-frequency"
-                onClick={onEnrichMetadata}
-                disabled={enriching || !onEnrichMetadata}
-                title={t("library.enrichTitle")}
-              >
-                {enriching ? <Spinner size={13} /> : <Wand2 size={13} />}
-                {t("library.enrich")}
-              </button>
+              {/* 低频：宽屏直显，窄屏由容器查询收进「更多 ▾」。
+                  补全信息 / 补全封面合并成一个下拉——「补全封面」原先藏在设置页
+                  最深处，用户反馈根本找不到，挪到工具栏与补全信息并列。 */}
+              <div className="toolbar-menu is-low-frequency" ref={enrichMenuRef}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setEnrichMenuOpen((value) => !value)}
+                  aria-expanded={enrichMenuOpen}
+                  title={t("library.enrichTitle")}
+                >
+                  {enriching || refreshingCovers ? <Spinner size={13} /> : <Wand2 size={13} />}
+                  {t("library.enrich")}
+                  <ChevronDown size={12} className={`dropdown-caret ${enrichMenuOpen ? "is-open" : ""}`} />
+                </button>
+                {enrichMenuOpen ? (
+                  <div className="toolbar-menu-panel" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEnrichMenuOpen(false);
+                        onEnrichMetadata?.();
+                      }}
+                      disabled={enriching || refreshingCovers || !onEnrichMetadata}
+                      title={t("library.enrichTitle")}
+                    >
+                      {enriching ? <Spinner size={13} /> : <Wand2 size={13} />}
+                      {t("library.enrichInfo")}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEnrichMenuOpen(false);
+                        onRefreshCovers?.();
+                      }}
+                      disabled={enriching || refreshingCovers || !onRefreshCovers}
+                      title={t("library.enrichCoversTitle")}
+                    >
+                      {refreshingCovers ? <Spinner size={13} /> : <ImageDown size={13} />}
+                      {t("library.enrichCovers")}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="toolbar-menu is-low-frequency" ref={importMenuRef}>
                 <button
@@ -1027,10 +1090,22 @@ export function LibraryView({
                         setOverflowOpen(false);
                         onEnrichMetadata?.();
                       }}
-                      disabled={enriching || !onEnrichMetadata}
+                      disabled={enriching || refreshingCovers || !onEnrichMetadata}
                     >
                       <Wand2 size={13} />
-                      {t("library.enrich")}
+                      {t("library.enrichInfo")}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        onRefreshCovers?.();
+                      }}
+                      disabled={enriching || refreshingCovers || !onRefreshCovers}
+                    >
+                      <ImageDown size={13} />
+                      {t("library.enrichCovers")}
                     </button>
                     <button
                       type="button"

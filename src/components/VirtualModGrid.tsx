@@ -108,7 +108,10 @@ export function VirtualModGrid({
     view === "list"
       ? 1
       : Math.max(1, Math.min(6, Math.floor((width + CARD_GAP) / (CARD_MIN + CARD_GAP))));
-  const rowHeight = view === "list" ? LIST_ROW_HEIGHT : 328;
+  // 2026-11-01：封面 140→160，卡片高度整体 +20（292/300/310 → 312/320/330），
+  // 行高同步 +20。行高偏大会留白、偏小会叠卡，主题最高 330 + 间距 14 = 344，
+  // 原先 328→348 的余量与旧值（328 覆盖 310+14=324）一致。
+  const rowHeight = view === "list" ? LIST_ROW_HEIGHT : 348;
   const rows = Math.max(1, Math.ceil(mods.length / columns));
 
   // 列表视图走 listItems（可能带组头），网格仍按行切模组。

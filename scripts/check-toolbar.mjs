@@ -88,6 +88,21 @@ check(
 await page.keyboard.press("Escape");
 await page.waitForTimeout(300);
 
+// 补全下拉（2026-11-01：补全封面从设置页挪进工具栏，与补全信息合并成一个下拉）
+const enrichBtn = page.locator(".toolbar-group--actions .toolbar-menu button", { hasText: "补全" }).first();
+check("有「补全」下拉", (await enrichBtn.count()) >= 1, "", "enrichBtn");
+await enrichBtn.click();
+await page.waitForTimeout(400);
+const enrichItems = await page.locator(".toolbar-menu-panel [role=menuitem]").allInnerTexts();
+check(
+  "补全下拉含两项（补全信息/补全封面）",
+  enrichItems.some((t) => t.includes("补全信息")) && enrichItems.some((t) => t.includes("补全封面")),
+  `items=${enrichItems.join(" | ").slice(0, 60)}`,
+  "enrichItems",
+);
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+
 // 宽屏：低频直显、没有「更多」
 const wide = await page.evaluate(() => {
   const bar = document.querySelector(".library-toolbar");
