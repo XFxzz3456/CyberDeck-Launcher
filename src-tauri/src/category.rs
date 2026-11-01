@@ -39,6 +39,10 @@ pub const UNCATEGORIZED: &str = "其他";
 /// 一次分类需要的全部信息。刻意不含 description —— 见文件头。
 pub struct Signals<'a> {
     pub name: &'a str,
+    /// staging 目录名。**P6 起分类器不再读它**（解压壳没有信息量，拿它当证据
+    /// 等于「仅凭文件夹名推测」）。保留字段是为了调用方签名稳定、也给将来的
+    /// 「目录名诊断」留口子，所以显式标注允许未读取。
+    #[allow(dead_code)]
     pub folder: &'a str,
     pub layout: &'a InstallLayout,
     pub paths: &'a [String],
