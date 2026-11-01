@@ -23,6 +23,7 @@
 - **2026-11-01 20:09 回滚赛博主题颜色覆盖后重建**：exe md5 `7bc36f4f96997c23c298622e21048214`，冒烟 `2026-11-01T12:09:08Z stage=frontend mods=186`。此版删掉全部 `--cyber-*` 与元素覆盖，赛博四主题回到 `tokens.css` 各自调色板；玻璃只对「有背景图 且 非赛博主题」生效。
 - **2026-11-01 20:45 玻璃条件改为方案 A**：modern 永远玻璃、赛博四主题永不玻璃、其它主题有背景图才玻璃。exe md5 `c9d5950309f615e40ff1ff45918ae408`，冒烟 `2026-11-01T12:45:36Z stage=frontend mods=186`。
 - **2026-11-01 20:53 设置卡片底色统一**：删掉 `.settings-tab-panel .panel` 的 12% 白提亮，改吃基础 .panel 渐变。exe md5 `3df1bab9f8d5116daf1d87d46dbdfd99`，冒烟 `2026-11-01T12:53:24Z stage=frontend mods=186`。
+- **2026-11-01 21:21 工具栏两组重构**：左「视图与过滤」/ 右「动作与工具」，AI 汉化与翻译名称合并为「AI 工具▾」，三档容器查询收低频不换行。exe md5 `f34048c581e4b473571361fd75e474c8`，冒烟 `2026-11-01T13:21:03Z stage=frontend mods=186`。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
