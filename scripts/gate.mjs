@@ -419,8 +419,18 @@ const UI_SCRIPTS = [
   {
     name: "播放集切换",
     script: "check-profiles.mjs",
-    // alignLeft：浮层左边界 − 外层胶囊左边界。曾经拿内层按钮当锚点，右飘 11px（用户报「下拉歪了」）。
-    expect: ["options>=2", "before!=after", "rows>=1", "dialog>=1", "alignLeft=0", "alignInViewport=1"],
+    // alignLeft：浮层左边界 − 外层胶囊左边界。曾经拿内层按钮当锚点，右飘 11px；
+    // scaleMaxDelta：90 / 100 / 110% 三档 UI 缩放下都要为 0（body zoom 会让 fixed 坐标二次缩放）。
+    expect: [
+      "options>=2",
+      "before!=after",
+      "rows>=1",
+      "dialog>=1",
+      "alignLeft=0",
+      "alignInViewport=1",
+      "scaleMaxDelta=0",
+      "scaleCases=3",
+    ],
   },
   {
     name: "环境体检面板",

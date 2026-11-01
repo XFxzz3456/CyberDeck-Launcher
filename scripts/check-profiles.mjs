@@ -10,16 +10,20 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.addInitScript(() => {
   localStorage.setItem("ncl.ui.eulaAccepted.v1", "true");  // 跳过 EULA 门：未同意时 App 被 inert=true,脚本点不动任何按钮(r14 引入)
-  localStorage.setItem(
-    "ncl.ui.preferences.v1",
-    JSON.stringify({
-      theme: "arasaka",
-      useCustomAccent: false,
-      accent: "#ff4058",
-      scale: 1,
-      sidebarCollapsed: false,
-    }),
-  );
+  // 只在没有偏好时写默认值：下面的「三档缩放」用例会改 scale 再 reload，
+  // 每次 reload 都无条件重写的话，缩放永远被按回 100%，用例等于没跑。
+  if (!localStorage.getItem("ncl.ui.preferences.v1")) {
+    localStorage.setItem(
+      "ncl.ui.preferences.v1",
+      JSON.stringify({
+        theme: "arasaka",
+        useCustomAccent: false,
+        accent: "#ff4058",
+        scale: 1,
+        sidebarCollapsed: false,
+      }),
+    );
+  }
 });
 await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
 await page.waitForTimeout(900);
@@ -32,27 +36,60 @@ const openMenu = async () => {
 };
 const currentLabel = async () => (await trigger.innerText()).trim();
 
+/** 量一次「浮层左边界 − 胶囊左边界」（视觉像素，与 UI 缩放无关）。 */
+const measureAlign = () =>
+  page.evaluate(() => {
+    const picker = document.querySelector(".profile-picker")?.getBoundingClientRect();
+    const menu = document.querySelector(".profile-menu")?.getBoundingClientRect();
+    if (!picker || !menu) return null;
+    return {
+      dLeft: Math.round(menu.left - picker.left),
+      dTop: Math.round(menu.top - picker.bottom),
+      inViewport: menu.left >= 0 && menu.right <= window.innerWidth,
+      zoom: getComputedStyle(document.body).zoom,
+    };
+  });
+
+// ── 三档 UI 缩放都要对齐 ────────────────────────────────────────────
+// body 上有 zoom: var(--ui-scale)（90 / 100 / 110%）。浮层挂在 body 里、用 fixed 坐标，
+// 坐标是在 zoom 之后的坐标系里解释的，而 getBoundingClientRect() 给的是视觉坐标——
+// 不除以 zoom 就是「缩放算两遍」：110% 右飘 80px、90% 左飘 66px。用户报的
+// 「播放集下拉歪了」正是这个（只改锚点只能修好 100% 那一档）。
+let scaleMaxDelta = 0;
+for (const scale of [1.1, 0.9, 1]) {
+  await page.evaluate((value) => {
+    const raw = localStorage.getItem("ncl.ui.preferences.v1");
+    const prefs = raw ? JSON.parse(raw) : {};
+    prefs.scale = value;
+    localStorage.setItem("ncl.ui.preferences.v1", JSON.stringify(prefs));
+  }, scale);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await openMenu();
+  const measured = await measureAlign();
+  if (!measured) throw new Error(`UI 缩放 ${scale} 下播放集浮层没渲染出来`);
+  scaleMaxDelta = Math.max(scaleMaxDelta, Math.abs(measured.dLeft));
+  console.log(
+    `scale=${scale} zoom=${measured.zoom} dLeft=${measured.dLeft} dTop=${measured.dTop} inViewport=${measured.inViewport ? 1 : 0}`,
+  );
+  if (Math.abs(measured.dLeft) > 1) {
+    throw new Error(`UI 缩放 ${scale} 下浮层未与胶囊对齐：Δleft=${measured.dLeft}px`);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+}
+console.log(`scaleMaxDelta=${scaleMaxDelta} scaleCases=3`);
+
 await openMenu();
 const optionCount = await page.locator(".profile-menu-item").count();
 const beforeValue = await currentLabel();
 
 // 浮层左边界必须与外层胶囊（.profile-picker）左边界对齐。
 // 曾经拿内层 .profile-trigger 当锚点：那个按钮从图标右侧才开始（图标 14px + 7px 间距），
-// 菜单整体右飘约 11px，用户报的「播放集下拉歪了」就是这个。锚点换成外层胶囊后 Δ=0。
-const align = await page.evaluate(() => {
-  const picker = document.querySelector(".profile-picker")?.getBoundingClientRect();
-  const menu = document.querySelector(".profile-menu")?.getBoundingClientRect();
-  if (!picker || !menu) return null;
-  return {
-    dLeft: Math.round(menu.left - picker.left),
-    dWidth: Math.round(menu.width - picker.width),
-    inViewport: menu.left >= 0 && menu.right <= window.innerWidth,
-  };
-});
+// 菜单整体右飘约 11px；锚点换成外层胶囊后 Δ=0。
+const align = await measureAlign();
 if (!align) throw new Error("播放集浮层没渲染出来，无法校验对齐");
-console.log(
-  `alignLeft=${align.dLeft} alignWidth=${align.dWidth} alignInViewport=${align.inViewport ? 1 : 0}`,
-);
+console.log(`alignLeft=${align.dLeft} alignInViewport=${align.inViewport ? 1 : 0}`);
 if (Math.abs(align.dLeft) > 1) throw new Error(`播放集浮层左边界未与胶囊对齐：Δleft=${align.dLeft}px`);
 if (!align.inViewport) throw new Error("播放集浮层超出窗口边界");
 

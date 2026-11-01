@@ -11,6 +11,22 @@ const MENU_MIN_WIDTH = 216;
 const VIEWPORT_MARGIN = 10;
 /** 菜单最大高度，超过就内部滚动（配置集很多时仍然整块可见）。 */
 const MENU_MAX_HEIGHT = 320;
+/** 菜单与触发器的垂直间距。 */
+const MENU_GAP = 6;
+
+/**
+ * 当前 UI 缩放系数。
+ *
+ * `body` 上有 `zoom: var(--ui-scale)`（设置页 90 / 100 / 110% 三档）。浮层挂在 body
+ * 里，它的 `position: fixed` 坐标是在 **zoom 之后**的坐标系里解释的；而
+ * `getBoundingClientRect()` 给的却是屏幕视觉坐标（已经缩放过了）。直接把视觉坐标
+ * 写进 `style.left` 等于把缩放算两遍：110% 下浮层右飘 80px、90% 下左飘 66px，
+ * 这正是「播放集下拉歪了」的真因（改锚点只修好了 100% 那一档）。
+ */
+function currentZoom(): number {
+  const raw = Number.parseFloat(getComputedStyle(document.body).zoom || "1");
+  return Number.isFinite(raw) && raw > 0 ? raw : 1;
+}
 
 type MenuPos = { top: number; left: number; width: number; maxHeight: number };
 
@@ -50,14 +66,25 @@ export function ProfileMenu({
   const place = () => {
     const anchor = pickerRef.current ?? triggerRef.current;
     if (!anchor) return;
+    // 视觉坐标（已含 zoom），下面的夹取也全部在视觉坐标里做，
+    // 最后一次性除以 zoom 换回浮层自己的坐标系。
     const rect = anchor.getBoundingClientRect();
-    const width = Math.min(Math.max(Math.round(rect.width), MENU_MIN_WIDTH), window.innerWidth - VIEWPORT_MARGIN * 2);
+    const zoom = currentZoom();
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+    const width = Math.min(Math.max(Math.round(rect.width), MENU_MIN_WIDTH), viewW - VIEWPORT_MARGIN * 2);
     const left = Math.min(
       Math.max(VIEWPORT_MARGIN, Math.round(rect.left)),
-      Math.max(VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN),
+      Math.max(VIEWPORT_MARGIN, viewW - width - VIEWPORT_MARGIN),
     );
-    const top = Math.round(rect.bottom + 6);
-    setPos({ top, left, width, maxHeight: Math.max(120, Math.min(MENU_MAX_HEIGHT, window.innerHeight - top - VIEWPORT_MARGIN)) });
+    const top = Math.round(rect.bottom + MENU_GAP);
+    const maxHeight = Math.max(120, Math.min(MENU_MAX_HEIGHT, viewH - top - VIEWPORT_MARGIN));
+    setPos({
+      top: top / zoom,
+      left: left / zoom,
+      width: width / zoom,
+      maxHeight: maxHeight / zoom,
+    });
   };
 
   useLayoutEffect(() => {
