@@ -180,6 +180,18 @@ const shell = await page.locator(".app-shell").evaluate((n) => {
 });
 check("主背景没有径向光晕（幽灵灰圈已除）", !/radial-gradient/.test(shell.bg), `bg=${shell.bg.slice(0, 60)}`, "noGhostGlow");
 
+// 碳灰层次（第三稿）：背景不是死黑，卡片比背景亮一档，边框是半透明白微光
+const shellBg = await page.locator(".app-shell").evaluate((n) => getComputedStyle(n).backgroundColor);
+check("主背景是碳灰 #0a0a0c", /rgb\(10, 10, 12\)/.test(shellBg), `bg=${shellBg}`, "cyberShellCarbon");
+check("卡片比背景亮一档 #151518", /rgb\(21, 21, 24\)/.test(offCardFull.bg), `bg=${offCardFull.bg}`, "cyberCardLift");
+
+const cardSkin = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => {
+  const cs = getComputedStyle(n);
+  return { border: cs.borderTopColor, shadow: cs.boxShadow };
+});
+check("卡片边框是半透明白（非实色）", /rgba\(255, 255, 255, 0\.08\)/.test(cardSkin.border), `border=${cardSkin.border}`, "cyberCardBorder");
+check("卡片是硬投影（4px 12px）", /4px 12px/.test(cardSkin.shadow), `shadow=${cardSkin.shadow.slice(0, 48)}`, "cyberCardShadow");
+
 // ── 6. 现代主题：没有背景图也要有玻璃（条件 A）────────────────────
 await page.evaluate(() => {
   const key = "ncl.ui.preferences.v1";

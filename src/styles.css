@@ -434,64 +434,92 @@ pre {
   --glass-l3-solid: var(--panel-2);
 }
 
-/* ══ 赛博主题硬质感（data-glass="off" 时）══════════════════════════
-   为什么单独一段：赛博主题（ncpd / netrunner / arasaka / militech）的立身之本
-   是「纯黑 + 硬边 + 高对比」，玻璃那套半透柔光在它身上就是脏。
-   用户 2026-11-01 拍板：这四套主题在**没开自定义背景图**时（data-glass="off"）
-   一律回纯黑实体，卡片禁止任何 backdrop-filter。
+/* ══ 赛博主题碳灰层次（data-glass="off" 时）══════════════════════════
+   历史：先是全面玻璃（赛博被糊成灰蒙蒙），再一刀切成死黑（硬边、没层次）。
+   现在这一版是第三稿，目标「深碳灰 + 明暗分层 + 边缘微光」：
 
-   注意选择器顺序：这一段必须排在 L1/L2 的玻璃规则**之后**才能覆盖，
-   所以放在玻璃工具类之后（见下方 placement 注释）。关键字面值：
-   背景 #050505 / 卡片 #131316 / 边框 #232327。 */
+   层级（越靠前越亮一档，靠明度拉开，不靠模糊）：
+     主背景   #0a0a0c  ← 碳灰，不是纯黑（纯黑会让卡片无处落脚）
+     顶栏/侧栏 #08080a  ← 比主背景再深一档，靠极细的线切出边界
+     设置面板  #151518
+     Mod 卡片  #18181b  ← 比面板再亮一档，网格视图里才浮得起来
+
+   边框统一用 rgba(255,255,255,0.08)：实色 #232327 会糊成一条生硬的灰线，
+   半透明白边在深底上是「微光」而不是「描边」。
+   阴影用纯黑硬投影（0 4px 12px rgba(0,0,0,.5)），不要 Modern 那种弥散大柔光。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"]) {
+  --cyber-bg: #0a0a0c;
+  --cyber-chrome: #08080a;
+  --cyber-panel: #151518;
+  --cyber-panel-lift: #18181b;
+  --cyber-border: rgba(255, 255, 255, 0.08);
+  --cyber-line: #1d1d21;
+  --cyber-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* 纯黑底上的灰字必须实色：半透明灰叠在黑上会发虚，对比度还随背景漂移。 */
+  --muted: #8a8a8a;
+  --muted-2: #9aa4b0;
+  --text-2: #c9c9cc;
+
+  /* 网格层（.app-shell::after）在这四套主题里原先没定义这个变量，
+     靠 opacity 回退 1 侥幸生效；这里显式钉死，避免以后改动把它变成不可见。 */
+  --grid-opacity: 1;
+}
+
+/* 主背景：碳灰纯色（网格由 .app-shell::after 叠，不再需要 radial 提亮）。 */
 :root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
   .app-shell[data-glass="off"] {
-  /* 干掉那三层 radial（含中间那个「幽灵灰圈」）：纯黑只留一个颜色。 */
-  background: #050505;
+  background: var(--cyber-bg);
 }
 
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .panel,
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .mod-card,
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .settings-tab-panel .panel {
-  /* 完全不透明（不是 rgba），且明确关掉模糊 —— 即便某条上层规则手滑加了也要被压回。 */
-  background: #131316;
-  backdrop-filter: none;
-  border: 1px solid #232327;
-}
-
+/* 侧栏与顶栏：比主背景深一档，靠 1px 实线切边（不是阴影，赛博要硬）。 */
 :root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
   [data-glass="off"] .sidebar {
-  /* 侧栏也压成同一个黑：默认是 --bg-2→--bg 的渐变，在纯黑主题下会亮出半档，
-     和主内容区拼出一条灰缝。 */
-  background: #050505;
-  border-right: 1px solid #1a1a1e;
+  background: var(--cyber-chrome);
+  border-right: 1px solid var(--cyber-line);
 }
 
 :root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
   [data-glass="off"] .topbar {
-  background: #0a0a0c;
+  background: var(--cyber-chrome);
   backdrop-filter: none;
-  border-bottom: 1px solid #1e1e22;
+  border-bottom: 1px solid var(--cyber-line);
+}
+
+/* Tabs：不再是一条实心横杠，底部分割线 + 激活项主题色下划线（下划线原本就有）。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .settings-tabs {
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--cyber-line);
+}
+
+/* 卡片：面板 #151518、Mod 卡片 #18181b，彼此差一档明度；边框是半透明白的微光。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .panel,
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .settings-tab-panel .panel {
+  background: var(--cyber-panel);
+  backdrop-filter: none;
+  border: 1px solid var(--cyber-border);
+  box-shadow: var(--cyber-shadow);
 }
 
 :root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
-  [data-glass="off"] .settings-tabs {
-  background: #0a0a0c;
+  [data-glass="off"] .mod-card {
+  background: var(--cyber-panel-lift);
   backdrop-filter: none;
-  border-bottom: 1px solid #1e1e22;
+  border: 1px solid var(--cyber-border);
+  box-shadow: var(--cyber-shadow);
 }
 
-/* 纯黑底上的灰字必须是**实色**：半透明灰叠在黑上会发虚，
-   对比度还随背景明暗漂移。这里直接钉成 #8a8a8a / #c9c9cc。 */
-:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"]) {
-  --muted: #8a8a8a;
-  /* 作者名/次要标签用的是 --muted-2：原来由主题里偏蓝灰的混色算出来（#717E8D），
-     压在 #131316 卡片上只有 4.48:1，正好卡在 4.5 线下（check-ui-audit 抓到的
-     「Hanako」就是这处）。提一档到 #9aa4b0 ≈ 6.2:1，仍是同一档次的灰。 */
-  --muted-2: #9aa4b0;
-  --text-2: #c9c9cc;
+/* 选中的卡片：保留主题色发光，但边框仍细（1px），只加亮不外扩。 */
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .mod-card.is-enabled,
+:root:is([data-style="ncpd"], [data-style="netrunner"], [data-style="arasaka"], [data-style="militech"])
+  [data-glass="off"] .mod-card.state-deployed {
+  border-color: rgba(var(--edge-rgb), 0.45);
+  box-shadow: var(--cyber-shadow), 0 0 0 1px rgba(var(--edge-rgb), 0.12);
 }
 
 /* ── L1 容器：透 + 大模糊，无描边 ────────────────────────────── */
