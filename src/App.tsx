@@ -2341,6 +2341,8 @@ export default function App() {
         detailMod ? "has-drawer" : ""
       }`}
       data-backdrop={backgroundData.dataUrl ? "on" : "off"}
+      // 供 CSS 按页面裁剪毛玻璃层（设置页的卡片自带玻璃，主容器不再叠一层）。
+      data-page={view}
       // 协议门未过时把底层整块设为 inert：鼠标与键盘都进不去（遮罩本身在它外面，不受影响）。
       inert={eulaAccepted ? undefined : true}
     >

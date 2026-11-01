@@ -378,6 +378,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 4A：开背景图时顶栏 / Tabs / 设置卡片的毛玻璃（含「不叠嵌套」与「关图回退」）。
+    name: "毛玻璃补齐",
+    script: "check-glass.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     name: "游戏更新熔断",
     script: "check-update-lock.mjs",
     expect: ["banners=1", "after_click=0"],

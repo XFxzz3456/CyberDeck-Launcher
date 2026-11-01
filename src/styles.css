@@ -389,6 +389,68 @@ pre {
   border-color: rgba(0, 0, 0, 0.07);
 }
 
+/* ── 4A 毛玻璃补齐（用户反馈：顶栏 / Tabs / 设置卡片像实心黑块）──────
+   全部只在 [data-backdrop="on"]（开了自定义背景图）时生效，没开图保持原样。
+   三个层级各管一段，互不叠加：
+   1) 顶栏 .topbar —— 原来写死 rgba(--bg-rgb, 0.78)，几乎不透明；改成 0.5 + 20px 模糊；
+   2) 设置页 Tabs 条 —— 0.4 + 16px，选中项底色也给透明度（原来是纯文字+下划线）；
+   3) 设置卡片 .settings-tab-panel .panel —— 0.65 + 12px + 极细高光描边。
+   ⚠️ 性能：设置页把 .content 那层 blur(20px) 关掉，否则「大容器模糊 + 卡片再模糊」
+   是典型嵌套毛玻璃，滚动时每帧重采样两遍。现在设置页只有 Tabs 与卡片两层，
+   且卡片各自只覆盖自己那块区域，比一张全屏模糊更便宜。 */
+[data-backdrop="on"] .topbar {
+  background: rgba(20, 20, 24, 0.5);
+  backdrop-filter: blur(20px);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .topbar {
+  background: rgba(255, 255, 255, 0.62);
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+/* Tabs 条：比卡片更透，让背景图透出来一点，避免整条横杠压在图中间。 */
+[data-backdrop="on"] .settings-tabs {
+  background: rgba(15, 15, 17, 0.4);
+  backdrop-filter: blur(16px);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .settings-tabs {
+  background: rgba(255, 255, 255, 0.52);
+}
+
+/* 选中项底色：只加一层很淡的填充，下划线/发光仍由主题规则负责。 */
+[data-backdrop="on"] .settings-tab.active {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .settings-tab.active {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* 设置页：主容器不再模糊（见上方性能说明），玻璃交给 Tabs 与卡片。 */
+[data-backdrop="on"][data-page="settings"] .content {
+  backdrop-filter: none;
+}
+
+/* 卡片底色/模糊/描边统一由下面 3B-2 那条规则给（同特异度后写者赢，
+   两处都写会漂移，所以这里不再重复）。 */
+
+/* 卡片内部的输入框 / 小按钮保持实心：玻璃只到卡片这一层为止。
+   这两条不是「加样式」而是「阻止继承观感」——有背景图时输入框若也半透明，
+   背后的高亮图片会把 API Key、路径这类需要精确阅读的内容晃花。 */
+[data-backdrop="on"] .settings-tab-panel input,
+[data-backdrop="on"] .settings-tab-panel textarea,
+[data-backdrop="on"] .settings-tab-panel select {
+  background-color: color-mix(in srgb, var(--panel) 92%, #000 8%);
+}
+
+:root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel input,
+:root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel textarea,
+:root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel select {
+  background-color: color-mix(in srgb, var(--panel) 94%, #fff 6%);
+}
+
 /* 个性化页：自定义背景控制块。 */
 .bg-block {
   display: flex;
@@ -3420,15 +3482,17 @@ pre {
 }
 
 [data-backdrop="on"] .settings-tab-panel .panel {
-  /* ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。 */
-  background: rgba(20, 20, 24, 0.6);
-  backdrop-filter: blur(16px);
-  border-color: rgba(255, 255, 255, 0.05);
+  /* ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。
+     4A 调整：0.6→0.65 提一档不透明度保文字可读，模糊 16→12px 减负
+     （设置页已经把 .content 那层 20px 关掉，卡片是唯一一层玻璃）。 */
+  background: rgba(25, 25, 28, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 :root[data-mode="light"] [data-backdrop="on"] .settings-tab-panel .panel {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.07);
 }
 
 .settings-card.span-2 {
