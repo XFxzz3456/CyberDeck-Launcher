@@ -199,6 +199,13 @@ export function ModCard({
 
       <div className="mod-body">
         <div className="mod-title-row">
+          {/* 收编（接管）标记：物理文件还在外部工具（Vortex）/游戏目录里，
+              用户在禁用/卸载前应该心里有数（2026-11-01 通知重构任务·三）。 */}
+          {(mod.origin === "adopted") && (
+            <span className="adopted-tag" title={t("modCard.adoptedTagTitle")}>
+              {t("modCard.adoptedTag")}
+            </span>
+          )}
           <h3 title={hasTranslatedName ? `${displayName} · ${mod.name}` : mod.name}>{displayName}</h3>
         </div>
         {/* 原名副行：单行省略 + 紧凑行高，卡片是固定高度（`.mod-card` 310px、overflow: hidden），

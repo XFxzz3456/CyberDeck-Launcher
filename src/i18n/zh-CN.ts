@@ -437,6 +437,7 @@ export const zhCN = {
     save: "保存",
     // 常驻通知（冲突 / 权限不足 / 跨盘失败 / 缺前置）不自动消失，这里给用户一个说明。
     stickyToast: "这条提示不会自动消失，处理完再关闭",
+    toastRepeatSuffix: "（已发生 {count} 次）",
     toggle: "切换",
     unknown: "未知",
   },
@@ -1172,6 +1173,8 @@ export const zhCN = {
     stateDeployed: "DEPLOYED",
     stateStaged: "STAGED",
     toggleAria: "{action} {name}",
+    adoptedTag: "接管",
+    adoptedTagTitle: "该模组由外部工具（如 Vortex）部署后收编进库，物理文件不在启动器暂存区",
     unknownAuthor: "Unknown author",
     updateTitle: "Nexus 有新版本，点开详情去下载页",
     updateTitleVersion: "Nexus 有新版本 v{version}，点开详情去下载页",

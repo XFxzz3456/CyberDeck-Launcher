@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent, type Variants } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-react";
 import { t } from "../i18n";
@@ -264,6 +264,80 @@ export interface ToastItem {
   message?: string;
   /** 常驻：需要用户处理（冲突、权限不足、跨盘失败、缺前置），不自动消失，只能手动关。 */
   sticky?: boolean;
+  /** 自动消失的毫秒数；sticky / Infinity 时不走倒计时。由 App 的 toast() 算好带进来。 */
+  ttl?: number;
+  /**
+   * 同类合并的「代数」：相同 tone+title 的通知再次触发时不新开一条，
+   * 而是更新旧条目并把这个值 +1——Toast 的倒计时 effect 依赖它重置计时器。
+   */
+  nonce?: number;
+  /** 同类合并计数：>1 时标题后追加「（已发生 N 次）」。 */
+  count?: number;
+}
+
+/** 单条 Toast：倒计时放在组件里做，悬停暂停、移出续跑（2026-11-01 通知重构）。 */
+function ToastEntry({
+  toast,
+  onDismiss,
+}: {
+  toast: ToastItem;
+  onDismiss: (id: number) => void;
+}) {
+  const icons = {
+    ok: <CheckCircle2 size={17} />,
+    error: <AlertTriangle size={17} />,
+    info: <Info size={17} />,
+    warn: <AlertTriangle size={17} />,
+  };
+  const auto = !toast.sticky && toast.ttl !== undefined && Number.isFinite(toast.ttl);
+  const [paused, setPaused] = useState(false);
+  const remainingRef = useRef(toast.ttl ?? 0);
+  const startRef = useRef(0);
+
+  useEffect(() => {
+    if (!auto) return;
+    // nonce 变了 = 同类通知又触发了一次，剩余时间重置为完整 ttl。
+    remainingRef.current = toast.ttl ?? 0;
+  }, [auto, toast.nonce, toast.ttl]);
+
+  useEffect(() => {
+    if (!auto || paused) return;
+    startRef.current = Date.now();
+    const timer = window.setTimeout(() => onDismiss(toast.id), remainingRef.current);
+    return () => {
+      // 悬停暂停 / 卸载时把没走完的时间记回来，移出鼠标后从断点续跑。
+      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startRef.current));
+      window.clearTimeout(timer);
+    };
+  }, [auto, paused, toast.nonce, toast.id, onDismiss]);
+
+  const suffix = (toast.count ?? 1) > 1 ? t("common.toastRepeatSuffix", { count: toast.count ?? 1 }) : "";
+
+  return (
+    <div
+      className={`toast toast-${toast.tone}${toast.sticky ? " toast-sticky" : ""}`}
+      data-sticky={toast.sticky ? "1" : "0"}
+      onMouseEnter={() => auto && setPaused(true)}
+      onMouseLeave={() => auto && setPaused(false)}
+    >
+      <span className="toast-icon">{icons[toast.tone]}</span>
+      <div className="toast-copy">
+        <div className="toast-title">
+          {toast.title}
+          {suffix}
+        </div>
+        {toast.message ? <div className="toast-message">{toast.message}</div> : null}
+      </div>
+      {toast.sticky ? (
+        <span className="toast-pin" title={t("common.stickyToast")} aria-label={t("common.stickyToast")}>
+          <Pin size={13} />
+        </span>
+      ) : null}
+      <button className="toast-close" onClick={() => onDismiss(toast.id)} aria-label={t("common.dismissToast")}>
+        <X size={14} />
+      </button>
+    </div>
+  );
 }
 
 export function ToastHost({
@@ -273,34 +347,10 @@ export function ToastHost({
   toasts: ToastItem[];
   onDismiss: (id: number) => void;
 }) {
-  const icons = {
-    ok: <CheckCircle2 size={17} />,
-    error: <AlertTriangle size={17} />,
-    info: <Info size={17} />,
-    warn: <AlertTriangle size={17} />,
-  };
   return (
     <div className="toast-host" aria-live="polite">
       {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`toast toast-${toast.tone}${toast.sticky ? " toast-sticky" : ""}`}
-          data-sticky={toast.sticky ? "1" : "0"}
-        >
-          <span className="toast-icon">{icons[toast.tone]}</span>
-          <div className="toast-copy">
-            <div className="toast-title">{toast.title}</div>
-            {toast.message ? <div className="toast-message">{toast.message}</div> : null}
-          </div>
-          {toast.sticky ? (
-            <span className="toast-pin" title={t("common.stickyToast")} aria-label={t("common.stickyToast")}>
-              <Pin size={13} />
-            </span>
-          ) : null}
-          <button className="toast-close" onClick={() => onDismiss(toast.id)} aria-label={t("common.dismissToast")}>
-            <X size={14} />
-          </button>
-        </div>
+        <ToastEntry key={toast.id} toast={toast} onDismiss={onDismiss} />
       ))}
     </div>
   );

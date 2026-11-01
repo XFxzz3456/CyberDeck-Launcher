@@ -122,10 +122,11 @@ export function saveNotificationDuration(value: NotificationDuration): void {
 /**
  * 算一条 toast 的存活毫秒；返回 Infinity 表示常驻（只能手动关）。
  *
- * 优先级（2D 任务书第 5 点）：
+ * 优先级（2D 任务书第 5 点 + 2026-11-01 通知重构）：
  * 1. 调用方显式传的 ttl 最高——那是「这条消息就是要活这么久」的明确意图；
- * 2. 警告 / 错误强制常驻：用户还没看清报错原因它就没了，等于没报；
- * 3. 其余按全局时长配置；"never" 同样常驻。
+ * 2. 警告 / 错误不再永久常驻（用户反馈红色通知无限堆积）：停留 = 全局时长 × 2，
+ *    配合悬停暂停倒计时与手动关闭，既看得清也不会堆满屏；
+ * 3. 其余按全局时长配置；"never" 仍然常驻。
  */
 export function toastTtl(
   duration: NotificationDuration,
@@ -133,7 +134,7 @@ export function toastTtl(
   explicitTtl?: number,
 ): number {
   if (explicitTtl !== undefined) return explicitTtl;
-  if (tone === "warn" || tone === "error") return Infinity;
   if (duration === "never") return Infinity;
+  if (tone === "warn" || tone === "error") return clampNotificationSeconds(duration) * 2 * 1000;
   return duration * 1000;
 }

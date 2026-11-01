@@ -345,6 +345,10 @@ export default function App() {
   /**
    * 通知门（r12）：category 缺省为 "system"（直接操作反馈，永远放行）；
    * 打扰型通知（download/deploy/conflict/update）先查用户偏好再弹。
+   *
+   * 2026-11-01 重构：倒计时移交 ToastEntry（悬停暂停）；同类合并——
+   * 相同 tone+title 的通知短时间内再次触发时不再新开一条（旧逻辑会堆出
+   * 一串一模一样的红框），而是更新已有条目的消息、计数 +1 并重置倒计时。
    */
   const toast = useCallback(
     (
@@ -356,18 +360,30 @@ export default function App() {
       options?: { ttl?: number; sticky?: boolean },
     ) => {
       if (!canNotify(category, notifyPrefsRef.current)) return;
-      toastCounter.current += 1;
-      const id = toastCounter.current;
-      // 2D：警告/错误强制常驻，普通提示走全局时长配置（默认 5 秒）。
       const ttl = toastTtl(notifyDurationRef.current, tone, options?.ttl);
-      setToasts((items) => [
-        ...items.slice(-3),
-        { id, tone, title, message, sticky: options?.sticky || ttl === Infinity },
-      ]);
-      if (ttl === Infinity) return;
-      window.setTimeout(() => {
-        setToasts((items) => items.filter((item) => item.id !== id));
-      }, ttl);
+      const sticky = options?.sticky || ttl === Infinity;
+      setToasts((items) => {
+        // 同类合并：找同 tone 且同标题的条目，更新而不是追加。
+        const existing = items.find((item) => item.tone === tone && item.title === title);
+        if (existing) {
+          return items.map((item) =>
+            item === existing
+              ? {
+                  ...item,
+                  message,
+                  sticky,
+                  ttl,
+                  count: (item.count ?? 1) + 1,
+                  // nonce 变化让 ToastEntry 的倒计时从头重跑。
+                  nonce: (item.nonce ?? item.id) + 1,
+                }
+              : item,
+          );
+        }
+        toastCounter.current += 1;
+        const id = toastCounter.current;
+        return [...items.slice(-3), { id, tone, title, message, sticky, ttl, nonce: id }];
+      });
     },
     [],
   );

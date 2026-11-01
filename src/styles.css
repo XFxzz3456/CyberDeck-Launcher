@@ -515,6 +515,19 @@ pre {
 /* 设置页特例已删：.content 在所有页面都不再模糊（ea94b5 定案，
    见上方「主内容区」注释），玻璃由 Tabs / 卡片 / 侧栏 / 顶栏自己承担。 */
 
+/* 接管标记（1a3647·三）：收编模组在名字旁的小徽标，提醒物理文件在外部工具里。 */
+.adopted-tag {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--accent-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  padding: 1.5px 4px;
+  white-space: nowrap;
+  transform: translateY(-1px);
+}
+
 /* ── 卡片防「文字裸奔」+ 封面占比（2026-11-01 批次：05ffe5 / 160664）────
    开了自定义背景图后，卡片文字信息区原本跟着主题渐变一起半透明，
    名字/作者/大小直接糊在背景图上。这里给文字区（.mod-body）与底部
@@ -4148,11 +4161,13 @@ pre {
 
 /* ------------------------------------------------------------------ */
 /* 浮层层级契约（改层级只改这里，别再到处加魔法数字）                   */
-/* drawer 60 < 浮层栈 70 < modal 80 < command 95                       */
+/* drawer 60 < 浮层栈 70 < toast 75 < modal 80 < command 95             */
+/* toast 比浮层栈（RECENT ACTIVITY 面板）高一级：通知永远不被活动面板盖住。 */
 /* ------------------------------------------------------------------ */
 :root {
   --z-drawer: 60;
   --z-floating: 70;
+  --z-toast: 75;
   --z-modal: 80;
   --z-command: 95;
   /* 与 .drawer 的 width 保持一致，供浮层让位计算 */
@@ -4895,7 +4910,8 @@ pre {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  z-index: var(--z-floating);
+  /* 高于 .floating-stack（RECENT ACTIVITY，同为 70 档）：通知必须永远可见。 */
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 7px;
