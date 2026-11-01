@@ -3,7 +3,7 @@
 // 断言五件事：
 //   1) 打开详情抽屉，能看到 AI 汉化块与按钮（不需要先右键）；
 //   2) 未汉化时按钮是主按钮样式，点了会打开汉化弹窗（loc 模式）；
-//   3) 工具栏有「AI 汉化」下拉，展开后有「选中 / 全部」两项；
+//   3) 工具栏「AI 工具 ▾」下拉里含「翻译名称 / 汉化选中 / 汉化全部」三项；
 //   4) 未选中任何模组时「汉化选中（0）」是禁用态（不能空跑）；
 //   5) 已生成覆盖层的模组，卡片徽标是「中·AI」而不是普通「中」。
 
@@ -72,19 +72,23 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 
 // ── 2. 工具栏下拉 ──────────────────────────────────────────────────
-const aiMenuBtn = page.getByRole("button", { name: /^AI 汉化/ }).first();
-check("工具栏有 AI 汉化下拉", (await aiMenuBtn.count()) >= 1, "", "aiMenuBtn");
+// 2026-11-01 工具栏重构后，「AI 汉化 ▾」与「翻译名称」合并成了一个「AI 工具 ▾」，
+// 三个菜单项共用同一个面板（类名也从 .import-menu 换成 .toolbar-menu-panel）。
+const aiMenuBtn = page.getByRole("button", { name: /^AI 工具/ }).first();
+check("工具栏有 AI 工具下拉", (await aiMenuBtn.count()) >= 1, "", "aiMenuBtn");
 
 await aiMenuBtn.click();
 await page.waitForTimeout(400);
-const menuItems = await page.locator(".import-menu [role=menuitem]").allInnerTexts();
+const menuItems = await page.locator(".toolbar-menu-panel [role=menuitem]").allInnerTexts();
 const hasSelected = menuItems.some((item) => item.includes("汉化选中"));
 const hasAll = menuItems.some((item) => item.includes("汉化全部"));
+const hasRename = menuItems.some((item) => item.includes("翻译列表名称"));
 check("下拉含「汉化选中」", hasSelected, `items=${menuItems.join(" | ")}`, "aiMenuSelected");
 check("下拉含「汉化全部」", hasAll, "", "aiMenuAll");
+check("下拉含「翻译列表名称」（已从工具栏并入此菜单）", hasRename, "", "aiMenuRename");
 
 const selectedDisabled = await page
-  .locator(".import-menu [role=menuitem]")
+  .locator(".toolbar-menu-panel [role=menuitem]", { hasText: "汉化选中" })
   .first()
   .isDisabled()
   .catch(() => false);
