@@ -1341,6 +1341,42 @@ pub(crate) fn set_category(store: &Store, mod_id: &str, category: &str) -> AppRe
     Ok(category.to_string())
 }
 
+/// 批量手动指定分类（P6 UI）。语义与单条一致：**写入即锁定**，
+/// 但只落一次盘 —— 选择 200 个模组时逐条 save 会把状态文件写 200 遍。
+pub(crate) fn set_categories(
+    store: &Store,
+    mod_ids: &[String],
+    category: &str,
+) -> AppResult<usize> {
+    const ALLOWED: [&str; 10] = [
+        "框架", "玩法", "武器", "服装", "车辆", "视觉", "音频", "任务", "工具", "其他",
+    ];
+    if !ALLOWED.contains(&category) {
+        return Err(CommandError::new(
+            "CATEGORY_INVALID",
+            format!("未知的分类：{category}"),
+        ));
+    }
+    if mod_ids.is_empty() {
+        return Ok(0);
+    }
+    let mut data = store.data.lock().expect("state mutex poisoned");
+    let stamp = crate::store::now_iso();
+    let mut changed = 0usize;
+    for id in mod_ids {
+        if let Some(entry) = data.mods.iter_mut().find(|entry| &entry.id == id) {
+            entry.category = category.to_string();
+            entry.category_locked = true;
+            entry.updated_at = Some(stamp.clone());
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        store.save(&data)?;
+    }
+    Ok(changed)
+}
+
 pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<DeployReport> {
     let game_info = validate_game_dir(Path::new(&game.root))?;
     let game_root = PathBuf::from(&game_info.root);

@@ -6,6 +6,7 @@ import {
   FileJson,
   FolderTree,
   Languages,
+  Tag,
   Layers,
   LayoutGrid,
   List,
@@ -318,8 +319,9 @@ export function LibraryView({
   const [contextMenu, setContextMenu] = useState<ModContextMenuState | null>(null);
   // AI 工具弹窗：汉化与补丁共用一个组件，用 mode 区分流程。
   const [aiTool, setAiTool] = useState<{ mod: ModEntry; mode: "loc" | "fix" } | null>(null);
-  // 手动改分类：右键菜单选中模组后弹这个面板，写入即锁定。
-  const [categoryTarget, setCategoryTarget] = useState<ModEntry | null>(null);
+  // 手动改分类：右键菜单（单个）或工具栏「分类」下拉（批量）都走这个面板，
+  // 写入即锁定，之后自动归类不再覆盖。
+  const [categoryTargets, setCategoryTargets] = useState<ModEntry[]>([]);
   const [categorySaving, setCategorySaving] = useState(false);
   const [menuNote, setMenuNote] = useState<string | null>(null);
   // 集合安装向导：清单路径 + 面板开关。
@@ -378,6 +380,9 @@ export function LibraryView({
   // AI 汉化下拉：与导入下拉同构，但动作是批量任务（进度走任务中心）。
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
+  // 批量改分类：选中后直接从工具栏下拉里挑目标分类，一步到位（不弹二次确认）。
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const catMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!importMenuOpen) return;
@@ -414,6 +419,24 @@ export function LibraryView({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [aiMenuOpen]);
+
+  useEffect(() => {
+    if (!catMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (catMenuRef.current && !catMenuRef.current.contains(event.target as Node)) {
+        setCatMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCatMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [catMenuOpen]);
 
   /**
    * 选一个集合清单文件（.collection / .json）。
@@ -889,6 +912,48 @@ export function LibraryView({
               >
                 {t("library.batchDisable")}
               </button>
+
+              {/* 批量改分类：选完立即写入并锁定（自动归类不再覆盖）。 */}
+              <div className="import-dropdown" ref={catMenuRef}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setCatMenuOpen((value) => !value)}
+                  aria-expanded={catMenuOpen}
+                  disabled={selectedIds.size === 0}
+                  title={t("library.batchCategoryTitle")}
+                >
+                  <Tag size={13} />
+                  {t("library.batchCategory")}
+                  <ChevronDown size={12} className={`dropdown-caret ${catMenuOpen ? "is-open" : ""}`} />
+                </button>
+                {catMenuOpen ? (
+                  <div className="import-menu" role="menu">
+                    {CATEGORIES.filter((item) => item !== "全部" && item !== "已启用").map((item) => ( // i18n-ignore
+                      <button
+                        key={item}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setCatMenuOpen(false);
+                          const ids = [...selectedIds];
+                          void api
+                            .setModsCategory(ids, item)
+                            .then((changed) => {
+                              setBatchNote({ ok: true, text: t("library.categorySaved", { count: changed }) });
+                              onRefresh();
+                            })
+                            .catch(() => {
+                              setBatchNote({ ok: false, text: t("library.categorySaveFailed") });
+                            });
+                        }}
+                      >
+                        {categoryLabel(item)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
@@ -1016,7 +1081,7 @@ export function LibraryView({
           onOpenFolder={(mod) => void handleOpenFolder(mod)}
           onOpenNexus={handleOpenNexus}
           onCopyId={(mod) => void handleCopyId(mod)}
-          onChangeCategory={setCategoryTarget}
+          onChangeCategory={(mod) => setCategoryTargets([mod])}
           onAiTranslate={(mod) => setAiTool({ mod, mode: "loc" })}
           onAiPatch={(mod) => setAiTool({ mod, mode: "fix" })}
         />
@@ -1031,17 +1096,23 @@ export function LibraryView({
       />
 
       <Modal
-        open={categoryTarget !== null}
-        title={t("library.categoryDialogTitle")}
+        open={categoryTargets.length > 0}
+        title={
+          categoryTargets.length > 1
+            ? t("library.categoryDialogTitleBatch", { count: categoryTargets.length })
+            : t("library.categoryDialogTitle")
+        }
         eyebrow="// CATEGORY"
-        onClose={() => setCategoryTarget(null)}
+        onClose={() => setCategoryTargets([])}
         width={460}
       >
         <p className="category-dialog-hint">{t("library.categoryDialogHint")}</p>
         <div className="category-picker">
           {/* 「全部」「已启用」是筛选用的伪分类，不是可选的目标分类（B 类持久化值） */}
           {CATEGORIES.filter((item) => item !== "全部" && item !== "已启用").map((item) => { // i18n-ignore
-            const current = categoryTarget?.category === item;
+            // 批量时只有「全部相同」才算当前值，否则不高亮，避免误导。
+            const current =
+              categoryTargets.length > 0 && categoryTargets.every((mod) => mod.category === item);
             return (
               <button
                 key={item}
@@ -1049,16 +1120,21 @@ export function LibraryView({
                 className={`category-chip${current ? " is-current" : ""}`}
                 disabled={categorySaving}
                 onClick={() => {
-                  const target = categoryTarget;
-                  if (!target || current) {
-                    setCategoryTarget(null);
+                  const targets = categoryTargets;
+                  if (targets.length === 0 || current) {
+                    setCategoryTargets([]);
                     return;
                   }
                   setCategorySaving(true);
-                  void api
-                    .setModCategory(target.id, item)
-                    .then(() => {
-                      setCategoryTarget(null);
+                  const ids = targets.map((mod) => mod.id);
+                  const request =
+                    ids.length === 1
+                      ? api.setModCategory(ids[0], item).then(() => 1)
+                      : api.setModsCategory(ids, item);
+                  void request
+                    .then((changed) => {
+                      setCategoryTargets([]);
+                      setMenuNote(t("library.categorySaved", { count: changed }));
                       onRefresh();
                     })
                     .catch(() => {

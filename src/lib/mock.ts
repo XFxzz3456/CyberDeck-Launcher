@@ -2369,6 +2369,22 @@ export const mockApi = {
     return category;
   },
 
+  /** P6 演示：批量指定分类。 */
+  async setModsCategory(ids: string[], category: string): Promise<number> {
+    await sleep(180);
+    const db = loadDb();
+    let changed = 0;
+    for (const id of ids) {
+      const mod = db.state.mods.find((item) => item.id === id);
+      if (!mod) continue;
+      mod.category = category as typeof mod.category;
+      mod.categoryLocked = true;
+      changed += 1;
+    }
+    if (changed > 0) saveDb(db);
+    return changed;
+  },
+
   /** #1 演示版更新检查：ReLIT 假装有 2.5.0 新版本，用于验收徽标与跳转。 */
   async nexusCheckUpdates(): Promise<NexusUpdateReport> {
     await sleep(900);

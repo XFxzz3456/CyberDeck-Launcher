@@ -2208,6 +2208,16 @@ fn set_mod_category(
     installer::set_category(store.inner(), &id, &category)
 }
 
+/// P6：批量指定分类（选择模式下用）。返回实际改动条数。
+#[tauri::command]
+fn set_mods_category(
+    store: State<'_, Store>,
+    ids: Vec<String>,
+    category: String,
+) -> AppResult<usize> {
+    installer::set_categories(store.inner(), &ids, &category)
+}
+
 /// #1 / P5 批量检查库内 Nexus 模组的更新。
 #[tauri::command]
 async fn nexus_check_updates(app: tauri::AppHandle) -> AppResult<NexusUpdateReport> {
@@ -3687,6 +3697,7 @@ pub fn run() {
     reclassify_unclassified,
     reclassify_all,
     set_mod_category,
+    set_mods_category,
     game_process_running,
     stop_game_process,
     set_translation_parent,

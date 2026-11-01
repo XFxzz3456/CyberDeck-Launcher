@@ -390,6 +390,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // P6：批量改分类（选择模式 → 分类下拉 → 落盘 + 锁定）。
+    name: "批量改分类",
+    script: "check-batch-category.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     name: "游戏更新熔断",
     script: "check-update-lock.mjs",
     expect: ["banners=1", "after_click=0"],

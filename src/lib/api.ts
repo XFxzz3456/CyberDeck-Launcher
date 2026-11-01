@@ -488,6 +488,12 @@ export const api = {
     return call<string>("set_mod_category", { id, category });
   },
 
+  /** P6：批量指定分类（写入即锁定，Automatic 分类不再覆盖）。返回改动条数。 */
+  async setModsCategory(ids: string[], category: string): Promise<number> {
+    if (!isTauri) return mockApi.setModsCategory(ids, category);
+    return call<number>("set_mods_category", { ids, category });
+  },
+
   // ── Nexus Collections 集合安装 ────────────────────────────────
 
   /**
