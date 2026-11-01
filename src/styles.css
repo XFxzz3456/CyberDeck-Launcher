@@ -3573,13 +3573,12 @@ pre {
    - 开了背景图（[data-backdrop="on"]）：卡片换成半透明 + backdrop-filter 玻璃，
      提亮底色被玻璃覆盖（本规则更靠后、优先级同数取胜）。 */
 
-.settings-tab-panel .panel {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--panel-2) 88%, #fff 12%),
-    color-mix(in srgb, var(--panel) 88%, #fff 12%)
-  );
-}
+/* 4B（2026-11-01 用户反馈「设置页卡片和正常卡片颜色不一样，割裂严重」）：
+   这里原本给设置页卡片额外混了 12% 白来「提亮一档」，而主内容区的普通卡片走的是
+   基础 .panel 渐变（76%/82% 透明叠在背景上）——两套底色并排看就是两块不同的灰。
+   现在删掉提亮，设置卡片直接吃 .panel 的基础渐变，全站卡片一个颜色。
+   （原本的意图在 3B-2 里是「让设置项从页面底色里浮起来」，但普通卡片已经靠
+   边框 + 渐变做到了同一件事，多混一层白反而割裂。） */
 
 /* 同一卡片内相邻设置行之间的极弱分割线：半透明前景色，明暗主题自动反向。 */
 .settings-tab-panel .switch-row + .switch-row {

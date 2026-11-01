@@ -184,6 +184,19 @@ const topbarB = await page.locator(".topbar").evaluate((n) => {
 check("B 顶栏无 backdrop-filter", topbarB.blur === "none", `blur=${topbarB.blur}`, "B_topbarNoBlur");
 check("B 顶栏实色（NCPD #07090c 0.78）", /rgba\(7, 9, 12, 0\.78\)/.test(topbarB.bg), `bg=${topbarB.bg}`, "B_topbarTokenBg");
 
+// 设置页卡片必须和普通卡片同底色（用户反馈「割裂严重」的回归断言）
+const settingsCardBg = await page.locator(".settings-tab-panel .panel").first().evaluate((n) => getComputedStyle(n).backgroundImage);
+await page.getByRole("button", { name: "运行诊断", exact: true }).first().click();
+await page.waitForTimeout(900);
+const normalCardBg = await page.locator(".content .panel").first().evaluate((n) => getComputedStyle(n).backgroundImage);
+check(
+  "设置卡片与普通卡片同底色",
+  settingsCardBg === normalCardBg,
+  `settings=${settingsCardBg.slice(0, 40)} | normal=${normalCardBg.slice(0, 40)}`,
+  "cardColorConsistent",
+);
+await openSettings();
+
 const shellB = await page.locator(".app-shell").evaluate((n) => getComputedStyle(n).backgroundImage);
 check("B 主背景恢复原设计柔光（radial）", /radial-gradient/.test(shellB), `bg=${shellB.slice(0, 40)}`, "B_shellRadial");
 
