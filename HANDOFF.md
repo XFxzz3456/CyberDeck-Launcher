@@ -14,6 +14,7 @@
 - `src-tauri/Cargo.toml` → `version = "1.0.0"`
 - `src-tauri/tauri.conf.json` → `"version": "1.0.0"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
 - **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。
+  之后 **2026-11-01 09:58 重建（含 P5）**：exe 11,168,256 B / md5 `bc1ef81eeb5e1a2e56c7392c0aa2bae0`，冒烟 `stage=frontend mods=186`；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,313,934 B，覆盖首发包）。版本号按用户要求保持 1.0.0，CHANGELOG 用「1.0.0 追加批次」区分。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
