@@ -19,6 +19,7 @@
 - **2026-11-01 13:59 第三次重建（L1/L2/L3 层级毛玻璃）**：exe 11,172,352 B / md5 `baa396ac752f2128fda9fd1ed9456b3b`，冒烟 `2026-11-01T05:59:22Z stage=frontend mods=186`；便携版与网盘仍未重做。
 - **2026-11-01 14:55 第四次重建（毛玻璃隔离 + 赛博纯黑）**：exe 11,172,352 B / md5 `c10feb39f63bc89f23e5504aa8fb26c3`，冒烟 `2026-11-01T06:55:24Z stage=frontend mods=186`。
 - **2026-11-01 17:23 第五次重建（赛博碳灰层次）**：exe 11,172,352 B / md5 `97f6da28fca0aceeef7bfa3723c99be5`，冒烟 `2026-11-01T09:23:06Z stage=frontend mods=186`。
+  便携版已重打包：`发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,319,062 B，内含 exe md5 校验一致 `97f6da28…`）。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
