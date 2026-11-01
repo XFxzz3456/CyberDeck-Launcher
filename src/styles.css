@@ -389,6 +389,91 @@ pre {
   border-color: rgba(0, 0, 0, 0.07);
 }
 
+/* ══ 玻璃层级令牌（L1 / L2 / L3）═══════════════════════════════════
+   为什么要有层级：之前所有玻璃都用同一档不透明度与模糊，卡片和容器贴在
+   一起看不出深浅，视觉上「一片糊」。Z 轴分三层之后，越靠前的层越实、
+   模糊越小（L2 几乎不模糊），越靠后的层越透、模糊越大 —— 这是真实玻璃
+   叠在背景上的物理直觉。
+
+   三层各自的职责：
+   L1 容器层：侧边栏、主内容区、顶栏。透、模糊大，与窗口边缘融合（无描边）。
+   L2 卡片层：设置面板、Mod 卡片。实（0.85）、模糊极轻（8px）、有高光描边。
+   L3 悬浮层：下拉菜单、弹窗、右键菜单、Toast。半透 + 高模糊 + 大柔和阴影。
+
+   降级：没开背景图时 L1/L2 一律回到 100% 纯色（--glass-*-solid），
+   backdrop-filter 不生效，等于零成本。
+   ⚠️ 只写标准 backdrop-filter（Lightning CSS 会吞掉 -webkit- 重复声明）。 */
+:root {
+  --glass-l1-bg: rgba(18, 18, 20, 0.6);
+  --glass-l1-blur: blur(24px);
+  --glass-l2-bg: rgba(24, 24, 27, 0.85);
+  --glass-l2-blur: blur(8px);
+  --glass-l2-border: 1px solid rgba(255, 255, 255, 0.06);
+  --glass-l3-bg: rgba(20, 20, 24, 0.75);
+  --glass-l3-blur: blur(32px);
+  --glass-l3-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-l3-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  /* 未开背景图时的实心兜底（与各主题原有底色对齐）。 */
+  --glass-l1-solid: var(--bg-2);
+  --glass-l2-solid: var(--panel);
+  --glass-l3-solid: var(--panel-2);
+}
+
+:root[data-mode="light"] {
+  --glass-l1-bg: rgba(245, 245, 246, 0.7);
+  --glass-l2-bg: rgba(255, 255, 255, 0.9);
+  --glass-l2-border: 1px solid rgba(0, 0, 0, 0.07);
+  --glass-l3-bg: rgba(252, 252, 253, 0.82);
+  --glass-l3-border: 1px solid rgba(0, 0, 0, 0.08);
+  --glass-l3-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+  --glass-l1-solid: var(--bg-2);
+  --glass-l2-solid: var(--panel);
+  --glass-l3-solid: var(--panel-2);
+}
+
+/* ── L1 容器：透 + 大模糊，无描边 ────────────────────────────── */
+[data-backdrop="on"] .glass-l1 {
+  background: var(--glass-l1-bg);
+  backdrop-filter: var(--glass-l1-blur);
+  border-color: transparent;
+}
+
+/* ── L2 卡片：实 + 极轻模糊 + 高光描边（**不再叠第二层 blur**）────── */
+[data-backdrop="on"] .glass-l2 {
+  background: var(--glass-l2-bg);
+  backdrop-filter: var(--glass-l2-blur);
+  border: var(--glass-l2-border);
+}
+
+/* ── L3 悬浮层：半透 + 高模糊 + 大范围柔和阴影 ────────────────── */
+[data-backdrop="on"] .glass-l3 {
+  background: var(--glass-l3-bg);
+  backdrop-filter: var(--glass-l3-blur);
+  border: var(--glass-l3-border);
+  box-shadow: var(--glass-l3-shadow);
+}
+
+/* 降级：没开背景图时三层都回纯色，且不产生任何合成层。 */
+[data-backdrop="off"] .glass-l1,
+.app-shell:not([data-backdrop="on"]) .glass-l1 {
+  background: var(--glass-l1-solid);
+  backdrop-filter: none;
+}
+
+[data-backdrop="off"] .glass-l2,
+.app-shell:not([data-backdrop="on"]) .glass-l2 {
+  background: var(--glass-l2-solid);
+  backdrop-filter: none;
+  border: 1px solid var(--line);
+}
+
+[data-backdrop="off"] .glass-l3,
+.app-shell:not([data-backdrop="on"]) .glass-l3 {
+  background: var(--glass-l3-solid);
+  backdrop-filter: none;
+  box-shadow: var(--shadow);
+}
+
 /* ── 4A 毛玻璃补齐（用户反馈：顶栏 / Tabs / 设置卡片像实心黑块）──────
    全部只在 [data-backdrop="on"]（开了自定义背景图）时生效，没开图保持原样。
    三个层级各管一段，互不叠加：
