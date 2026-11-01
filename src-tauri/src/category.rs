@@ -316,14 +316,18 @@ pub fn infer(signals: &Signals<'_>) -> String {
         *score.entry(category).or_insert(0) += 6;
     }
 
-    // ② 名称与目录名（先清洗：去开头装饰符、下划线/连字符转空格、压空格、转小写）
+    // ② 名称（先清洗：去开头装饰符、下划线/连字符转空格、压空格、转小写）
+    //
+    // P6 起**不再看 folder**：staging 目录名是解压壳（`archive-xxxx`、
+    // `adopt-<hash>`），本来就没有信息量；拿它当证据等于「仅凭文件夹名推测」，
+    // 用户已明确否决。真正有意义的目录名（info.json 里的 modFolder）会通过
+    // 模组名参与匹配，不需要额外通道。
     let name = clean_name(signals.name);
-    let folder = clean_name(&signals.folder.replace('\\', "/"));
     for (category, words) in NAME_RULES {
         if words.is_empty() {
             continue;
         }
-        if any_word(&name, words) || any_word(&folder, words) {
+        if any_word(&name, words) {
             *score.entry(category).or_insert(0) += 3;
         }
     }
@@ -368,6 +372,78 @@ pub fn infer(signals: &Signals<'_>) -> String {
     }
     best.map(|(category, _)| category.to_string())
         .unwrap_or_else(|| UNCATEGORIZED.to_string())
+}
+
+/// Nexus 官方分类名 → 本地分类（用户 2026-11-01 拍板：沿用现有 10 类，不改体系）。
+///
+/// 为什么按名字而不是 category_id：Nexus 的 id 是**站点级**的，同一串数字在
+/// 不同游戏下含义不同，写死一张 id 表等于把「赛博朋克这一款游戏的分区顺序」
+/// 当成全局常量，下次换游戏必错。名字虽可能改，但改的是文案，映射错了也
+/// 只会落到「其他」，不会串到完全无关的类别。
+///
+/// 匹配方式：小写 + 去掉非字母数字后再比，兼容 `Visuals and Graphics` /
+/// `visuals-and-graphics` / `Visuals & Graphics` 这几种写法。
+pub fn map_nexus_category(category_name: &str) -> Option<&'static str> {
+    // 归一化：字母数字保留，其它字符（`&`、`-`、`/`、全角空格…）一律当分隔符，
+    // 再把连词 `and` 去掉 —— 这样 `Visuals and Graphics` / `visuals-&-graphics` /
+    // `Visuals & Graphics` 会归到同一个 key，不用为每种写法各写一条。
+    let spaced: String = category_name
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { ' ' })
+        .collect();
+    let key = spaced
+        .split_whitespace()
+        .filter(|word| *word != "and" && *word != "the")
+        .collect::<Vec<_>>()
+        .join(" ");
+    if key.is_empty() {
+        return None;
+    }
+    let mapped = match key.as_str() {
+        // 框架 / 底层工具链
+        "modding tools" | "modding" | "frameworks" | "framework" => "框架",
+        // 玩法（脚本、平衡、机制）
+        "gameplay" | "gameplay mechanics" | "cheats" | "quests" | "quests adventures" => "玩法",
+        // 武器
+        "weapons" | "weapon" | "guns" | "armour" | "armor" => "武器",
+        // 外观：Nexus 按身体/服装/角色预设分得很细，本地都归到服装或视觉
+        "body" | "clothing" | "character presets" | "character" | "hair" | "faces" => "服装",
+        "visuals graphics" | "visuals" | "graphics" | "models textures" | "models"
+        | "textures" | "animation" | "animation rigging" => "视觉",
+        // 载具
+        "vehicles" | "vehicle" => "车辆",
+        // 音频
+        "audio" | "sound" | "music" | "sound music" => "音频",
+        // 工具（独立程序、外部配置器）
+        "utilities" | "utility" | "tools" | "tool" => "工具",
+        // 环境/杂项：Nexus 这两个分区里什么都有，交给内容证据更靠谱
+        _ => return None,
+    };
+    Some(mapped)
+}
+
+/// 带 Nexus 分类的推断入口（P6 优先级：手动 > Nexus > 内容证据 > 名称）。
+///
+/// `nexus_category` 有值时：
+/// - 能映射 → **直接采用**，不再看名称（避免「文件名里有 vehicle 就被判成载具」
+///   这种覆盖官方分类的情况）；
+/// - 映射不出来（Miscellaneous / Environment）→ 只允许内容证据说话，**不看名字**。
+///   这正是用户要求的「不允许仅凭 zip/文件夹名推测」。
+///
+/// `nexus_category` 为 None（本地导入、老记录）时退回原来的加权流程，
+/// 但名称证据只看 `name`，不再看 staging 目录名（那是解压壳，
+/// `archive-xxxx` / `adopt-<hash>` 本身没有信息量）。
+pub fn infer_with_nexus(signals: &Signals<'_>, nexus_category: Option<&str>) -> String {
+    if let Some(raw) = nexus_category.map(str::trim).filter(|v| !v.is_empty()) {
+        if let Some(mapped) = map_nexus_category(raw) {
+            return mapped.to_string();
+        }
+        return by_content(signals.paths)
+            .map(str::to_string)
+            .unwrap_or_else(|| UNCATEGORIZED.to_string());
+    }
+    infer(signals)
 }
 
 /// 扫一遍暂存目录，拿到「像什么样」的证据。
@@ -671,6 +747,81 @@ mod tests {
     ///
     /// 存在的意义：单元测试只能证明规则自洽，证明不了**玩家那一库**会被判成什么样。
     /// 这个入口让「真实数据上的分布」可复现、可核对，而不必靠截图肉眼数。
+    #[test]
+    fn nexus_category_names_map_onto_local_categories() {
+        assert_eq!(map_nexus_category("Weapons"), Some("武器"));
+        assert_eq!(map_nexus_category("weapons"), Some("武器"));
+        assert_eq!(map_nexus_category("Body"), Some("服装"));
+        assert_eq!(map_nexus_category("Clothing"), Some("服装"));
+        assert_eq!(map_nexus_category("Visuals and Graphics"), Some("视觉"));
+        assert_eq!(map_nexus_category("visuals-&-graphics"), Some("视觉"));
+        assert_eq!(map_nexus_category("Vehicles"), Some("车辆"));
+        assert_eq!(map_nexus_category("Gameplay"), Some("玩法"));
+        assert_eq!(map_nexus_category("Modding Tools"), Some("框架"));
+        assert_eq!(map_nexus_category("Audio"), Some("音频"));
+        assert_eq!(map_nexus_category("Utilities"), Some("工具"));
+    }
+
+    #[test]
+    fn unmapped_nexus_categories_fall_through() {
+        // Miscellaneous / Environment 什么都有，交给内容证据，不硬塞一个类别。
+        assert_eq!(map_nexus_category("Miscellaneous"), None);
+        assert_eq!(map_nexus_category("Environment"), None);
+        assert_eq!(map_nexus_category(""), None);
+        assert_eq!(map_nexus_category("   "), None);
+    }
+
+    #[test]
+    fn nexus_category_wins_over_misleading_name() {
+        // 名字里有 vehicle，但 Nexus 官方分类是 Gameplay ⇒ 听 Nexus 的。
+        let paths = vec!["r6/scripts/foo.reds".to_string()];
+        let signals = Signals {
+            name: "Vehicle Spawn Fix",
+            folder: "archive-1234",
+            layout: &layout(),
+            paths: &paths,
+        };
+        assert_eq!(infer_with_nexus(&signals, Some("Gameplay")), "玩法");
+    }
+
+    #[test]
+    fn unmapped_nexus_category_ignores_file_names() {
+        // 官方分类是 Miscellaneous 时只允许内容证据说话：名字写着 Weapon、
+        // 但没有武器类文件 ⇒ 落「其他」，不能靠名字猜。
+        let paths = vec!["archive/pc/mod/pack.archive".to_string()];
+        let signals = Signals {
+            name: "Weapon Pack",
+            folder: "archive-9999",
+            layout: &layout(),
+            paths: &paths,
+        };
+        assert_eq!(infer_with_nexus(&signals, Some("Miscellaneous")), "其他");
+    }
+
+    #[test]
+    fn local_imports_still_use_file_names() {
+        // 没有 Nexus 数据时才允许用名字：本地 ZIP 导入只有这一条线索。
+        let signals = Signals {
+            name: "Better Weapon Handling",
+            folder: "archive-777",
+            layout: &layout(),
+            paths: &[],
+        };
+        assert_eq!(infer_with_nexus(&signals, None), "武器");
+    }
+
+    #[test]
+    fn staging_folder_name_is_not_evidence() {
+        // 目录名带 weapon 但名字与内容都没线索 ⇒ 不能因为文件夹被判成武器。
+        let signals = Signals {
+            name: "Compat Patch",
+            folder: "weapon-overhaul-2.1",
+            layout: &layout(),
+            paths: &[],
+        };
+        assert_ne!(infer_with_nexus(&signals, None), "武器");
+    }
+
     #[test]
     #[ignore]
     fn diagnose_real_library() {

@@ -503,8 +503,10 @@ pub fn attach_from_url(store: &Store, entry_id: &str, url: &str) -> AppResult<()
     if !raw.version.trim().is_empty() {
         entry.version = Some(raw.version);
     }
+    // P6：Nexus 的 category_name 是英文分区名（Body/Weapons/…），不能直接当本地
+    // 分类用；走映射表落地到 10 类里的一个，映射不出来再退回内容证据。
     if !raw.category_name.trim().is_empty() {
-        entry.category = raw.category_name;
+        crate::installer::apply_nexus_category(entry, &raw.category_name);
     }
     entry.nexus = Some(NexusRef {
         mod_id,
@@ -707,7 +709,7 @@ pub fn enrich_metadata(store: &Store) -> AppResult<crate::schema::NexusEnrichRep
                 entry.version = Some(item.version);
             }
             if !item.category.trim().is_empty() {
-                entry.category = item.category;
+                crate::installer::apply_nexus_category(entry, &item.category);
             }
             if !item.summary.trim().is_empty() {
                 entry.description = item.summary;
@@ -1020,6 +1022,8 @@ pub(crate) struct DownloadedFile {
     pub file_id: u64,
     /// Nexus 上这个模组的版本号（detail.json 的 version）。
     pub version: Option<String>,
+    /// Nexus 官方分区名（Body / Weapons / …），装完按它落本地分类。
+    pub category: Option<String>,
     pub picture_url: Option<String>,
     /// 命中上次留下的同名文件，没有重新下载。
     pub reused: bool,
@@ -1170,6 +1174,7 @@ pub(crate) fn download_file(
         file_name: download_name,
         file_id,
         version: Some(detail.version.clone()).filter(|value| !value.trim().is_empty()),
+        category: Some(detail.category_name.clone()).filter(|value| !value.trim().is_empty()),
         picture_url: detail.picture_url.clone(),
         reused,
     })
@@ -1230,7 +1235,12 @@ pub fn download_and_install(
         latest_version: None,
         last_check: None,
     };
-    let entry = installer::install_archive(store, &downloaded.path.to_string_lossy(), Some(nexus))?;
+    let mut entry =
+        installer::install_archive(store, &downloaded.path.to_string_lossy(), Some(nexus))?;
+    // P6：安装时就按 Nexus 官方分类落位，而不是等下一次「补全信息」才纠正。
+    if let Some(category) = downloaded.category.as_deref() {
+        installer::apply_nexus_category(&mut entry, category);
+    }
     {
         let mut data = store.data.lock().expect("state mutex poisoned");
         data.mods.push(entry.clone());

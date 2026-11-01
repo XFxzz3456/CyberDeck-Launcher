@@ -53,6 +53,29 @@ pub fn install_zip(store: &Store, zip_path: &str) -> AppResult<ModEntry> {
     install_archive(store, zip_path, None)
 }
 
+/// 按 Nexus 官方分类重算条目的本地分类（P6）。
+///
+/// 优先级：**用户手动（category_locked）永远最高** —— 玩家点过下拉就是最终答案，
+/// 后面任何自动流程都不许覆盖。其次是 Nexus 官方分类（能映射就用），
+/// 映射不出来才退回内容证据，**不看文件名**。
+pub fn apply_nexus_category(entry: &mut crate::schema::ModEntry, nexus_category: &str) {
+    if entry.category_locked || nexus_category.trim().is_empty() {
+        return;
+    }
+    let next = crate::category::infer_with_nexus(
+        &crate::category::Signals {
+            name: &entry.name,
+            folder: entry.mod_folder.as_deref().unwrap_or(""),
+            layout: &entry.layout,
+            paths: &entry.planned_files,
+        },
+        Some(nexus_category),
+    );
+    if next != entry.category {
+        entry.category = next;
+    }
+}
+
 pub fn install_archive(
     store: &Store,
     archive_path: &str,
