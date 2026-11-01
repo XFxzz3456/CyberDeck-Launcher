@@ -122,16 +122,18 @@ if (groupCount > 0) {
   await page.locator(".grid-scroll").evaluate((node) => {
     node.scrollTop = 0;
   });
-  const rowsBefore = await page.locator(".mod-row").count();
+  // ⚠️ 别再用「渲染行数变少」判断折叠：虚拟滚动会在折叠后立刻把可视区补满，
+  // 行数恒定（今天在 1440 下实测 before=after=20）。改比滚动内容总高度。
+  const heightBefore = await page.locator(".grid-scroll").evaluate((node) => node.scrollHeight);
   await page.locator(".mod-group-head").first().click();
   await page.waitForTimeout(200);
   const collapsed = await page.locator(".mod-group-head").first().getAttribute("aria-expanded");
-  const rowsAfter = await page.locator(".mod-row").count();
+  const heightAfter = await page.locator(".grid-scroll").evaluate((node) => node.scrollHeight);
   check("点组头后进入折叠态", collapsed === "false", `aria-expanded=${collapsed}`);
   check(
-    "折叠后该组的行被收起",
-    rowsAfter < rowsBefore || rowsBefore === 0,
-    `before=${rowsBefore} after=${rowsAfter}`,
+    "折叠后内容高度下降",
+    heightAfter < heightBefore,
+    `before=${heightBefore} after=${heightAfter}`,
   );
   // 复原，后面的「滚到底 / 切回网格」按未折叠状态跑。
   await page.locator(".mod-group-head").first().click();

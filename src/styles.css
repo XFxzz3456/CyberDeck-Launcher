@@ -2147,34 +2147,125 @@ pre {
   flex-direction: column;
 }
 
+/* 工具栏（2026-11-01 重构）：左「看什么」/ 右「做什么」，两组分家。
+   - 组内 8px、组间 24px：间距差本身就是分组信号，不再靠分隔线。
+   - flex-wrap: nowrap —— 窄窗口由容器查询把低频按钮收进「更多 ▾」，绝不折行。
+   - position/z-index：下拉面板必须压在模组卡片之上（卡片 hover 有 transform，
+     自己会开层叠上下文，工具栏不抬层就会被盖住）。 */
+.library-main {
+  /* 工具栏的容器查询基准：按内容区宽度判断宽窄，而不是按窗口宽度
+     （侧栏折叠、缩放都会让窗口宽度失真）。 */
+  container-type: inline-size;
+  container-name: library-main;
+}
+
 .library-toolbar {
   min-height: 32px;
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
-  /* 垂直居中：RESULTS 文字基线与按钮/下拉框在同一中线上，不再顶格错位。 */
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
-  margin-bottom: 8px;
+  gap: 24px;
+  position: relative;
+  z-index: 30;
 }
 
-/* 左侧：视图与过滤（结果数 / 智能归类 / 排序）。 */
-.toolbar-left {
+.toolbar-group {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   min-width: 0;
 }
 
-/* 右侧：操作区。窄窗口时整组自动换行，按钮不变形。 */
-.toolbar-right {
+/* 组内控件一律不收缩：一旦允许 shrink，按钮会压到文字外面去，
+   命中区就盖住隔壁按钮（实测「智能归类」会挡住网格/列表切换的点击）。
+   要腾空间只能靠容器查询把低频项收进「更多」，不是把按钮压扁。 */
+.toolbar-group > * {
+  flex: 0 0 auto;
+}
+
+/* 动作组贴右：两组之间自然被 justify-content 拉开，再加 24px 兜底。 */
+.toolbar-group--actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+/* 下拉容器：AI 工具 / 更多导入 / 窄屏收纳 共用。 */
+.toolbar-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.toolbar-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 220px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.toolbar-menu-panel button {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
-  min-width: 0;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toolbar-menu-panel button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+
+.toolbar-menu-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 窄屏收纳菜单：宽屏时整体不显示（低频按钮直接排在工具栏上）。 */
+.toolbar-overflow {
+  display: none;
+}
+
+/* 三档收纳（数值都是实测出来的，不是拍的）：
+     容器 > 860px ： 全部显示（两组自然宽 ≈843px，1440 窗口下容器是 955px，留 110px 余量）
+     820–860px  ： 隐藏低频（补全 / 导入方式）→ 约 804px
+     < 820px    ： 再隐藏「归类」与 RESULTS 文字 → 约 675px（1100 窗口容器只有 707px）
+   宁可多藏一个入口，也不让按钮互相压住——重叠导致的点击遮挡比少个按钮难查得多。 */
+@container library-main (max-width: 860px) {
+  .library-toolbar .is-low-frequency {
+    display: none;
+  }
+
+  .library-toolbar .toolbar-overflow {
+    display: inline-flex;
+  }
+}
+
+@container library-main (max-width: 820px) {
+  .library-toolbar .is-medium {
+    display: none;
+  }
+
+  .library-toolbar .result-label {
+    display: none;
+  }
 }
 
 /* 主题色（黄）强调：重要操作用边框 + 图标着色区分于普通次级按钮。 */

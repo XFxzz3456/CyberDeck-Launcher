@@ -396,6 +396,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 2026-11-01：工具栏两组分家 + AI 工具合并 + 窄屏收纳不换行。
+    name: "模组库工具栏",
+    script: "check-toolbar.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     name: "游戏更新熔断",
     script: "check-update-lock.mjs",
     expect: ["banners=1", "after_click=0"],

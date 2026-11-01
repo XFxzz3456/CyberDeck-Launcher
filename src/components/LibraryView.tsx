@@ -6,11 +6,13 @@ import {
   FileJson,
   FolderTree,
   Languages,
+  Sparkles,
   Tag,
   Layers,
   LayoutGrid,
   List,
   ListChecks,
+  MoreHorizontal,
   ListFilter,
   PackageOpen,
   Plus,
@@ -380,6 +382,10 @@ export function LibraryView({
   // AI 汉化下拉：与导入下拉同构，但动作是批量任务（进度走任务中心）。
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
+  // 窄窗口收纳菜单：低频按钮在宽屏直显，窄屏整体收进这个「更多」。两个版本都在 DOM 里，
+  // 靠 CSS 切换显示，避免「折叠后事件丢失」那类老坑。
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement | null>(null);
   // 批量改分类：选中后直接从工具栏下拉里挑目标分类，一步到位（不弹二次确认）。
   const [catMenuOpen, setCatMenuOpen] = useState(false);
   const catMenuRef = useRef<HTMLDivElement | null>(null);
@@ -437,6 +443,24 @@ export function LibraryView({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [catMenuOpen]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(event.target as Node)) {
+        setOverflowOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOverflowOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [overflowOpen]);
 
   /**
    * 选一个集合清单文件（.collection / .json）。
@@ -655,24 +679,18 @@ export function LibraryView({
           {/* 工具栏左右分区：左侧 = 视图与过滤（数量 / 智能归类 / 排序），
               右侧 = 操作（导入菜单 / 检查更新 / 补全信息 / 翻译名称）。
               两区都允许换行，窗口窄时右侧自动折行，不挤压变形。 */}
-          <div className="library-toolbar">
-            <div className="toolbar-left">
+          {/* 工具栏：左「看什么」/ 右「做什么」，两组之间 24px、组内 8px。
+              窄窗口不折行：低频按钮（补全信息 / 导入 / 分组）由 CSS 收进右侧「更多 ▾」，
+              两个版本都在 DOM 里，只是显示/隐藏切换，事件不会丢。 */}
+          <div className="library-toolbar" role="toolbar" aria-label={t("library.toolbarAria")}>
+            {/* ── 视图与过滤组（控制"怎么看"）────────────────────── */}
+            <div className="toolbar-group toolbar-group--view">
               <div className="result-line">
                 <span className="result-count">{String(filtered.length).padStart(2, "0")}</span>
                 <span className="result-label">{t("library.resultsLabel")}</span>
                 {search ? <span className="result-query">“{search}”</span> : null}
               </div>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={(event) => onReclassify?.(event.shiftKey)}
-                disabled={reclassifying || !onReclassify}
-                title={t("library.reclassifyTitle")}
-              >
-                {reclassifying ? <Spinner size={13} /> : <FolderTree size={13} />}
-                {t("library.reclassify")}
-                {unclassifiedCount > 0 ? ` (${unclassifiedCount})` : ""}
-              </button>
+
               <label className="sort-control" title={t("library.statusFilterTitle")}>
                 <ListFilter size={13} />
                 <select
@@ -687,18 +705,7 @@ export function LibraryView({
                   ))}
                 </select>
               </label>
-              {view === "list" ? (
-                <button
-                  type="button"
-                  className={`btn btn-ghost btn-sm ${groupMode ? "btn-accent" : ""}`}
-                  onClick={toggleGroupMode}
-                  aria-pressed={groupMode}
-                  title={t("library.groupModeTitle")}
-                >
-                  <Layers size={13} />
-                  {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
-                </button>
-              ) : null}
+
               <label className="sort-control">
                 <ArrowDownUp size={13} />
                 <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)}>
@@ -709,22 +716,20 @@ export function LibraryView({
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                className={`btn btn-ghost btn-sm ${selectMode ? "btn-accent" : ""}`}
-                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-                aria-pressed={selectMode}
-                title={t("library.selectModeTitle")}
-              >
-                <ListChecks size={13} />
-                {t("library.selectMode")}
-                {selectMode && selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
-              </button>
-            </div>
 
-            <div className="toolbar-right">
-              {/* 视图切换：网格 / 列表。放在右侧操作区的第一位，紧邻导入与批量动作，
-                  图标按钮不带文字，靠 title + aria-pressed 表达状态。 */}
+              {view === "list" ? (
+                <button
+                  type="button"
+                  className={`btn btn-ghost btn-sm is-low-frequency ${groupMode ? "btn-accent" : ""}`}
+                  onClick={toggleGroupMode}
+                  aria-pressed={groupMode}
+                  title={t("library.groupModeTitle")}
+                >
+                  <Layers size={13} />
+                  {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
+                </button>
+              ) : null}
+
               <div className="view-switch" role="group" aria-label={t("library.viewToggleAria")}>
                 <button
                   type="button"
@@ -747,30 +752,75 @@ export function LibraryView({
                   <List size={13} />
                 </button>
               </div>
-              {/* AI 汉化批量入口：选中优先，其次全库。真正执行在 App（任务中心可见进度）。 */}
-              <div className="import-dropdown" ref={aiMenuRef}>
+            </div>
+
+            {/* ── 动作与工具组（控制"做什么"）────────────────────── */}
+            <div className="toolbar-group toolbar-group--actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm is-medium"
+                onClick={(event) => onReclassify?.(event.shiftKey)}
+                disabled={reclassifying || !onReclassify}
+                title={t("library.reclassifyTitle")}
+              >
+                {reclassifying ? <Spinner size={13} /> : <FolderTree size={13} />}
+                {t("library.reclassify")}
+                {unclassifiedCount > 0 ? ` (${unclassifiedCount})` : ""}
+              </button>
+
+              <button
+                type="button"
+                className={`btn btn-ghost btn-sm ${selectMode ? "btn-accent" : ""}`}
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                aria-pressed={selectMode}
+                title={t("library.selectModeTitle")}
+              >
+                <ListChecks size={13} />
+                {t("library.selectMode")}
+                {selectMode && selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+              </button>
+
+              {/* AI 工具：原来的「AI 汉化 ▾」与「翻译名称」合并到这里，
+                  三个菜单项各自绑原来的 handler，逻辑一行没动。 */}
+              <div className="toolbar-menu" ref={aiMenuRef}>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={() => setAiMenuOpen((value) => !value)}
                   aria-expanded={aiMenuOpen}
-                  title={t("library.aiLocMenuTitle")}
-                  disabled={!onAiLocBatch}
+                  title={t("library.aiToolsTitle")}
                 >
-                  <Languages size={13} />
-                  {t("library.aiLocMenu")}
+                  <Sparkles size={13} />
+                  {t("library.aiTools")}
                   <ChevronDown size={12} className={`dropdown-caret ${aiMenuOpen ? "is-open" : ""}`} />
                 </button>
                 {aiMenuOpen ? (
-                  <div className="import-menu" role="menu">
+                  <div className="toolbar-menu-panel" role="menu">
                     <button
                       type="button"
                       role="menuitem"
-                      disabled={selectedIds.size === 0 || aiLocBusy}
+                      onClick={() => {
+                        setAiMenuOpen(false);
+                        setConfirmTranslate(true);
+                      }}
+                      disabled={translating || untranslated === 0}
+                      title={
+                        untranslated === 0
+                          ? t("library.translateAllDone")
+                          : t("library.translateTitle", { count: untranslated })
+                      }
+                    >
+                      {translating ? <Spinner size={13} /> : <Languages size={13} />}
+                      {t("library.translateListNames", { count: untranslated })}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
                       onClick={() => {
                         setAiMenuOpen(false);
                         onAiLocBatch?.([...selectedIds]);
                       }}
+                      disabled={selectedIds.size === 0 || aiLocBusy || !onAiLocBatch}
                     >
                       {aiLocBusy ? <Spinner size={13} /> : <Languages size={13} />}
                       {t("library.aiLocSelected", { count: selectedIds.size })}
@@ -778,11 +828,11 @@ export function LibraryView({
                     <button
                       type="button"
                       role="menuitem"
-                      disabled={aiLocBusy || mods.length === 0}
                       onClick={() => {
                         setAiMenuOpen(false);
                         onAiLocBatch?.(mods.map((mod) => mod.id));
                       }}
+                      disabled={aiLocBusy || mods.length === 0 || !onAiLocBatch}
                     >
                       <Languages size={13} />
                       {t("library.aiLocAll", { count: mods.length })}
@@ -791,8 +841,44 @@ export function LibraryView({
                 ) : null}
               </div>
 
-              {/* 低频导入收成下拉：Vortex 元数据 + 集合清单 ZIP */}
-              <div className="import-dropdown" ref={importMenuRef}>
+              {/* 检查更新：全工具栏唯一的强调按钮（主题色描边 + 文字）。 */}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-accent"
+                onClick={onUpdateCheck}
+                disabled={updateChecking}
+                title={t("library.checkUpdatesTitle")}
+              >
+                {updateChecking ? <Spinner size={13} /> : <RefreshCw size={13} />}
+                {t("library.checkUpdates")}
+                {(updateMap?.size ?? 0) > 0 ? t("library.updateCountSuffix", { count: updateMap!.size }) : ""}
+              </button>
+              {(updateMap?.size ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => onApplyUpdates?.([...(updateMap?.keys() ?? [])])}
+                  disabled={applyingUpdates || !onApplyUpdates}
+                  title={t("library.applyAllTitle")}
+                >
+                  {applyingUpdates ? <Spinner size={13} /> : <Download size={13} />}
+                  {t("library.applyAll")}
+                </button>
+              ) : null}
+
+              {/* 低频：宽屏直显，窄屏由容器查询收进「更多 ▾」。 */}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm is-low-frequency"
+                onClick={onEnrichMetadata}
+                disabled={enriching || !onEnrichMetadata}
+                title={t("library.enrichTitle")}
+              >
+                {enriching ? <Spinner size={13} /> : <Wand2 size={13} />}
+                {t("library.enrich")}
+              </button>
+
+              <div className="toolbar-menu is-low-frequency" ref={importMenuRef}>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
@@ -805,7 +891,7 @@ export function LibraryView({
                   <ChevronDown size={12} className={`dropdown-caret ${importMenuOpen ? "is-open" : ""}`} />
                 </button>
                 {importMenuOpen ? (
-                  <div className="import-menu" role="menu">
+                  <div className="toolbar-menu-panel" role="menu">
                     <button
                       type="button"
                       role="menuitem"
@@ -834,53 +920,72 @@ export function LibraryView({
                   </div>
                 ) : null}
               </div>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-accent"
-                onClick={onUpdateCheck}
-                disabled={updateChecking}
-                title={t("library.checkUpdatesTitle")}
-              >
-                {updateChecking ? <Spinner size={13} /> : <RefreshCw size={13} />}
-                {t("library.checkUpdates")}
-                {(updateMap?.size ?? 0) > 0 ? t("library.updateCountSuffix", { count: updateMap!.size }) : ""}
-              </button>
-              {(updateMap?.size ?? 0) > 0 ? (
+
+              {/* 窄屏收纳：默认 display:none，容器变窄才出现。 */}
+              <div className="toolbar-menu toolbar-overflow" ref={overflowRef}>
                 <button
                   type="button"
-                  className="btn btn-sm btn-primary"
-                  onClick={() => onApplyUpdates?.([...(updateMap?.keys() ?? [])])}
-                  disabled={applyingUpdates || !onApplyUpdates}
-                  title={t("library.applyAllTitle")}
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setOverflowOpen((value) => !value)}
+                  aria-expanded={overflowOpen}
+                  title={t("library.moreTitle")}
                 >
-                  {applyingUpdates ? <Spinner size={13} /> : <Download size={13} />}
-                  {t("library.applyAll")}
+                  <MoreHorizontal size={13} />
+                  {t("library.more")}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={onEnrichMetadata}
-                disabled={enriching || !onEnrichMetadata}
-                title={t("library.enrichTitle")}
-              >
-                {enriching ? <Spinner size={13} /> : <Wand2 size={13} />}
-                {t("library.enrich")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-accent"
-                onClick={() => setConfirmTranslate(true)}
-                disabled={translating || untranslated === 0}
-                title={
-                  untranslated === 0
-                    ? t("library.translateAllDone")
-                    : t("library.translateTitle", { count: untranslated })
-                }
-              >
-                {translating ? <Spinner size={13} /> : <Languages size={13} />}
-                {t("library.translate")}
-              </button>
+                {overflowOpen ? (
+                  <div className="toolbar-menu-panel" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        onEnrichMetadata?.();
+                      }}
+                      disabled={enriching || !onEnrichMetadata}
+                    >
+                      <Wand2 size={13} />
+                      {t("library.enrich")}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        onVortexImport?.();
+                      }}
+                      disabled={enriching || !onVortexImport}
+                    >
+                      <PackageOpen size={13} />
+                      {t("library.vortexImport")}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        void pickCollectionManifest();
+                      }}
+                    >
+                      <FileJson size={13} />
+                      {t("library.importManifest")}
+                    </button>
+                    {view === "list" ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOverflowOpen(false);
+                          toggleGroupMode();
+                        }}
+                      >
+                        <Layers size={13} />
+                        {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
