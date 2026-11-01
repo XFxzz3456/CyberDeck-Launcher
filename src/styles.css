@@ -337,28 +337,15 @@ pre {
   border-radius: var(--frost-radius);
 }
 
-/* ── 主内容区毛玻璃底板（7b1db5 引入，3A-2 重构）──────────────────────
-   7b1db5 给 .content 铺的 rgba(5,5,5,0.7) 常驻底板正是「暗化遮罩拉到 0%
-   屏幕依然黑」的来源——它是一层不随滑块走的额外遮罩。3A-2 拍板：暗化只由
-   .app-backdrop-dim 这唯一一层控制，底板颜色降为 transparent，只保留
-   backdrop-filter 的模糊（模糊不变暗，不算第二层遮罩）。 */
-[data-backdrop="on"] {
-  --content-frost-bg: transparent;
-  --content-frost-blur: blur(20px);
-}
-
-:root[data-mode="light"] [data-backdrop="on"] {
-  --content-frost-bg: transparent;
-}
-
-/* 赛博主题（ncpd / netrunner / arasaka / militech）：同样去掉常驻深遮罩，
-   只保留较轻的模糊（透视感由遮罩滑块自己调）。modern 保留中性模糊。 */
-:root[data-style="ncpd"] [data-backdrop="on"],
-:root[data-style="netrunner"] [data-backdrop="on"],
-:root[data-style="arasaka"] [data-backdrop="on"],
-:root[data-style="militech"] [data-backdrop="on"] {
-  --content-frost-bg: transparent;
-  --content-frost-blur: blur(10px);
+/* ── 主内容区（2026-11-01 深夜批次 ea94b5 定案）──────────────────────
+   .content 是页面容器、不是面板。之前给它的 blur(24px) 会把整张背景图糊掉，
+   而设置页又单独关掉它——这正是「从设置切到模组库，背景图突然变模糊」的原因
+   （切换瞬间清楚、动画结束变糊）。定案：背景图本身绝不加模糊，模糊只允许
+   出现在背景之上的 UI 面板（侧栏 / 顶栏 / Tabs / 卡片 / 悬浮层）。
+   顺带删除了已无引用的 --content-frost-* 变量与设置页特例。 */
+[data-glass="on"] .content {
+  background: transparent;
+  backdrop-filter: none;
 }
 
 /* ⚠️ 不要给 backdrop-filter 再加 -webkit- 前缀：Vite 8 的 Lightning CSS 会把
@@ -366,14 +353,6 @@ pre {
    WebView2(Chromium) 不认前缀 ⇒ 毛玻璃整条失效。（H 阶段的 tabs/搜索玻璃就是
    这样在构建后被静默干掉的，源码里看着有、跑起来没有。）本项目只跑 Chromium，
    只用标准属性。 */
-[data-glass="on"] .content {
-  /* L1 容器层。⚠️ 例外：这里**只取模糊、不取 L1 的底色**。
-     3A-2 已定案「暗化只由 .app-backdrop-dim 那唯一一层控制」，
-     若再叠 0.6 黑底，用户把暗化滑块拉到 0% 屏幕依然是黑的（旧 bug 复原）。
-     模糊不变暗，所以只加 blur 是安全的。 */
-  background: transparent;
-  backdrop-filter: var(--glass-l1-blur);
-}
 
 /* 主内容区里的卡片：不再叠毛玻璃，改成「较高不透明度 + 极细高光边框」，
    让它们像浮在毛玻璃底座上，而不是和底座糊成一片。 */
@@ -533,9 +512,107 @@ pre {
   background: rgba(0, 0, 0, 0.05);
 }
 
-/* 设置页：主容器不再模糊（见上方性能说明），玻璃交给 Tabs 与卡片。 */
-[data-glass="on"][data-page="settings"] .content {
+/* 设置页特例已删：.content 在所有页面都不再模糊（ea94b5 定案，
+   见上方「主内容区」注释），玻璃由 Tabs / 卡片 / 侧栏 / 顶栏自己承担。 */
+
+/* ── 毛玻璃质感打磨（2026-11-01 深夜批次：04c646 / f9cdb5 / b6d532）────
+   目标：顶部浑然一体、状态栏数字锐利、边界分明、亮色不泛白、控件不成死黑块。
+   全部只在玻璃态生效，赛博主题变量一律不碰。 */
+
+/* 1) 标题栏与主顶栏统一成同一块 Header（防「两层玻璃叠用」的观感）。
+   两行是兄弟节点、各自独立采样背景图，blur 不会互相叠加（嵌套才会叠）；
+   同材质 + 抹掉中间的分割线，视觉上就是一整块半透明深色顶栏。
+   窗口控制按钮的 hover 底色（--panel-3）在半透明上依然清晰。 */
+[data-glass="on"] .titlebar {
+  background: var(--glass-l1-bg);
+  backdrop-filter: var(--glass-l1-blur);
+  border-bottom-color: transparent;
+}
+
+:root[data-mode="light"] [data-glass="on"] .titlebar {
+  background: rgba(255, 255, 255, 0.62);
+  border-bottom-color: transparent;
+}
+
+/* 2) 右上角统计栏：数字必须极其清晰——高不透明度实底、禁 blur、极细高光描边。
+   （透明层叠加会把数字衬得发虚，这里宁可「实」一点。） */
+[data-glass="on"] .head-stats {
+  background: rgba(25, 25, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: none;
+}
+
+:root[data-mode="light"] [data-glass="on"] .head-stats {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 3) 侧边栏右缘一条极细分割线：明确侧栏与主内容区的边界，拒绝糊成一团。
+   （.sidebar 基础态已有 border-right: var(--line-soft)，这里只在玻璃态加深。） */
+[data-glass="on"] .sidebar {
+  border-right-color: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-mode="light"] [data-glass="on"] .sidebar {
+  border-right-color: rgba(0, 0, 0, 0.07);
+}
+
+/* 4) 工具栏下拉（所有状态 / 名称 A-Z）：消灭纯黑块，改悬浮玻璃胶囊。
+   半透白底 + 高光细边框，hover 提亮；弹出的菜单面板本身走 L3（高不透明+强投影）。 */
+[data-glass="on"] .sort-control {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s;
+}
+
+[data-glass="on"] .sort-control:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-glass="on"] .sort-control select {
+  background: transparent;
+  color: var(--text-2);
+}
+
+:root[data-mode="light"] [data-glass="on"] .sort-control {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+:root[data-mode="light"] [data-glass="on"] .sort-control select {
+  color: #374151;
+}
+
+/* 5) 亮色模式专项（b6d532）：玻璃态下侧栏灰字加深，否则浅色玻璃上看不清。
+   直接改作用域内的灰阶变量，导航项 / 标签 / 底部状态区一次性全部继承。 */
+:root[data-mode="light"][data-glass="on"] .sidebar {
+  --muted: #4b5563;
+  --muted-2: #566072;
+  --text-2: #1f2937;
+}
+
+:root[data-mode="light"][data-glass="on"] .sidebar .nav-item {
+  color: #4b5563;
+}
+
+:root[data-mode="light"][data-glass="on"] .sidebar .nav-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* 6) 亮色模式：输入类控件与卡片边界。路径输入框不能和卡片融在一起。 */
+:root[data-mode="light"][data-glass="on"] .content input:not([type="checkbox"]):not([type="radio"]),
+:root[data-mode="light"][data-glass="on"] .content select,
+:root[data-mode="light"][data-glass="on"] .content textarea {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  color: #1f2937;
+}
+
+/* 7) 亮色模式：玻璃卡片去死白——微白半透 + 轻模糊，保留通透感（macOS 控制中心向）。
+   只动亮色玻璃态的 L2 令牌；暗色模式的毛玻璃参数一字未动。 */
+:root[data-mode="light"][data-glass="on"] {
+  --glass-l2-bg: rgba(255, 255, 255, 0.68);
+  --glass-l2-blur: blur(16px);
 }
 
 /* 卡片底色/模糊/描边统一由下面 3B-2 那条规则给（同特异度后写者赢，
