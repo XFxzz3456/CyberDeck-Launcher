@@ -16,6 +16,7 @@
 - **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。
   之后 **2026-11-01 09:58 重建（含 P5）**：exe 11,168,256 B / md5 `bc1ef81eeb5e1a2e56c7392c0aa2bae0`，冒烟 `stage=frontend mods=186`；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,313,934 B，覆盖首发包）。版本号按用户要求保持 1.0.0，CHANGELOG 用「1.0.0 追加批次」区分。
 - **2026-11-01 11:38 再次重建（含毛玻璃补齐 / AI 汉化入口 / 分类重构）**：exe 11,172,352 B / md5 `b973dc58ff50565710e30557add9cf81`，冒烟 `2026-11-01T03:41:22Z stage=frontend mods=186`；零编译警告。便携版与网盘本轮未重做（等确认）。
+- **2026-11-01 13:59 第三次重建（L1/L2/L3 层级毛玻璃）**：exe 11,172,352 B / md5 `baa396ac752f2128fda9fd1ed9456b3b`，冒烟 `2026-11-01T05:59:22Z stage=frontend mods=186`；便携版与网盘仍未重做。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
