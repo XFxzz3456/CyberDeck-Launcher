@@ -24,6 +24,7 @@
 - **2026-11-01 20:45 玻璃条件改为方案 A**：modern 永远玻璃、赛博四主题永不玻璃、其它主题有背景图才玻璃。exe md5 `c9d5950309f615e40ff1ff45918ae408`，冒烟 `2026-11-01T12:45:36Z stage=frontend mods=186`。
 - **2026-11-01 20:53 设置卡片底色统一**：删掉 `.settings-tab-panel .panel` 的 12% 白提亮，改吃基础 .panel 渐变。exe md5 `3df1bab9f8d5116daf1d87d46dbdfd99`，冒烟 `2026-11-01T12:53:24Z stage=frontend mods=186`。
 - **2026-11-01 21:21 工具栏两组重构**：左「视图与过滤」/ 右「动作与工具」，AI 汉化与翻译名称合并为「AI 工具▾」，三档容器查询收低频不换行。exe md5 `f34048c581e4b473571361fd75e474c8`，冒烟 `2026-11-01T13:21:03Z stage=frontend mods=186`。
+- **2026-11-01 21:55 工具栏重叠修复**：`.toolbar-group` 改 `flex:0 0 auto`（不再收缩溢出），档位由 `useLayoutEffect` 按实测溢出逐级收紧（full/compact/tight/mini）。exe md5 `b4b983baa8c7022dc999ec94198663d1`，冒烟 `2026-11-01T13:55:25Z stage=frontend mods=186`。
 
 前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
 （优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
