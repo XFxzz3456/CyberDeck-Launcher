@@ -107,12 +107,14 @@ export function SettingsTabs({
           >
             <Icon size={14} aria-hidden="true" />
             <span>{tab.label}</span>
+            {/* 下划线是「光标」不是「物体」：固定走 tween（springs.indicator），
+                不再吃主题弹簧族——机械族的轻微过冲在整条下划线横移时会被看成「晃」。 */}
             {selected && motionEnabled ? (
               <motion.span
                 aria-hidden="true"
                 className="settings-tab-underline"
                 layoutId={indicatorLayoutId.settingsTab}
-                transition={springs.snappy}
+                transition={springs.indicator}
               />
             ) : null}
           </button>

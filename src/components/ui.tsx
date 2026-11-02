@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent, type Variants } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-react";
 import { t } from "../i18n";
-import { makeBackdropVariants, makeModalVariants, useMotionSprings } from "../lib/motion";
+import { makeBackdropVariants, makeModalVariants, useMotionFactor, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 
 export function Toggle({
@@ -183,11 +183,15 @@ export function Modal({
 
   const motionEnabled = useMotionEnabled();
   const springs = useMotionSprings();
+  const motionFactor = useMotionFactor();
   const modalVariants = useMemo(
-    () => makeModalVariants(springs.overlay, motionEnabled),
-    [springs, motionEnabled],
+    () => makeModalVariants(springs.overlay, motionEnabled, motionFactor || 1),
+    [springs, motionEnabled, motionFactor],
   );
-  const backdropVariants = useMemo(() => makeBackdropVariants(motionEnabled), [motionEnabled]);
+  const backdropVariants = useMemo(
+    () => makeBackdropVariants(motionEnabled, motionFactor || 1),
+    [motionEnabled, motionFactor],
+  );
 
   // 注意：不能在这里 `if (!open) return null`——AnimatePresence 需要子树
   // 在 open 变 false 之后仍然存在一帧，才能播完退出动画。

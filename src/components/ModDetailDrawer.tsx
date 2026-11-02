@@ -27,7 +27,7 @@ import { formatBytes, formatDate, relativeTime } from "../lib/format";
 import { CoverArt } from "./CoverArt";
 import { Badge, Modal, Spinner, Toggle } from "./ui";
 import { ModSettingsPanel } from "./ModSettingsPanel";
-import { useMotionSprings, makeBackdropVariants, makeDrawerVariants } from "../lib/motion";
+import { useMotionFactor, useMotionSprings, makeBackdropVariants, makeDrawerVariants } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 import { categoryLabel, t } from "../i18n";
 
@@ -117,11 +117,16 @@ export function ModDetailDrawer({
   // 关闭「界面动效」时变体退化为时长 0 的瞬移，不做位移。
   const motionEnabled = useMotionEnabled();
   const springs = useMotionSprings();
+  // 动画速度倍率（「高级设置 → 动画速度」）：1 = 原速，0 = 已关闭。
+  const motionFactor = useMotionFactor();
   const drawerVariants = useMemo(
-    () => makeDrawerVariants(springs.overlay, motionEnabled),
-    [springs, motionEnabled],
+    () => makeDrawerVariants(springs.overlay, motionEnabled, motionFactor || 1),
+    [springs, motionEnabled, motionFactor],
   );
-  const backdropVariants = useMemo(() => makeBackdropVariants(motionEnabled), [motionEnabled]);
+  const backdropVariants = useMemo(
+    () => makeBackdropVariants(motionEnabled, motionFactor || 1),
+    [motionEnabled, motionFactor],
+  );
   // 退场期间这份 DOM 还在（AnimatePresence 保留它播完动画），但用户已经关掉了。
   // 不关掉指针事件的话，那 190ms 里整屏都是"透明挡板"，点哪都没反应。
   const isPresent = useIsPresent();

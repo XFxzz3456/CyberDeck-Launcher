@@ -1,5 +1,6 @@
 import {
   Check,
+  ChevronDown,
   Crop,
   Image as ImageIcon,
   ImageOff,
@@ -101,6 +102,7 @@ export function AppearanceSettings({
   onCustomCodeFont,
   onSidebarCollapsed,
   onAnimations,
+  onMotionSpeed,
   onSplash,
   closeBehavior,
   onCloseBehavior,
@@ -119,6 +121,8 @@ export function AppearanceSettings({
   onCustomCodeFont: (font: string) => void;
   onSidebarCollapsed: (collapsed: boolean) => void;
   onAnimations: (value: boolean) => void;
+  /** 动画速度百分比 0–150（0 = 关闭动画，见 Preferences.motionSpeed）。 */
+  onMotionSpeed: (value: number) => void;
   onSplash: (value: boolean) => void;
   /** 关闭窗口行为：由 SettingsView 传入（原本是页脚那张独立 panel）。 */
   closeBehavior: "tray" | "exit";
@@ -128,6 +132,8 @@ export function AppearanceSettings({
   onToggleHiddenView?: (view: HideableView, hidden: boolean) => void;
 }) {
   const { styleTheme, colorMode, resolvedMode, modeCapable, setColorMode } = useTheme();
+  // 「// ADVANCED」默认收起：只有调手感时才会进来，不占日常视野。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const active = STYLE_PRESETS.find((preset) => preset.id === styleTheme) ?? STYLE_PRESETS[0];
 
   // 风格自带的强调色由 CSS 决定（不同风格 / 明暗各不相同），这里读回实际生效的值。
@@ -772,6 +778,65 @@ export function AppearanceSettings({
           />
         </div>
       </SettingCard>
+
+      {/* ── 07 高级设置（折叠，默认收起）─────────────────
+          刻意放在最底部并且默认折叠：里面只有"调手感"的旋钮，
+          不该跟主题、字体这些日常设置抢注意力。 */}
+      <section
+        className={`panel settings-card appearance-card span-2 advanced-card${
+          advancedOpen ? " is-open" : ""
+        }`}
+      >
+        <button
+          type="button"
+          className="advanced-head"
+          aria-expanded={advancedOpen}
+          aria-controls="appearance-advanced-body"
+          onClick={() => setAdvancedOpen((open) => !open)}
+        >
+          <div className="appearance-card-copy">
+            <div className="panel-eyebrow">// ADVANCED</div>
+            <h2>{t("appearance.advancedTitle")}</h2>
+            <p className="appearance-card-hint">{t("appearance.advancedHint")}</p>
+          </div>
+          <ChevronDown size={16} className="advanced-chevron" aria-hidden="true" />
+        </button>
+        {advancedOpen ? (
+          <div className="appearance-card-body" id="appearance-advanced-body">
+            <label className="bg-slider" title={t("appearance.motionSpeedHint")}>
+              <span>{t("appearance.motionSpeed")}</span>
+              <input
+                type="range"
+                min={0}
+                max={150}
+                step={5}
+                value={preferences.motionSpeed}
+                // 0% = 关掉动画（和上面「界面动效」开关等效），拖到底不用再翻上去关开关。
+                onChange={(event) => onMotionSpeed(Number(event.target.value))}
+                aria-label={t("appearance.motionSpeed")}
+              />
+              <code>{preferences.motionSpeed}%</code>
+            </label>
+            <div className="bg-reset-row">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => onMotionSpeed(100)}
+                disabled={preferences.motionSpeed === 100}
+                title={t("appearance.motionSpeedResetTitle")}
+              >
+                <RotateCcw size={12} /> {t("appearance.motionSpeedReset")}
+              </button>
+              <span className="bg-pos-readout">
+                {preferences.motionSpeed === 0
+                  ? t("appearance.motionSpeedOff")
+                  : t("appearance.motionSpeedReadout", { speed: preferences.motionSpeed })}
+              </span>
+            </div>
+            <p className="appearance-hint">{t("appearance.motionSpeedHint")}</p>
+          </div>
+        ) : null}
+      </section>
     </>
   );
 }

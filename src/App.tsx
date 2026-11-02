@@ -40,7 +40,7 @@ import {
 import { translationChildren } from "./lib/translationMatch";
 import { createCoalescer, type Coalescer } from "./lib/feedback";
 import { TranslationBindDialog } from "./components/TranslationBindDialog";
-import { useMotionEnabled, usePreferences } from "./lib/preferences";
+import { useMotionEnabled, useMotionFactor, usePreferences } from "./lib/preferences";
 import { useViewportTier } from "./lib/viewportTier";
 import type { ActivityItem, TaskItem } from "./lib/tasks";
 import type { View, SidebarBadges } from "./components/Sidebar";
@@ -151,6 +151,7 @@ export default function App() {
     setScale,
     setSidebarCollapsed,
     setAnimations,
+    setMotionSpeed,
     setSplash,
     setLibraryView,
     setUiFont,
@@ -159,6 +160,8 @@ export default function App() {
     setCustomCodeFont,
   } = usePreferences();
   const motionEnabled = useMotionEnabled();
+  // 动画速度倍率（个性化 → 高级设置）：1 = 原速，0 = 已关闭。
+  const motionFactor = useMotionFactor();
   // 侧栏纵向档位：按「窗口高度 ÷ 缩放」算，让矮窗口 / 大缩放时逐级让位（见 viewportTier.ts）。
   useViewportTier(preferences.scale);
 
@@ -178,7 +181,11 @@ export default function App() {
     return () => window.removeEventListener("wheel", onWheel);
   }, [setScale]);
   // 路由切换用一套固定变体（不随主题分化：换页要的是"利落"，不是"手感"）。
-  const routeVariants = useMemo(() => makeRouteVariants(motionEnabled), [motionEnabled]);
+  // 路由切换同样吃「动画速度」倍率（motionFactor 为 0 时退化为瞬移）。
+  const routeVariants = useMemo(
+    () => makeRouteVariants(motionEnabled, motionFactor || 1),
+    [motionEnabled, motionFactor],
+  );
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   // 首启必须过使用协议。注意：**不短路渲染**——主界面照常渲染在底层，
@@ -2798,6 +2805,7 @@ export default function App() {
                 onCustomCodeFont={setCustomCodeFont}
                 onSidebarCollapsed={setSidebarCollapsed}
             onAnimations={setAnimations}
+            onMotionSpeed={setMotionSpeed}
             onSplash={setSplash}
                 notificationPrefs={notificationPrefs}
                 onNotificationPrefsChange={handleNotificationPrefsChange}

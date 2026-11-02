@@ -208,6 +208,7 @@ export function SettingsView({
   onSplash,
   onSidebarCollapsed,
   onAnimations,
+  onMotionSpeed,
   notificationPrefs,
   onNotificationPrefsChange,
   notificationDuration,
@@ -252,6 +253,8 @@ export function SettingsView({
   onCustomCodeFont: (font: string) => void;
   onSidebarCollapsed: (collapsed: boolean) => void;
   onAnimations: (value: boolean) => void;
+  /** 动画速度百分比（个性化 → 高级设置）。 */
+  onMotionSpeed: (value: number) => void;
   onSplash: (value: boolean) => void;
   /** 通知分类偏好（r12）。 */
   notificationPrefs: NotificationPrefs;
@@ -691,6 +694,7 @@ export function SettingsView({
             onCustomCodeFont={onCustomCodeFont}
             onSidebarCollapsed={onSidebarCollapsed}
             onAnimations={onAnimations}
+            onMotionSpeed={onMotionSpeed}
             onSplash={onSplash}
             closeBehavior={settings.closeBehavior}
             onCloseBehavior={(value) => update({ closeBehavior: value })}

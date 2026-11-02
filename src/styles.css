@@ -15687,6 +15687,49 @@ body::before {
   margin-top: 10px;
 }
 
+/* ── 07 高级设置（折叠面板，2026-11-02 574438）──────────────────────
+   默认收起。整个标题行就是按钮——比「小箭头 + 标题两个热区」好点，
+   展开态由 .is-open 控制箭头翻转，不给高度做动画（会触发重排）。 */
+.advanced-card {
+  padding-bottom: 14px;
+}
+
+.advanced-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.advanced-head:hover .appearance-card-copy h2 {
+  color: var(--accent-text);
+}
+
+.advanced-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.advanced-chevron {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  color: var(--muted-2);
+  transition: transform calc(180ms * var(--motion-scale, 1)) ease;
+}
+
+.advanced-card.is-open .advanced-chevron {
+  transform: rotate(180deg);
+  color: var(--accent-text);
+}
+
 .setting-item,
 .setting-list .switch-row {
   min-width: 0;

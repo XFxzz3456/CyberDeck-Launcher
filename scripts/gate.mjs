@@ -576,6 +576,29 @@ const UI_SCRIPTS = [
     ],
   },
   {
+    // 10 项：个性化 → 高级设置里的「动画速度」滑块（574438）。
+    // 只断言可稳定观测的 DOM/存储事实，不采样弹簧曲线——
+    // 曲线阈值留给 check-motion.mjs（不进合入闸，边际太窄会假红）。
+    name: "动画速度滑块",
+    script: "check-motion-speed.mjs",
+    expect: [
+      "advanced=1",
+      "collapsed=1",
+      "slider=1",
+      "scale150=1.5",
+      "stored150=150",
+      "motion150=on",
+      "scale0=0",
+      "motion0=off",
+      "underline0=0",
+      "transition0=1",
+      "resetOk=1",
+      "scaleReload=1.3",
+      "motionReload=on",
+      "errors=0",
+    ],
+  },
+  {
     // 10 项：预设扩成「厂商 → 模型」两级后，分区/模型 ID/地址不被覆盖/本地可编辑必须同时成立（r22）。
     name: "AI 预设目录",
     script: "check-ai-presets.mjs",

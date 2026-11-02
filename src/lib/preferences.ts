@@ -28,6 +28,15 @@ export interface Preferences {
   sidebarCollapsed: boolean;
   /** 界面动效总开关（framer-motion 与 CSS 过渡共用）。false = 一切瞬移。 */
   animations: boolean;
+  /**
+   * 动画速度百分比（0–150，默认 100）。
+   *
+   * 语义按「时长倍率」而不是「速度倍率」：150 = 动画时长 ×1.5（更慢、余韵更长），
+   * 50 = ×0.5（更快），**0 = 完全关闭动画**（等同于 animations=false）。
+   * 用户把滑块拖到 0 时，`applyPreferences` 会把 data-motion 一并写 off，
+   * 这样 framer 的 layoutId 与 CSS 过渡会同时退位，不会出现"半关"状态。
+   */
+  motionSpeed: number;
   /** 启动时的首帧 splash（≤800ms，可跳过）。false = 直接进主界面。 */
   splash: boolean;
   /** 模组库显示方式：卡片网格 / 紧凑列表（bf7889 反馈新增，落盘记住）。 */
@@ -54,6 +63,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   scale: 1,
   sidebarCollapsed: false,
   animations: true,
+  motionSpeed: 100,
   splash: true,
   libraryView: "grid",
   uiFont: "system",
@@ -76,6 +86,17 @@ function clampScale(value: unknown): number {
 }
 
 /**
+ * 动画速度钳制：0–150 的整数百分比。
+ *
+ * 缺省按 100 处理（老配置里没有这个字段，升级后手感不该突变）。
+ * 不按步长取整：滑块步长由 UI 定义，存储层只保证范围合法。
+ */
+export function clampMotionSpeed(value: unknown): number {
+  const numeric = typeof value === "number" && Number.isFinite(value) ? value : 100;
+  return Math.min(150, Math.max(0, Math.round(numeric)));
+}
+
+/**
  * v1 只负责外观偏好（强调色 / 缩放 / 侧边栏）。视觉风格与明暗模式由
  * theme.ts 的 ncl.ui.theme.v2 负责；v1 里的 theme 字段仅作为迁移来源保留。
  */
@@ -86,6 +107,7 @@ interface StoredPreferences {
   scale: number;
   sidebarCollapsed: boolean;
   animations: boolean;
+  motionSpeed: number;
   splash: boolean;
   libraryView: LibraryView;
   uiFont: UiFontId;
@@ -111,6 +133,8 @@ function loadStored(): StoredPreferences {
       sidebarCollapsed: value.sidebarCollapsed === true,
       // 缺省视为开：老用户升级后不该发现界面变「僵」了。
       animations: value.animations !== false,
+      // 老配置里没有：按 100%（原始手感）兜底。
+      motionSpeed: clampMotionSpeed(value.motionSpeed),
       // 缺省视为开：首帧 splash 是 0.9.0 的新默认观感，但老配置里没有这个字段。
       splash: value.splash !== false,
       // 老配置里没有这个字段：默认卡片视图，和升级前看到的界面一致。
@@ -278,10 +302,19 @@ export function applyPreferences(preferences: Preferences) {
     clearCustomAccent();
   }
   // 动效开关写在 DOM 属性上：CSS（过渡/动画停用）和 framer（useMotionEnabled）都从这读。
-  const motionOn = preferences.animations;
+  // 速度 0% 等同于关：两条路径必须一起退位，否则 layoutId 停摆但 CSS 还在动。
+  const speed = clampMotionSpeed(preferences.motionSpeed);
+  const motionOn = preferences.animations && speed > 0;
+  // 时长倍率写进 CSS 变量：CSS 过渡按 var(--motion-scale) 换算（100% = 1）。
+  root.style.setProperty("--motion-scale", String(motionOn ? speed / 100 : 0));
   if (root.dataset.motion !== (motionOn ? "on" : "off")) {
     root.dataset.motion = motionOn ? "on" : "off";
     notifyMotionListeners(motionOn);
+  }
+  // 速度变了要通知订阅者重建弹簧（framer 的参数是构建时算好的）。
+  if (motionSpeedCached !== speed) {
+    motionSpeedCached = speed;
+    motionListeners.forEach((listener) => listener());
   }
 }
 
@@ -289,6 +322,7 @@ export function applyPreferences(preferences: Preferences) {
 
 const motionListeners = new Set<() => void>();
 let motionEnabledCached = true;
+let motionSpeedCached = 100;
 
 function notifyMotionListeners(next: boolean) {
   motionEnabledCached = next;
@@ -311,6 +345,26 @@ function getMotionEnabledSnapshot(): boolean {
 /** 当前是否允许动画。framer 组件用它决定要不要挂 whileHover / layoutId。 */
 export function useMotionEnabled(): boolean {
   return useSyncExternalStore(subscribeMotion, getMotionEnabledSnapshot, getMotionEnabledSnapshot);
+}
+
+function getMotionSpeedSnapshot(): number {
+  if (typeof document !== "undefined" && document.documentElement.style.getPropertyValue("--motion-scale")) {
+    const raw = Number(document.documentElement.style.getPropertyValue("--motion-scale"));
+    if (Number.isFinite(raw) && raw > 0) motionSpeedCached = Math.round(raw * 100);
+  }
+  return motionSpeedCached;
+}
+
+/**
+ * 动画时长倍率（0.01–1.5）；0 表示动效已关闭。
+ *
+ * framer 的 transition 参数在渲染时就固化了，改速度必须让订阅者重算——
+ * 所以这里走 useSyncExternalStore，而不是读一次全局变量。
+ */
+export function useMotionFactor(): number {
+  const enabled = useMotionEnabled();
+  const speed = useSyncExternalStore(subscribeMotion, getMotionSpeedSnapshot, getMotionSpeedSnapshot);
+  return enabled && speed > 0 ? speed / 100 : 0;
 }
 
 export function usePreferences() {
@@ -354,6 +408,8 @@ export function usePreferences() {
       setStored((current) => ({ ...current, sidebarCollapsed })),
     setAnimations: (animations: boolean) =>
       setStored((current) => ({ ...current, animations })),
+    setMotionSpeed: (motionSpeed: number) =>
+      setStored((current) => ({ ...current, motionSpeed: clampMotionSpeed(motionSpeed) })),
     setSplash: (splash: boolean) => setStored((current) => ({ ...current, splash })),
     setLibraryView: (libraryView: LibraryView) =>
       setStored((current) => ({ ...current, libraryView })),
