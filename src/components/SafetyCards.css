@@ -56,6 +56,120 @@
   gap: 8px;
 }
 
+/* 目标版本行：只念社区叫法，内部四段号在 title 里。 */
+.compat-target {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+
+/* 健康结论：绿色一条，替代过去那条"N 个兼容性未知"的长列表。 */
+.compat-ok {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--ok, #3fb950) 45%, var(--line));
+  border-left: 3px solid var(--ok, #3fb950);
+  background: color-mix(in srgb, var(--ok, #3fb950) 8%, transparent);
+}
+
+.compat-ok svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ok, #3fb950);
+}
+
+.compat-ok strong {
+  display: block;
+  font-size: 13px;
+  font-weight: var(--fw-title, 500);
+  color: var(--ok, #3fb950);
+}
+
+.compat-ok span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 有风险才出现的区块：标题显式给数量，列表最多 4 条（前置就 4 个）。 */
+.compat-risk-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compat-risk-head {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: var(--fw-title, 500);
+  color: var(--danger, #e5484d);
+}
+
+.compat-risk-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.compat-idle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* 四项前置的横向明细：只报状态与版本，不参与吓人。 */
+.compat-frameworks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compat-frameworks li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-2, var(--text));
+}
+
+.compat-frameworks li em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.compat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok, #3fb950);
+}
+
+.compat-frameworks li[data-status="missing"] {
+  color: var(--muted);
+}
+
+.compat-frameworks li[data-status="missing"] .compat-dot {
+  background: var(--danger, #e5484d);
+}
+
+.compat-frameworks li[data-status="broken"] .compat-dot {
+  background: var(--warn, #d9a300);
+}
+
 .compat-list {
   margin: 0;
   padding: 0;
@@ -75,7 +189,7 @@
   font-size: 12.5px;
 }
 
-.compat-list li.is-stale {
+.compat-list li.is-risk {
   border-left: 2px solid var(--danger, #e5484d);
 }
 
@@ -92,28 +206,5 @@
   font-size: 12px;
 }
 
-.compat-warn-block summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 12.5px;
-  padding: 4px 0;
-}
 
-.compat-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  border: 1px solid currentColor;
-  white-space: nowrap;
-}
 
-.compat-badge-stale {
-  color: var(--danger, #e5484d);
-}
-
-.compat-badge-warn {
-  color: var(--warn, #d9a300);
-}

@@ -41,6 +41,7 @@ import { ConfigPackCard } from "./ConfigPackCard";
 import { GlossaryShareCard } from "./GlossaryShareCard";
 import { HelpCenterView } from "./HelpCenterView";
 import { SafeModeCard } from "./SafeModeCard";
+import { gameVersionText } from "../lib/gameVersion";
 import { SettingsTabs, type SettingsTabId } from "./SettingsTabs";
 import type { Preferences, ThemeId } from "../lib/preferences";
 import type {
@@ -795,7 +796,10 @@ export function SettingsView({
                 <div className="dir-meta">
                   {game ? (
                     <>
-                      <span>v{game.version ?? "unknown"}</span>
+                      {/* 显示社区叫法（2.5），exe 内部四段号放 title 供排查对照。 */}
+                      <span title={game.version ?? undefined}>
+                        v{gameVersionText(game.version) ?? t("common.unknown")}
+                      </span>
                       <span>·</span>
                       <span>{game.source.toUpperCase()}</span>
                       <span>·</span>

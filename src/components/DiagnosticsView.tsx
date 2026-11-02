@@ -42,6 +42,7 @@ function withV(version: string): string {
   return /^v/i.test(value) ? value : `v${value}`;
 }
 import { LogViewerDialog } from "./LogViewerDialog";
+import { gameVersionText } from "../lib/gameVersion";
 
 function SeverityIcon({ severity }: { severity: DiagnosticIssue["severity"] }) {
   if (severity === "error") return <CircleAlert size={17} />;
@@ -240,7 +241,9 @@ export function DiagnosticsView({
         </div>
         <div className="summary-metrics">
           <div>
-            <strong>{report.game?.version ? withV(report.game.version) : "—"}</strong>
+            <strong title={report.game?.version ?? undefined}>
+              {report.game?.version ? `v${gameVersionText(report.game.version) ?? report.game.version}` : "—"}
+            </strong>
             <span>GAME</span>
           </div>
           <div>
@@ -607,7 +610,11 @@ export function DiagnosticsView({
             <div className="kv-list">
               <div className="kv">
                 <span>{t("diagnostics.gameVersion")}</span>
-                <strong>{report.game?.version ? withV(report.game.version) : t("common.unknown")}</strong>
+                <strong title={report.game?.version ?? undefined}>
+                  {report.game?.version
+                    ? `v${gameVersionText(report.game.version) ?? report.game.version}`
+                    : t("common.unknown")}
+                </strong>
               </div>
               <div className="kv">
                 <span>{t("diagnostics.gameSource")}</span>

@@ -12,6 +12,7 @@ mod deps;
 mod diagnostics;
 mod download_queue;
 mod game;
+mod gamever;
 mod glossary;
 mod installer;
 mod loadorder;
@@ -2022,7 +2023,8 @@ async fn safemode_exit(app: tauri::AppHandle) -> AppResult<safemode::SafeModeRep
     .map_err(|e| CommandError::new("SAFEMODE_TASK", format!("安全模式任务异常：{e}")))?
 }
 
-/// 过期插件扫描：只读，不修改任何 Mod 文件。
+/// 兼容性体检：只查核心前置框架（RED4ext / ArchiveXL / TweakXL / Codeware），
+/// 不再逐 Mod 找元数据。只读，不修改任何文件。
 #[tauri::command]
 async fn compat_scan(
     app: tauri::AppHandle,
@@ -2030,22 +2032,22 @@ async fn compat_scan(
 ) -> AppResult<compat::CompatReport> {
     tauri::async_runtime::spawn_blocking(move || {
         let store = app.state::<Store>();
-        // 目标版本默认取「当前绑定的游戏 exe 实际版本」。写死 2.5 会把故意降级
-        // 或还在玩 2.21 的玩家整库判成过期，等于给他们一个假警报。
-        let resolved = match target.filter(|value| !value.trim().is_empty()) {
-            Some(value) => Some(value),
-            None => {
-                let data = store.snapshot_data();
-                current_game(&data)
-                    .ok()
-                    .and_then(|game| game.version)
-                    .or_else(|| data.last_game_version.clone())
-            }
-        };
-        compat::scan(store.inner(), resolved.as_deref())
+        let data = store.snapshot_data();
+        // 目标版本取「当前绑定的游戏 exe 实际版本」，取不到退回上次记录；
+        // 两者都没有时传 None，报告里会标成"未知版本"，界面不下结论。
+        let game = current_game(&data).ok();
+        let root = game
+            .as_ref()
+            .map(|info| PathBuf::from(&info.root))
+            .or_else(|| data.game_dir.as_deref().map(PathBuf::from));
+        let resolved = target
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| game.as_ref().and_then(|info| info.version.clone()))
+            .or_else(|| data.last_game_version.clone());
+        compat::scan(root.as_deref(), resolved.as_deref())
     })
     .await
-    .map_err(|e| CommandError::new("COMPAT_TASK", format!("兼容扫描任务异常：{e}")))?
+    .map_err(|e| CommandError::new("COMPAT_TASK", format!("兼容体检任务异常：{e}")))?
 }
 
 /// 批量给已有记录补 Nexus 官方封面。

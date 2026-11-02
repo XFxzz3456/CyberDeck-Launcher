@@ -282,6 +282,22 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 1.0.0 批次 6：兼容性体检重构（只查核心前置、版本号换社区叫法、不再报"未知"）
+    name: "兼容性体检（防焦虑）",
+    script: "check-compat-health.mjs",
+    expect: [
+      "rendered=1",
+      "targetIsCommunity=1",
+      "targetHasVerdict=1",
+      "healthyBanner=1",
+      "riskItems=0",
+      "warnBlock=0",
+      "frameworkChips=4",
+      "legacyWording=0",
+      "pageerrors=0",
+    ],
+  },
+  {
     name: "虚拟滚动 / 脏数据不白屏",
     script: "check-scroll.mjs",
     expect: ["total>=10", "rendered>=1", "rendered<total", "afterScroll>=1", "afterDirty>=1", "fault=0"],

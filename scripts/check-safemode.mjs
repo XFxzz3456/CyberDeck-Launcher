@@ -38,10 +38,41 @@ check(/safemode-snapshot\.json/.test(safemode), "快照文件固定命名");
 check(/SAFEMODE_IDLE/.test(safemode), "无快照时明确报错而不是静默成功");
 check(/failed_mods == 0/.test(safemode), "恢复失败时保留快照");
 
-// 4) 兼容扫描：无声明 → warn，绝不 stale
-check(/report\.warn\.push/.test(compat), "无声明走 warn 分支");
-check(/version_lt/.test(compat), "版本比较集中在一个函数");
-check(/TARGET_GAME_VERSION/.test(compat), "目标版本常量存在");
+// 4) 兼容体检（b014cf 重构）：只查核心前置，绝不回到「逐 Mod 找元数据」的老路。
+//    老实现会把 186 个 Mod 里的 114 个标成"兼容性未知"，纯焦虑制造；这条断言
+//    就是防止某次重构又把 read_declaration 捡回来。
+const compatImpl = compat.split("#[cfg(test)]")[0];
+check(!/read_declaration/.test(compatImpl), "不再逐 Mod 读元数据（read_declaration 已删除）");
+check(
+  ["red4ext", "archivexl", "tweakxl", "codeware"].every((id) => compatImpl.includes(`id: "${id}"`)),
+  "核心前置清单含 RED4ext / ArchiveXL / TweakXL / Codeware",
+);
+check(/report\.risks\.push/.test(compatImpl), "风险只来自前置缺失/半装");
+check(/healthy = report\.risks\.is_empty\(\)/.test(compatImpl), "无风险才算健康");
+check(/gamever::describe/.test(compatImpl), "目标版本走 gamever 映射，不直接回显内部号");
+
+// 5) 版本号映射：内部四段号必须换成社区叫法，且阈值表是数据不是逻辑。
+const gamever = read("src-tauri/src/gamever.rs");
+check(/INTERNAL_FLOORS/.test(gamever), "版本阈值表集中在 gamever.rs");
+check(/\(80, "2\.5"\)/.test(gamever), "2.5 桶按 3.0.80 起算");
+check(/LEGACY_LABEL/.test(gamever), "过老版本有明确兜底标签，不退化成前三段");
+check(/UNKNOWN_LABEL/.test(gamever), "认不出来时给未知，不猜");
+
+// 5b) 前后端阈值表必须逐项一致 —— 两边查表结果不同会出现「侧栏说 2.5、
+//     诊断说别的」这种鬼故事。这里直接把两张表抽出来做全等比较。
+const rustFloors = [...gamever.matchAll(/\((\d+), "([0-9.]+)"\)/g)].map((m) => `${m[1]}:${m[2]}`);
+const tsFloors = [
+  ...read("src/lib/gameVersion.ts").matchAll(/\{ patch: (\d+), label: "([0-9.]+)" \}/g),
+].map((m) => `${m[1]}:${m[2]}`);
+check(
+  rustFloors.length >= 3 && rustFloors.join(",") === tsFloors.join(","),
+  `前后端版本阈值表一致（rust=${rustFloors.join(",")} / ts=${tsFloors.join(",")}）`,
+);
+
+// 6) 卡片不再渲染"未知"长列表，健康时只给绿色结论
+check(/compat-ok/.test(card), "健康结论用 .compat-ok 绿条");
+check(!/compat-warn-block/.test(card), "未知列表的折叠块已移除");
+check(/scan\.healthy/.test(card), "卡片按 healthy 分支渲染");
 
 console.log(`checks_failed=${failed}`);
 process.exit(failed === 0 ? 0 : 1);

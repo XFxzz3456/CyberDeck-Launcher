@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { safetyApi, type CompatReport, type SafeModeState } from "../lib/apiSafety";
 import { t } from "../i18n";
-import { gameVersionLabel, versionAtLeast } from "../lib/gameVersion";
+import { gameVersionLabel, gameVersionWithSuffix, versionAtLeast } from "../lib/gameVersion";
 import { Badge, Modal, Spinner } from "./ui";
 import "./SafetyCards.css";
 
@@ -89,7 +89,7 @@ export function SafeModeCard({
       <header className="panel-head">
         <div>
           <div className="panel-eyebrow">
-            {atLeast25 ? "// SAFE MODE / 2.5" : "// SAFE MODE"}
+            {atLeast25 && versionLabel ? `// SAFE MODE / ${versionLabel}` : "// SAFE MODE"}
           </div>
           <h2>{t("safemode.title")}</h2>
         </div>
@@ -134,37 +134,56 @@ export function SafeModeCard({
 
       {scan ? (
         <div className="compat-result">
-          <p className="safety-note">
-            {t("compat.summary", {
-              scanned: scan.scanned,
-              stale: scan.stale.length,
-              warn: scan.warn.length,
-              // 后端给的是 exe 四段号，展示层换成玩家说的 2.5 / 2.21。
-              target: gameVersionLabel(scan.targetVersion)?.label ?? scan.targetVersion,
-            })}
+          {/* 目标版本：只给社区叫法，内部四段号放 title 供排查时对照。 */}
+          <p className="compat-target" title={scan.targetVersion || undefined}>
+            {scan.targetMatched
+              ? t("compat.targetMatched", {
+                  version: gameVersionWithSuffix(scan.targetVersion) ?? scan.targetVersion,
+                })
+              : t("compat.targetUnknown", {
+                  raw: scan.targetVersion || t("common.unknown"),
+                })}
           </p>
-          {scan.stale.length > 0 ? (
-            <ul className="compat-list">
-              {scan.stale.slice(0, 8).map((issue) => (
-                <li key={issue.modId} className="is-stale">
-                  <strong>{issue.name}</strong>
-                  <span>{issue.reason}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {scan.warn.length > 0 ? (
-            <details className="compat-warn-block">
-              <summary>{t("compat.warnToggle", { n: scan.warn.length })}</summary>
+
+          {!scan.gameFound ? (
+            <p className="compat-idle">{t("compat.noGame")}</p>
+          ) : scan.healthy ? (
+            // 没有风险就只给一句绿色结论 —— 不再列出"N 个兼容性未知"。
+            <div className="compat-ok">
+              <ShieldCheck size={16} aria-hidden="true" />
+              <div>
+                <strong>{t("compat.healthyTitle")}</strong>
+                <span>{t("compat.healthyBody", { n: scan.scanned })}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="compat-risk-block">
+              <p className="compat-risk-head">
+                {t("compat.riskTitle", { n: scan.risks.length })}
+              </p>
               <ul className="compat-list">
-                {scan.warn.slice(0, 8).map((issue) => (
-                  <li key={issue.modId} className="is-warn">
-                    <strong>{issue.name}</strong>
-                    <span>{issue.reason}</span>
+                {scan.risks.map((risk) => (
+                  <li key={risk.id} className={`is-${risk.severity}`}>
+                    <strong>{risk.reason}</strong>
+                    <span>{risk.detail}</span>
                   </li>
                 ))}
               </ul>
-            </details>
+              <p className="compat-risk-hint">{t("compat.riskHint")}</p>
+            </div>
+          )}
+
+          {/* 前置明细永远只有 4 行，属于"我到底装了什么"的核对信息，不吓人。 */}
+          {scan.gameFound ? (
+            <ul className="compat-frameworks">
+              {scan.frameworks.map((item) => (
+                <li key={item.id} data-status={item.status} title={item.path}>
+                  <span className="compat-dot" aria-hidden="true" />
+                  {item.name}
+                  {item.version ? <em>{item.version}</em> : null}
+                </li>
+              ))}
+            </ul>
           ) : null}
         </div>
       ) : null}

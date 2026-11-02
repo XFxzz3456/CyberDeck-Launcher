@@ -1,383 +1,315 @@
-//! 过期插件扫描：找出「明确声明不适配当前游戏版本」的 Mod（看板【13】B）。
+//! 兼容性体检：**只查核心前置框架**，不再逐 Mod 找元数据（看板【13】B / 任务 b014cf）。
 //!
-//! 判定原则（避免误报比多抓几个更重要）：
-//! - 读到了版本声明且低于目标版本 → `stale`（红，确定过期）
-//! - 没有声明 / 读不出来 / 声明格式不认识 → `warn`（黄，兼容性未知）
-//! - 声明满足目标 → 不出现在报告里
+//! 为什么推翻旧实现：旧版遍历全库、去每个 Mod 目录里找 `gameVersion` 之类的
+//! 声明。但 CP2077 生态的现实是——绝大多数老 Mod 根本不带这种元数据，于是
+//! 186 个 Mod 里有 114 个被标成「兼容性未知」。这个结论对玩家零价值，却会
+//! 让人误以为"我装了一堆不兼容的东西"，属于纯焦虑制造器。
+//!
+//! 现在的判定口径（对齐 Vortex 的思路）：**版本兼容性由核心前置承担**。
+//! RED4ext / ArchiveXL / TweakXL / Codeware 只要装好、文件完整，绝大多数
+//! Mod 就能跑；真出问题也是这四件之一先坏。所以：
+//!
+//! - 前置齐全 → 一句「核心前置已就绪」，不给任何列表；
+//! - 缺前置 → 记为风险（红），并说清缺的是哪一件、应该放哪个目录；
+//! - 目录在但主文件不在（升级中断、被杀软删 dll）→ 记为风险（黄），
+//!   这种"半装"状态是玩家最容易踩、也最难自己看出来的坑。
+//!
+//! 刻意不做的事：不判「前置版本过旧」。判断过旧需要一份随游戏版本走的
+//! 框架最低版本基线（要联网且会被上游改），拍脑袋写死数字等于制造假警报。
+//! 报告里仍然回显每个框架的版本号，让用户和作者对话时有据可查。
 //!
 //! 只读操作：不修改任何 Mod 文件，也不写状态。
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
 
-use crate::schema::{AppResult, CommandError};
-use crate::store::Store;
+use crate::gamever;
+use crate::schema::AppResult;
 
-/// 目标游戏版本。0.9.0 按看板定义的 2.5 线；游戏实际版本可由调用方覆盖。
-pub const TARGET_GAME_VERSION: &str = "2.5";
+/// 一个核心前置在游戏目录里的落点（相对路径）。
+///
+/// 只列「玩家一定会装」的四件：RED4ext 是所有原生插件的基础，ArchiveXL /
+/// TweakXL / Codeware 覆盖了 90% 以上的现代 Mod。CET 与 redscript 属于
+/// 「装了才有需求」，缺了不构成风险，因此不进这张表。
+struct CoreFramework {
+    id: &'static str,
+    name: &'static str,
+    /// 目录（判定"装没装"的强证据）。
+    dir: &'static [&'static str],
+    /// 主文件（判定"装得完不完整"）。
+    file: &'static [&'static str],
+    note: &'static str,
+}
 
-/// 单个 Mod 目录里最多看这么多文件，避免超大 Mod 拖慢扫描。
-const MAX_FILES_PER_MOD: usize = 120;
-const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+const CORE_FRAMEWORKS: &[CoreFramework] = &[
+    CoreFramework {
+        id: "red4ext",
+        name: "RED4ext",
+        dir: &["red4ext"],
+        file: &["red4ext", "RED4ext.dll"],
+        note: "所有原生插件框架的运行基础",
+    },
+    CoreFramework {
+        id: "archivexl",
+        name: "ArchiveXL",
+        dir: &["red4ext", "plugins", "ArchiveXL"],
+        file: &["red4ext", "plugins", "ArchiveXL", "ArchiveXL.dll"],
+        note: "扩展 archive 加载能力（依赖 RED4ext）",
+    },
+    CoreFramework {
+        id: "tweakxl",
+        name: "TweakXL",
+        dir: &["red4ext", "plugins", "TweakXL"],
+        file: &["red4ext", "plugins", "TweakXL", "TweakXL.dll"],
+        note: "TweakDB 修改支持（依赖 RED4ext）",
+    },
+    CoreFramework {
+        id: "codeware",
+        name: "Codeware",
+        dir: &["red4ext", "plugins", "Codeware"],
+        file: &["red4ext", "plugins", "Codeware", "Codeware.dll"],
+        note: "许多功能模组依赖的脚本库",
+    },
+];
 
+/// 单个前置的体检结果（界面按行渲染，不再有"未知"这种状态）。
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CompatIssue {
-    pub mod_id: String,
+pub struct CompatFramework {
+    pub id: String,
     pub name: String,
-    /// 读到的版本声明原文（没有则 None）。
-    pub declared: Option<String>,
-    /// 判定依据，直接给用户看。
+    /// ok | missing | broken
+    pub status: String,
+    /// 从主文件读到的文件版本；读不到为 None（不影响判定）。
+    pub version: Option<String>,
+    /// 期望落点，缺失时给用户指路。
+    pub path: String,
+    pub note: String,
+}
+
+/// 真正的风险项。只有缺失 / 半装才会产生，没有问题就是空数组。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatRisk {
+    pub id: String,
+    pub name: String,
+    /// risk（红，缺前置）| warn（黄，装得不完整）
+    pub severity: String,
+    /// 一句话结论，直接上屏。
     pub reason: String,
+    /// 补充说明（期望路径 / 下载建议）。
+    pub detail: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CompatReport {
+    /// 游戏内部版本原文（3.0.88.46235）。
     pub target_version: String,
+    /// 社区叫法（2.5 / 旧版 (2.0 及以下) / 未知版本）。
+    pub target_label: String,
+    /// 版本号是否命中已知映射。false 时界面只说"未知版本"，不下结论。
+    pub target_matched: bool,
+    /// 是否读到了游戏目录；false 时只提示绑定目录，不报风险。
+    pub game_found: bool,
+    pub checked_at: String,
+    /// 实际检查的前置数量。
     pub scanned: usize,
-    pub stale: Vec<CompatIssue>,
-    pub warn: Vec<CompatIssue>,
+    pub frameworks: Vec<CompatFramework>,
+    pub risks: Vec<CompatRisk>,
+    /// 无任何风险 —— 界面据此显示绿色总结。
+    pub healthy: bool,
 }
 
-fn version_regexes() -> &'static Vec<Regex> {
-    static REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
-    REGEXES.get_or_init(|| {
-        [
-            // JSON：{"gameVersion": "2.21"}
-            r#"(?i)"game[_-]?version"\s*:\s*"([^"]+)""#,
-            r#"(?i)"game[_-]?version[_-]?min"\s*:\s*"([^"]+)""#,
-            r#"(?i)"(?:target|required)[_-]?game[_-]?version"\s*:\s*"([^"]+)""#,
-            // TOML / INI：game_version = "2.21" / gameVersion=2.21
-            r#"(?i)game[_-]?version\s*[:=]\s*"?([0-9][^"\r\n,}\]]*)"?#,
-            // CET manifest 里偶见：compatibleVersions: ["2.2","2.21"]
-            r#"(?i)"compatible[_-]?versions?"\s*:\s*\[([^\]]*)\]"#,
-        ]
-        .iter()
-        .filter_map(|pattern| Regex::new(pattern).ok())
-        .collect()
-    })
+fn join(root: &Path, parts: &[&str]) -> PathBuf {
+    parts.iter().fold(root.to_path_buf(), |acc, item| acc.join(item))
 }
 
-/// 解析版本号为数字段序列：`2.21` → [2, 2, 1]，`2.5` → [2, 5]，`2.3.0` → [2, 3, 0]。
-///
-/// 🔴 关键：赛博朋克的版本号不是"两位小数"。`2.21` 表示 2.2.1 这个补丁，比 `2.5`
-/// 早，但按整数比较 21 > 5 会得出相反结论。所以这里把每一段数字拆成独立分量，
-/// 用字典序比较——`[2,2,1] < [2,5]` 与 `[2,2,1] < [2,3]` 都成立。
-fn parse_version(raw: &str) -> Option<Vec<u32>> {
-    // 逐位取数字：`2.21` → [2, 2, 1]、`2.5` → [2, 5]、`2.3.0` → [2, 3, 0]。
-    // 这样 `2.21`（= 2.2.1）与 `2.5` 的先后关系才与游戏实际一致。
-    let digits: Vec<u32> = raw
-        .chars()
-        .filter(|ch| ch.is_ascii_digit())
-        .filter_map(|ch| ch.to_digit(10))
-        .collect();
-    if digits.is_empty() {
-        None
+/// 检查一个前置。返回体检结果 + 可能的风险项。
+fn probe(root: &Path, spec: &CoreFramework) -> (CompatFramework, Option<CompatRisk>) {
+    let dir = join(root, spec.dir);
+    let file = join(root, spec.file);
+    let shown = file.to_string_lossy().to_string();
+    let dir_exists = dir.is_dir();
+    let file_exists = file.is_file();
+    // 目录本身不是文件，没有版本资源可读；只在主文件存在时问一次。
+    let version = if file_exists {
+        crate::game::file_version(&file)
     } else {
-        Some(digits)
-    }
-}
-
-/// 逐位字典序比较（短的补 0）：`[2,2,1] < [2,5]`、`[2,3] < [2,5]`。
-///
-/// 🔴 关键：赛博朋克的版本号里 `2.21` 是 2.2 之后的补丁，`2.5` 比它新。
-/// 若把 21 当整数比，会得出"2.21 更新"的反结论。
-fn version_lt(left: &[u32], right: &[u32]) -> bool {
-    let len = left.len().max(right.len());
-    for index in 0..len {
-        let a = *left.get(index).unwrap_or(&0);
-        let b = *right.get(index).unwrap_or(&0);
-        if a != b {
-            return a < b;
-        }
-    }
-    false
-}
-
-fn is_manifest_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".toml")
-        || lower.ends_with(".json")
-        || lower.ends_with(".ini")
-        || lower == "readme.txt"
-}
-
-/// 从一个 Mod 目录里尽力读出兼容声明。
-fn read_declaration(dir: &Path) -> Option<String> {
-    let mut seen = 0usize;
-    for entry in WalkDir::new(dir)
-        .max_depth(4)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !is_manifest_file(&name) {
-            continue;
-        }
-        seen += 1;
-        if seen > MAX_FILES_PER_MOD {
-            break;
-        }
-        let meta = match entry.metadata() {
-            Ok(meta) => meta,
-            Err(_) => continue,
-        };
-        if meta.len() > MAX_MANIFEST_BYTES {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
-            continue;
-        };
-        for pattern in version_regexes() {
-            let Some(captures) = pattern.captures(&text) else {
-                continue;
-            };
-            let raw = captures.get(1)?.as_str();
-            // compatibleVersions 数组：取其中最高的一个当声明。
-            if raw.contains('"') {
-                let mut best: Option<Vec<u32>> = None;
-                let mut best_raw = String::new();
-                for quoted in raw.split('"').filter(|item| item.trim().len() >= 3) {
-                    if let Some(version) = parse_version(quoted) {
-                        if best
-                            .as_ref()
-                            .map(|current| version_lt(current, &version))
-                            .unwrap_or(true)
-                        {
-                            best = Some(version);
-                            best_raw = quoted.trim().to_string();
-                        }
-                    }
-                }
-                if !best_raw.is_empty() {
-                    return Some(best_raw);
-                }
-                continue;
-            }
-            if parse_version(raw).is_some() {
-                return Some(raw.trim().trim_end_matches(['"', ',']).to_string());
-            }
-        }
-    }
-    None
-}
-
-/// 扫描全库。`target` 为空时用 `TARGET_GAME_VERSION`。
-pub fn scan(store: &Store, target: Option<&str>) -> AppResult<CompatReport> {
-    let target_raw = target
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(TARGET_GAME_VERSION)
-        .to_string();
-    let target_version = parse_version(&target_raw).ok_or_else(|| {
-        CommandError::new("COMPAT_TARGET", format!("目标版本无法解析：{target_raw}"))
-    })?;
-
-    let data = store.snapshot_data();
-    let mut report = CompatReport {
-        target_version: target_raw.clone(),
-        ..CompatReport::default()
+        None
     };
-    let mut seen_ids: BTreeSet<String> = BTreeSet::new();
 
-    for entry in data.mods.iter() {
-        if !seen_ids.insert(entry.id.clone()) {
-            continue;
-        }
-        let dir = PathBuf::from(&entry.staging_path);
-        if !dir.is_dir() {
-            continue;
-        }
-        report.scanned += 1;
-        match read_declaration(&dir) {
-            Some(declared) => match parse_version(&declared) {
-                Some(version) if version_lt(&version, &target_version) => report.stale.push(CompatIssue {
-                    mod_id: entry.id.clone(),
-                    name: entry.name.clone(),
-                    declared: Some(declared.clone()),
-                    // 不在这里拼版本号：目标版本可能是四段内部号，展示层会用
-                    // 社区叫法（2.5 / 2.21）重写这句。
-                    reason: format!("声明适配 {declared}，低于当前游戏版本"),
-                }),
-                Some(_) => {}
-                None => report.warn.push(CompatIssue {
-                    mod_id: entry.id.clone(),
-                    name: entry.name.clone(),
-                    declared: Some(declared.clone()),
-                    reason: format!("版本声明“{declared}”无法解析"),
-                }),
-            },
-            None => report.warn.push(CompatIssue {
-                mod_id: entry.id.clone(),
-                name: entry.name.clone(),
-                declared: None,
-                reason: "没有找到兼容性声明".to_string(),
+    let (status, risk) = if file_exists {
+        ("ok", None)
+    } else if dir_exists {
+        // 目录在、主文件不在：升级中断、被安全软件删 dll、或手动删了一半。
+        (
+            "broken",
+            Some(CompatRisk {
+                id: spec.id.to_string(),
+                name: spec.name.to_string(),
+                severity: "warn".to_string(),
+                reason: format!("{} 安装不完整，缺少主文件", spec.name),
+                detail: format!("目录里找不到 {shown}。建议重新安装 {} 后重启游戏。", spec.name),
             }),
+        )
+    } else {
+        (
+            "missing",
+            Some(CompatRisk {
+                id: spec.id.to_string(),
+                name: spec.name.to_string(),
+                severity: "risk".to_string(),
+                reason: format!("缺少核心前置 {}", spec.name),
+                detail: format!("{}。期望路径：{shown}", spec.note),
+            }),
+        )
+    };
+
+    (
+        CompatFramework {
+            id: spec.id.to_string(),
+            name: spec.name.to_string(),
+            status: status.to_string(),
+            version,
+            path: shown,
+            note: spec.note.to_string(),
+        },
+        risk,
+    )
+}
+
+/// 体检入口。`root` 为 `None` 表示游戏目录没绑定/不可用。
+///
+/// `target` 是游戏 exe 的版本原文，仅用于生成展示用的社区版本号；判定本身
+/// 不依赖它——前置齐不齐全与游戏版本无关。
+pub fn scan(root: Option<&Path>, target: Option<&str>) -> AppResult<CompatReport> {
+    let info = gamever::describe(target.unwrap_or(""));
+    let mut report = CompatReport {
+        target_version: if target.is_some() {
+            info.raw.clone()
+        } else {
+            String::new()
+        },
+        target_label: info.label.clone(),
+        target_matched: info.matched,
+        game_found: root.is_some(),
+        checked_at: crate::store::now_iso(),
+        scanned: 0,
+        frameworks: Vec::new(),
+        risks: Vec::new(),
+        healthy: false,
+    };
+
+    let Some(root) = root else {
+        // 没绑定目录不是"有风险"，是还没法检查：healthy 保持 false，
+        // 界面按 gameFound 走中性提示，不会渲染红框。
+        return Ok(report);
+    };
+
+    for spec in CORE_FRAMEWORKS {
+        report.scanned += 1;
+        let (item, risk) = probe(root, spec);
+        report.frameworks.push(item);
+        if let Some(risk) = risk {
+            report.risks.push(risk);
         }
     }
-
+    // 缺 RED4ext 时其它三个插件必然一起失效，给一句合并结论，免得用户以为要修四处。
+    report.healthy = report.risks.is_empty();
     Ok(report)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AppStateData, ModEntry};
     use std::fs;
 
-    fn temp_store(tag: &str) -> (PathBuf, Store) {
-        let root = std::env::temp_dir().join(format!(
-            "cdl-compat-{tag}-{}-{}",
-            std::process::id(),
-            crate::store::now_iso().replace(':', "-")
-        ));
+    fn fixture(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("cdl-compat-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        let store = Store::load(root.clone()).unwrap();
-        (root, store)
+        root
     }
 
-    fn entry_at(root: &Path, id: &str, name: &str, dir_name: &str) -> ModEntry {
-        let staging = root.join("staging").join(dir_name);
-        fs::create_dir_all(&staging).unwrap();
-        ModEntry {
-            id: id.to_string(),
-            raw_name: None,
-            name: name.to_string(),
-            version: None,
-            author: None,
-            category: "其他".to_string(),
-            category_locked: false,
-            description: String::new(),
-            source_zip: None,
-            nexus: None,
-            staging_path: staging.to_string_lossy().to_string(),
-            cover_path: None,
-            enabled: true,
-            installed_at: crate::store::now_iso(),
-            updated_at: None,
-            size_bytes: 0,
-            file_count: 0,
-            layout: crate::schema::InstallLayout::Archive,
-            mod_folder: None,
-            metadata_source: "test".to_string(),
-            planned_files: Vec::new(),
-            warnings: Vec::new(),
-            deployed_files: Vec::new(),
-            has_archive: false,
-            has_redmod: false,
-            has_cet: false,
-            translated_name: None,
-            translated_at: None,
-            translated_by: None,
-            managed: true,
-            origin: "cyberdeck".to_string(),
-            modpack_id: None,
-            nexus_cover_url: None,
-            is_translation: false,
-            parent_mod_id: None,
-            ai_loc: None,
-            ai_fix: Vec::new(),
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
         }
+        fs::write(path, b"stub").unwrap();
     }
 
-    /// 写入 mods 后必须重新 load：`save` 只落盘，内存里的快照不会跟着变。
-    fn install(root: &Path, mods: Vec<ModEntry>) -> Store {
-        let store = Store::load(root.to_path_buf()).unwrap();
-        let mut data: AppStateData = store.snapshot_data();
-        data.mods = mods;
-        store.save(&data).unwrap();
-        Store::load(root.to_path_buf()).unwrap()
-    }
-
+    /// 四件前置齐全 → healthy，且风险列表必须是空的（这是"防焦虑"的核心）。
     #[test]
-    fn declared_old_version_is_stale() {
-        let (root, store) = temp_store("stale");
-        let entry = entry_at(&root, "mod-old", "Old Mod", "old");
-        fs::write(
-            root.join("staging").join("old").join("manifest.json"),
-            r#"{"name":"Old Mod","gameVersion":"2.21"}"#,
-        )
-        .unwrap();
-        let store = install(&root, vec![entry]);
-        let report = scan(&store, None).unwrap();
-        assert_eq!(report.scanned, 1, "应扫描到 1 个 Mod：{report:?}");
-        assert_eq!(report.stale.len(), 1, "{report:?}");
-        assert_eq!(report.stale[0].declared.as_deref(), Some("2.21"));
-        assert!(report.warn.is_empty());
+    fn all_core_frameworks_installed_is_healthy() {
+        let root = fixture("healthy");
+        touch(&root.join("red4ext").join("RED4ext.dll"));
+        touch(&root.join("red4ext").join("plugins").join("ArchiveXL").join("ArchiveXL.dll"));
+        touch(&root.join("red4ext").join("plugins").join("TweakXL").join("TweakXL.dll"));
+        touch(&root.join("red4ext").join("plugins").join("Codeware").join("Codeware.dll"));
+
+        let report = scan(Some(&root), Some("3.0.88.46235")).unwrap();
+        assert_eq!(report.scanned, 4);
+        assert!(report.risks.is_empty(), "齐全时不该有任何风险：{report:?}");
+        assert!(report.healthy);
+        assert_eq!(report.target_label, "2.5");
+        assert!(report.target_matched);
         let _ = fs::remove_dir_all(root);
     }
 
-    /// 玩家故意留在 2.21：声明适配 2.21 的 Mod 不能因为「比写死的 2.5 低」被判过期。
-    /// 目标版本由命令层从游戏 exe 实际版本传入，这里直接验 scan 的语义。
+    /// 空目录 → 四个缺失，且结论不 healthy；每个风险都带期望路径。
     #[test]
-    fn older_target_does_not_flag_matching_declaration() {
-        let (root, store) = temp_store("old-target");
-        let entry = entry_at(&root, "mod-221", "Mod 221", "m221");
-        fs::write(
-            root.join("staging").join("m221").join("manifest.json"),
-            r#"{"name":"Mod 221","gameVersion":"2.21"}"#,
-        )
-        .unwrap();
-        let store = install(&root, vec![entry]);
-        let report = scan(&store, Some("2.21")).unwrap();
-        assert_eq!(report.target_version, "2.21");
-        assert_eq!(report.stale.len(), 0, "同版本声明不该判过期：{report:?}");
+    fn empty_dir_reports_missing_frameworks_with_paths() {
+        let root = fixture("empty");
+        let report = scan(Some(&root), None).unwrap();
+        assert_eq!(report.scanned, 4);
+        assert_eq!(report.risks.len(), 4);
+        assert!(!report.healthy);
+        assert!(report.risks.iter().all(|item| item.severity == "risk"));
+        assert!(report.risks.iter().all(|item| item.detail.contains("期望路径")));
         let _ = fs::remove_dir_all(root);
     }
 
+    /// 目录在、dll 不在（升级中断/被杀软删）→ 黄灯而不是"缺失"。
     #[test]
-    fn missing_declaration_is_warn_not_stale() {
-        let (root, store) = temp_store("warn");
-        let entry = entry_at(&root, "mod-unknown", "Unknown Mod", "unknown");
-        fs::write(
-            root.join("staging").join("unknown").join("readme.txt"),
-            "no version info here",
-        )
-        .unwrap();
-        let store = install(&root, vec![entry]);
-        let report = scan(&store, None).unwrap();
-        assert_eq!(report.scanned, 1, "应扫描到 1 个 Mod：{report:?}");
-        assert_eq!(report.stale.len(), 0, "没有声明绝不能判过期：{report:?}");
-        assert_eq!(report.warn.len(), 1);
+    fn half_installed_framework_is_warn_not_missing() {
+        let root = fixture("broken");
+        fs::create_dir_all(root.join("red4ext").join("plugins").join("ArchiveXL")).unwrap();
+        let report = scan(Some(&root), None).unwrap();
+        let archive = report
+            .frameworks
+            .iter()
+            .find(|item| item.id == "archivexl")
+            .expect("应检查 ArchiveXL");
+        assert_eq!(archive.status, "broken");
+        let risk = report
+            .risks
+            .iter()
+            .find(|item| item.id == "archivexl")
+            .expect("半装应记为风险");
+        assert_eq!(risk.severity, "warn");
         let _ = fs::remove_dir_all(root);
     }
 
+    /// 没有游戏目录：不产出任何风险，但也不能说 healthy（还没查过）。
     #[test]
-    fn matching_declaration_is_not_reported() {
-        let (root, store) = temp_store("ok");
-        let entry = entry_at(&root, "mod-ok", "Fine Mod", "ok");
-        fs::write(
-            root.join("staging").join("ok").join("info.json"),
-            r#"{"game_version":"2.5"}"#,
-        )
-        .unwrap();
-        let store = install(&root, vec![entry]);
-        let report = scan(&store, None).unwrap();
-        assert_eq!(report.stale.len(), 0);
-        assert_eq!(report.warn.len(), 0);
-        let _ = fs::remove_dir_all(root);
+    fn missing_game_dir_reports_nothing_but_not_healthy() {
+        let report = scan(None, None).unwrap();
+        assert!(!report.game_found);
+        assert_eq!(report.scanned, 0);
+        assert!(report.risks.is_empty());
+        assert!(!report.healthy);
     }
 
+    /// 未知版本号要传下去，界面据此显示"未知版本"而不是随便猜一个。
     #[test]
-    fn version_parser_handles_common_shapes() {
-        assert_eq!(parse_version("2.21"), Some(vec![2, 2, 1]));
-        assert_eq!(parse_version("v2.21.0"), Some(vec![2, 2, 1, 0]));
-        assert_eq!(parse_version("2.5"), Some(vec![2, 5]));
-        assert_eq!(parse_version("abc"), None);
-        // 2.21（=2.2.1）早于 2.5，且早于 2.3
-        assert!(version_lt(&[2, 2, 1], &[2, 5]));
-        assert!(version_lt(&[2, 3], &[2, 5]));
-        assert!(!version_lt(&[2, 5], &[2, 5, 0]));
-        assert!(!version_lt(&[3, 0], &[2, 5]));
+    fn unknown_version_is_flagged_in_report() {
+        let root = fixture("unknown-ver");
+        let report = scan(Some(&root), Some("9.9.9.9")).unwrap();
+        assert_eq!(report.target_label, crate::gamever::UNKNOWN_LABEL);
+        assert!(!report.target_matched);
+        assert_eq!(report.target_version, "9.9.9.9", "原始号要留住");
+        let _ = fs::remove_dir_all(root);
     }
 }
