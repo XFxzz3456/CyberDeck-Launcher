@@ -44,6 +44,8 @@ import type {
   TranslateReport,
   Settings,
   Snapshot,
+  AiActionReport,
+  AiFixAction,
   EnvDiagnosis,
   EnvIssue,
   HealReport,
@@ -2738,6 +2740,31 @@ export const mockApi = {
         "禁用另一个视觉模组，重新启动游戏确认画面。",
         "如果仍然异常，再检查 RED4ext 与 ArchiveXL 的版本是否匹配游戏版本。",
       ],
+      // 演示一条可执行动作：指向真实存在且已启用的模组，点下去会走 mock 执行。
+      actions: (() => {
+        const victim = db.state.mods.find((item) => item.enabled && item.deployedFiles.length > 0);
+        if (!victim) return [];
+        return [
+          {
+            id: "act-demo-1",
+            kind: "disableMod",
+            target: victim.id,
+            targetName: victim.name,
+            label: `停用 ${victim.name}`,
+            reason: "它和后加载的版本抢同一个 archive，先停掉再确认画面。",
+            position: null,
+          },
+          {
+            id: "act-demo-2",
+            kind: "moveLoadOrder",
+            target: victim.id,
+            targetName: victim.name,
+            label: `把 ${victim.name} 排到最后`,
+            reason: "如果你更想保留它，就把它的加载顺序压到最后试试。",
+            position: "last",
+          },
+        ];
+      })(),
       confidence: "high",
       needsMoreInfo: [],
       model: "gpt-5.4-nano",
@@ -2752,6 +2779,38 @@ export const mockApi = {
         null,
         2,
       ),
+    };
+  },
+
+  /** 演示模式：不写磁盘，只回一条"执行成功"。 */
+  async aiApplyAction(action: AiFixAction): Promise<AiActionReport> {
+    await sleep(420);
+    const db = loadDb();
+    const target = db.state.mods.find((item) => item.id === action.target);
+    if (action.kind === "proposePatch") {
+      return {
+        kind: action.kind,
+        target: action.target,
+        message: "已转入 AI 补丁流程。",
+        snapshotId: null,
+        needsIntent: true,
+      };
+    }
+    if (action.kind === "disableMod") {
+      db.state.mods = db.state.mods.map((item) =>
+        item.id === action.target ? { ...item, enabled: false, deployedFiles: [] } : item,
+      );
+      saveDb(db);
+    }
+    return {
+      kind: action.kind,
+      target: action.target,
+      message:
+        action.kind === "disableMod"
+          ? `已停用 ${target?.name ?? action.targetName}。`
+          : `已把 ${target?.name ?? action.targetName} 排到最后。`,
+      snapshotId: "snap-demo-ai",
+      needsIntent: false,
     };
   },
 

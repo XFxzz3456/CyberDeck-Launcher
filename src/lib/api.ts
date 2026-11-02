@@ -18,6 +18,8 @@ import type {
   DiagnosticsReport,
   DeepScanRef,
   DeepScanReport,
+  AiActionReport,
+  AiFixAction,
   EnvDiagnosis,
   GameInfo,
   HealReport,
@@ -616,6 +618,15 @@ export const api = {
   ): Promise<AiDiagnosis> {
     if (!isTauri) return mockApi.aiDiagnose(includeLogs, consent, focus);
     return call<AiDiagnosis>("ai_diagnose", { includeLogs, consent, focus });
+  },
+
+  /**
+   * 执行一条 AI 动作。后端会再校验一次白名单、并在动磁盘前建环境快照。
+   * 调用前必须已经让用户二次确认过。
+   */
+  async aiApplyAction(action: AiFixAction): Promise<AiActionReport> {
+    if (!isTauri) return mockApi.aiApplyAction(action);
+    return call<AiActionReport>("ai_apply_action", { action });
   },
 
   /** 把冲突引用解析成真实存在的 archive 路径（Rust 里 safe_join，前端不做路径运算）。 */

@@ -1,5 +1,6 @@
 mod adopt;
 mod ai;
+mod aiact;
 mod aifix;
 mod ailoc;
 mod backup;
@@ -2050,6 +2051,23 @@ async fn compat_scan(
     .map_err(|e| CommandError::new("COMPAT_TASK", format!("兼容体检任务异常：{e}")))?
 }
 
+/// 执行一条 AI 诊断动作。
+///
+/// 前端必须先在二次确认弹窗里让用户确认；这里仍会**重新校验**动作（白名单 + 模组
+/// 存在性），并在动磁盘前创建环境快照——失败即中止，不留"改了一半"的现场。
+#[tauri::command]
+async fn ai_apply_action(
+    app: tauri::AppHandle,
+    action: schema::AiFixAction,
+) -> AppResult<schema::AiActionReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        aiact::apply(store.inner(), &action)
+    })
+    .await
+    .map_err(|e| CommandError::new("AI_ACTION_TASK", format!("执行 AI 动作出错：{e}")))?
+}
+
 /// 批量给已有记录补 Nexus 官方封面。
 ///
 /// 必须走 spawn_blocking：内部逐条串行请求 + 250ms 节流，几百个 Mod 时会跑几十秒，
@@ -3726,6 +3744,7 @@ pub fn run() {
             ai_set_key,
             ai_clear_key,
             ai_diagnose,
+    ai_apply_action,
             ai_list_models,
             scan_archive_deep,
             resolve_deep_scan_paths,

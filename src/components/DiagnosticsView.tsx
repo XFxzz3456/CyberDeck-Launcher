@@ -376,6 +376,8 @@ export function DiagnosticsView({
         onSettings={onSettings}
         onError={onError}
         onOpenAiSettings={onOpenAiSettings}
+        // 动作执行完（启用态/加载顺序变了）立刻重拉整份诊断，别让界面说谎。
+        onAfterAction={onRefresh}
       />
 
       <div className="diagnostics-grid">

@@ -1263,6 +1263,50 @@ pub struct AiStatus {
     pub protocol: String,
 }
 
+/// AI 诊断给出的一条**可执行**修复动作。
+///
+/// 🔴 安全边界：AI 只能从这四个 kind 里选、只能指向快照里出现过的模组 id，
+/// 且真正的文件操作全部由 Rust 侧执行（AI 拿不到任何文件系统的写权限）。
+/// `label` / `reason` 只用于按钮文案，执行时一律以 `kind + target + position` 为准，
+/// 不解析 AI 给的自然语言。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiFixAction {
+    /// 稳定 id（AI 给，缺失时后端补），前端用作 React key。
+    #[serde(default)]
+    pub id: String,
+    /// disableMod | enableMod | moveLoadOrder | proposePatch
+    pub kind: String,
+    /// 目标模组 id；proposePatch 时也是模组 id。
+    #[serde(default)]
+    pub target: String,
+    /// 目标模组显示名（后端会用库里的真名覆盖，避免 AI 写错导致按钮看不懂）。
+    #[serde(default)]
+    pub target_name: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub reason: String,
+    /// moveLoadOrder 专用：first | last。
+    #[serde(default)]
+    pub position: Option<String>,
+}
+
+/// 执行一条 AI 动作的结果。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiActionReport {
+    pub kind: String,
+    pub target: String,
+    pub message: String,
+    /// 执行前自动创建的环境快照 id（可据此回滚）。
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
+    /// proposePatch 专用：前端据此打开 AI 补丁对话框（需要用户填意图）。
+    #[serde(default)]
+    pub needs_intent: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiDiagnosis {
@@ -1270,6 +1314,9 @@ pub struct AiDiagnosis {
     pub likely_cause: String,
     pub evidence: Vec<String>,
     pub fix_steps: Vec<String>,
+    /// 可执行的修复动作（白名单校验过；可能为空 —— 纯文字报告仍然可用）。
+    #[serde(default)]
+    pub actions: Vec<AiFixAction>,
     pub confidence: String,
     #[serde(default)]
     pub needs_more_info: Vec<String>,

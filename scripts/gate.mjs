@@ -282,6 +282,22 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 1.0.0 批次 8：AI 诊断给出可执行动作（确认 + 快照后才动手）
+    name: "AI 可执行修复",
+    script: "check-ai-actions.mjs",
+    expect: [
+      "reportSteps=1",
+      "actionButtons>=1",
+      "actionHint=1",
+      "confirmShown=1",
+      "confirmMentionsSnapshot=1",
+      "cancelNoop=1",
+      "actionApplied=1",
+      "snapshotReported=1",
+      "pageerrors=0",
+    ],
+  },
+  {
     // 1.0.0 批次 6：收编禁用只断链接（用户实测「恢复目标已存在」）+ 测试接线
     name: "收编禁用红线",
     script: "check-adopt-safety.mjs",
@@ -491,9 +507,14 @@ const UI_SCRIPTS = [
   },
   {
     // 9 项：接入方式改成「任何 OpenAI 兼容服务」后，界面不许再长回单一服务商的口径。
-    name: "AI 配置协议中立",
+    name: "AI 配置协议中立 + 动作安全边界",
     script: "check-ai-config.mjs",
-    expect: ["protocol=1", "chromeVendor=0", "presetMatched=1", "diagProtocol=1", "diagVendorBadge=0", "diagModelShown=1"],
+    expect: [
+      "actionKinds=1",
+      "actionsSanitized=1",
+      "applyRechecks=1",
+      "snapshotBlocks=1",
+      "patchHandsOff=1","protocol=1", "chromeVendor=0", "presetMatched=1", "diagProtocol=1", "diagVendorBadge=0", "diagModelShown=1"],
   },
   {
     // 9 项：modlist 导入导出 + 批量启用禁用（看板【mod 列表及切换功能】）。

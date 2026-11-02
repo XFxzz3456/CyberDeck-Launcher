@@ -14,7 +14,7 @@
 //! 用户名或 Key；框架/底层库在发请求之前就被黑名单拦截，不消耗 API 额度。
 
 use crate::schema::{
-    AiDiagnosis, AiStatus, AppResult, AppStateData, CommandError, DiagnosticsReport,
+    AiDiagnosis, AiFixAction, AiStatus, AppResult, AppStateData, CommandError, DiagnosticsReport,
     TranslateReport,
 };
 use crate::secret;
@@ -144,6 +144,9 @@ struct IssueContext {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ModContext {
+    /// 计算出来的稳定 id：AI 的 actions 只能引用这里出现过的值，
+    /// 后端会用同一份快照做白名单校验，编造的 id 一律丢弃。
+    id: String,
     name: String,
     version: Option<String>,
     layout: String,
@@ -393,6 +396,7 @@ fn build_context(
         .mods
         .iter()
         .map(|item| ModContext {
+            id: item.id.clone(),
             name: item.name.clone(),
             version: item.version.clone(),
             layout: format!("{:?}", item.layout),
@@ -498,6 +502,27 @@ struct AiPayload {
     confidence: String,
     #[serde(default, alias = "needs_more_info")]
     needs_more_info: Vec<String>,
+    /// AI 给的动作；必须过 [`sanitize_actions`] 才能进 AiDiagnosis。
+    #[serde(default)]
+    actions: Vec<AiActionPayload>,
+}
+
+/// AI 原始动作（不可信输入）。字段全按字符串收，避免模型偶尔给 null / 数字时整包解析失败。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AiActionPayload {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    target: String,
+    #[serde(default)]
+    label: String,
+    #[serde(default)]
+    reason: String,
+    #[serde(default)]
+    position: Option<String>,
 }
 
 fn normalize_base_url(base: &str) -> String {
@@ -992,7 +1017,18 @@ const SYSTEM_PROMPT: &str = r#"你是《赛博朋克 2077》模组安装与加�
 4. 不要建议盗版、绕过 DRM、删除游戏目录、关闭杀毒软件或从不明来源下载文件。
 5. 如果证据不足，confidence 用 low，并在 needsMoreInfo 里列出还需要用户提供什么。
 6. 只返回一个 JSON 对象，不要 Markdown 代码块。字段：
-{"summary":"一句话结论","likelyCause":"最可能的原因","evidence":["证据1","证据2"],"fixSteps":["步骤1","步骤2"],"confidence":"high|medium|low","needsMoreInfo":["还需要的信息"]}"#;
+{"summary":"一句话结论","likelyCause":"最可能的原因","evidence":["证据1","证据2"],"fixSteps":["步骤1","步骤2"],"actions":[...],"confidence":"high|medium|low","needsMoreInfo":["还需要的信息"]}
+
+7. actions 是**可以由启动器直接执行**的动作，最多 3 条；没有可执行项就给空数组。
+   每条形如 {"kind":"...","target":"...","label":"按钮上的一句话","reason":"为什么要做","position":"first|last"}：
+   - kind 只能是这四个之一：
+     · disableMod   停用某个模组（冲突、重复、疑似不兼容时用）
+     · enableMod    启用某个模组（模组没生效而且它是必需前置时用）
+     · moveLoadOrder 调整加载顺序，position 必填：first=排到最前，last=排到最后
+     · proposePatch 需要改 Redscript 代码才能修的场景，交给「AI 补丁」流程
+   - target 必须是上面 mods[] 里出现过的 id，**不允许编造**；拿不准就干脆不给动作。
+   - 每条动作只说一件事；不要给「删除游戏文件」「修改系统设置」「关杀毒」这类动作。
+   - fixSteps 仍要写（给玩家看的文字说明），actions 与它对应即可。"#;
 
 fn focus_instruction(focus: Option<&str>) -> &'static str {
     match focus {
@@ -1028,6 +1064,89 @@ fn normalize_confidence(value: &str) -> String {
         "high" | "高" | "很高" => "high".to_string(),
         "low" | "低" | "很低" => "low".to_string(),
         _ => "medium".to_string(),
+    }
+}
+
+/// AI 可使用的动作类型白名单 —— **唯一清单**。
+///
+/// 前端只按这里的 kind 渲染按钮，后端执行前再校验一次；新增动作必须同时改这三处
+/// （这里、`aiact::apply` 的分支、前端 apply 的文案），缺一处就会被门禁拦住。
+pub const ACTION_KINDS: [&str; 4] = ["disableMod", "enableMod", "moveLoadOrder", "proposePatch"];
+
+/// 一次诊断最多允许几条动作：按钮堆太多反而让人不知道点哪个。
+const MAX_ACTIONS: usize = 3;
+
+/// 把 AI 给的原始动作过一遍白名单与存在性校验。
+///
+/// 这是「AI 不能直接改底层」的关键闸门：模型只能**点名**它想做什么，能不能做、
+/// 怎么做全部由这里和 `aiact::apply` 决定。具体拒绝的情况：
+/// - kind 不在白名单里（包括模型自创的 "deleteFile" 这类危险动作）；
+/// - target 不在当前库里（编造的 id、或已经卸载的模组）；
+/// - 动作与当前状态相同（已启用的再启用、已停用的再停用）—— 点了没反应的按钮只会让人困惑；
+/// - moveLoadOrder 缺少合法 position。
+fn sanitize_actions(raw: Vec<AiActionPayload>, data: &AppStateData) -> Vec<AiFixAction> {
+    let mut actions: Vec<AiFixAction> = Vec::new();
+    for (index, item) in raw.into_iter().enumerate() {
+        if actions.len() >= MAX_ACTIONS {
+            break;
+        }
+        let kind = item.kind.trim().to_string();
+        if !ACTION_KINDS.contains(&kind.as_str()) {
+            continue;
+        }
+        let target = item.target.trim().to_string();
+        let Some(entry) = data.mods.iter().find(|item| item.id == target) else {
+            continue;
+        };
+        let redundant = match kind.as_str() {
+            "disableMod" => !entry.enabled,
+            "enableMod" => entry.enabled,
+            _ => false,
+        };
+        if redundant {
+            continue;
+        }
+        let position = if kind == "moveLoadOrder" {
+            let raw = item.position.unwrap_or_default();
+            match raw.trim().to_ascii_lowercase().as_str() {
+                "first" | "top" | "start" => Some("first".to_string()),
+                "last" | "bottom" | "end" => Some("last".to_string()),
+                // 位置说不清就不执行：瞎调顺序可能直接让游戏起不来。
+                _ => continue,
+            }
+        } else {
+            None
+        };
+        let label = if item.label.trim().is_empty() {
+            default_action_label(&kind, &entry.name)
+        } else {
+            item.label.trim().chars().take(40).collect()
+        };
+        actions.push(AiFixAction {
+            id: if item.id.trim().is_empty() {
+                format!("act-{index}")
+            } else {
+                item.id.trim().to_string()
+            },
+            kind,
+            target,
+            target_name: entry.name.clone(),
+            label,
+            reason: item.reason.trim().chars().take(120).collect(),
+            position,
+        });
+    }
+    actions
+}
+
+/// 模型没给按钮文案时的兜底（用库里的真名，而不是模型可能写错的名字）。
+fn default_action_label(kind: &str, name: &str) -> String {
+    match kind {
+        "disableMod" => format!("停用 {name}"),
+        "enableMod" => format!("启用 {name}"),
+        "moveLoadOrder" => format!("调整 {name} 的加载顺序"),
+        "proposePatch" => format!("为 {name} 生成补丁"),
+        _ => format!("处理 {name}"),
     }
 }
 
@@ -1105,6 +1224,7 @@ pub fn diagnose(
         likely_cause: payload.likely_cause,
         evidence: payload.evidence.into_iter().take(8).collect(),
         fix_steps: payload.fix_steps.into_iter().take(5).collect(),
+        actions: sanitize_actions(payload.actions, data),
         confidence: normalize_confidence(&payload.confidence),
         needs_more_info: payload.needs_more_info.into_iter().take(5).collect(),
         model: settings.ai_model,
@@ -2438,6 +2558,63 @@ mod tests {
 
     /// 造一个字段齐全的 ModEntry。改名相关逻辑只关心 id/name/translated_*，
     /// 其余字段给最小值即可（ModEntry 没有 Default，只能全量写出来）。
+    fn action_payload(kind: &str, target: &str, position: Option<&str>) -> AiActionPayload {
+        AiActionPayload {
+            id: String::new(),
+            kind: kind.to_string(),
+            target: target.to_string(),
+            label: String::new(),
+            reason: "测试".to_string(),
+            position: position.map(str::to_string),
+        }
+    }
+
+    /// 白名单是「AI 不能直接改底层」的第一道闸门：模型自创的动作、编造的模组 id、
+    /// 以及与当前状态相同的空操作，都必须在这一步就被丢掉。
+    #[test]
+    fn ai_actions_are_whitelisted_and_bound_to_real_mods() {
+        let mut data = AppStateData::new("staging".to_string());
+        data.mods = vec![
+            sample_mod("m-a", "Alpha"),
+            sample_mod("m-b", "Beta"),
+        ];
+        let raw = vec![
+            action_payload("deleteFile", "m-a", None),          // 不在白名单
+            action_payload("runShell", "m-a", None),            // 不在白名单
+            action_payload("enableMod", "m-ghost", None),        // 模组不存在
+            action_payload("enableMod", "m-a", None),            // 已启用 → 空操作
+            action_payload("disableMod", "m-a", None),           // 合法
+            action_payload("moveLoadOrder", "m-b", Some("middle")), // 位置说不清 → 丢弃
+            action_payload("moveLoadOrder", "m-b", Some("FIRST")),  // 合法，归一化为 first
+        ];
+        let actions = sanitize_actions(raw, &data);
+        assert_eq!(actions.len(), 2, "{actions:?}");
+        assert_eq!(actions[0].kind, "disableMod");
+        assert_eq!(actions[0].target_name, "Alpha", "名字要来自库，不信 AI");
+        assert!(actions[0].label.contains("Alpha"), "缺 label 时用真名兜底");
+        assert_eq!(actions[1].kind, "moveLoadOrder");
+        assert_eq!(actions[1].position.as_deref(), Some("first"));
+    }
+
+    /// 最多 3 条：按钮堆太多只会让人不知道该点哪个。
+    #[test]
+    fn ai_actions_are_capped_at_three() {
+        let mut data = AppStateData::new("staging".to_string());
+        data.mods = vec![
+            sample_mod("m-a", "A"),
+            sample_mod("m-b", "B"),
+            sample_mod("m-c", "C"),
+            sample_mod("m-d", "D"),
+        ];
+        let raw = vec![
+            action_payload("disableMod", "m-a", None),
+            action_payload("disableMod", "m-b", None),
+            action_payload("disableMod", "m-c", None),
+            action_payload("disableMod", "m-d", None),
+        ];
+        assert_eq!(sanitize_actions(raw, &data).len(), 3);
+    }
+
     fn sample_mod(id: &str, name: &str) -> ModEntry {
         ModEntry {
             id: id.to_string(),

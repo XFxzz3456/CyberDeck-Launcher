@@ -6383,6 +6383,104 @@ input::placeholder {
   margin-top: 10px;
 }
 
+/* ── AI 可执行动作（诊断报告下方的按钮）──
+   按钮是"待执行"而不是"已完成"，所以用虚线描边 + 明确的主次层级，
+   避免和报告里的纯文字步骤混淆。 */
+/* 强制竖排：报告容器的排版是横向流动的，这里要「标签在上、按钮居中、说明在下」。 */
+.ai-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ai-actions .ai-block-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ai-action-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 320px;
+  padding: 8px 12px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background calc(120ms * var(--motion-scale, 1)) ease,
+    border-color calc(120ms * var(--motion-scale, 1)) ease;
+}
+
+.ai-action-btn:hover {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.ai-action-btn strong {
+  font-size: 12.5px;
+  font-weight: var(--fw-title, 500);
+}
+
+.ai-action-btn small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ai-action-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.ai-action-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--ok, #3fb950);
+  background: color-mix(in srgb, var(--ok, #3fb950) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* 确认弹窗里的动作摘要 */
+.ai-confirm-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: var(--fw-title, 500);
+}
+
+.ai-confirm-meta,
+.ai-confirm-reason {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ai-confirm-body {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .ai-block ul,
 .ai-block ol {
   margin: 5px 0 0;

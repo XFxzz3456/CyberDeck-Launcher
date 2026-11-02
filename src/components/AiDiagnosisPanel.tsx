@@ -14,8 +14,16 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Wrench,
 } from "lucide-react";
-import type { AiDiagnosis, AiStatus, DiagnosticsReport, Settings } from "../types";
+import type {
+  AiActionReport,
+  AiDiagnosis,
+  AiFixAction,
+  AiStatus,
+  DiagnosticsReport,
+  Settings,
+} from "../types";
 import {
   AI_PRESET_GROUPS,
   AI_PROTOCOL_LABEL_KEY,
@@ -27,7 +35,7 @@ import {
 import { api, normalizeError } from "../lib/api";
 import { relativeTime } from "../lib/format";
 import { t } from "../i18n";
-import { Badge, Spinner } from "./ui";
+import { Badge, Modal, Spinner } from "./ui";
 
 const CONFIDENCE_LABEL: Record<string, string> = {
   high: t("aiDiagnosis.confidenceHigh"),
@@ -41,6 +49,7 @@ export function AiDiagnosisPanel({
   onSettings,
   onError,
   onOpenAiSettings,
+  onAfterAction,
 }: {
   report: DiagnosticsReport;
   settings: Settings;
@@ -48,6 +57,8 @@ export function AiDiagnosisPanel({
   onError: (error: unknown, title?: string) => void;
   /** 「前往 AI 配置」：跳到设置页的 AI 分区（由 App 提供导航能力）。 */
   onOpenAiSettings?: () => void;
+  /** 执行完一条 AI 动作后刷新整份状态（模组启用态 / 加载顺序都变了）。 */
+  onAfterAction?: () => void;
 }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +72,11 @@ export function AiDiagnosisPanel({
    * 只能去改配置。就地给一段"改什么"的引导 + 一个直达按钮，比一条会消失的 toast 有用。
    */
   const [guide, setGuide] = useState<{ code: string; message: string } | null>(null);
+  /** 待确认的动作：非 null 时弹出二次确认（AI 不能直接动手）。 */
+  const [pending, setPending] = useState<AiFixAction | null>(null);
+  const [applying, setApplying] = useState(false);
+  /** 执行结果提示（含快照 id，失败也能据此回滚）。 */
+  const [actionNote, setActionNote] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [baseUrl, setBaseUrl] = useState(settings.aiBaseUrl);
@@ -161,6 +177,37 @@ export function AiDiagnosisPanel({
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * 执行一条 AI 动作。
+   *
+   * 顺序是刻意的：先确认（弹窗）→ 再执行。后端还会自己再校验一遍白名单，
+   * 并在动磁盘前建环境快照；快照建不出来会直接中止，前端只需要把结果如实说出来。
+   */
+  const runAction = async () => {
+    if (!pending) return;
+    setApplying(true);
+    try {
+      const report: AiActionReport = await api.aiApplyAction(pending);
+      if (report.needsIntent) {
+        setActionNote(t("aiDiagnosis.patchHandoff"));
+      } else {
+        setActionNote(
+          t("aiDiagnosis.actionDone", {
+            message: report.message,
+            snapshot: report.snapshotId ?? t("common.unknown"),
+          }),
+        );
+        // 启用态 / 加载顺序都变了：让上层重新拉一次快照，界面立刻反映真实状态。
+        onAfterAction?.();
+      }
+      setPending(null);
+    } catch (error) {
+      onError(error, t("aiDiagnosis.actionFailed"));
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -441,6 +488,33 @@ export function AiDiagnosisPanel({
                 </div>
               ) : null}
 
+              {result.actions.length > 0 ? (
+                <div className="ai-block ai-actions">
+                  <span className="ai-block-label">
+                    <Wrench size={12} /> {t("aiDiagnosis.actionsTitle")}
+                  </span>
+                  <div className="ai-action-list">
+                    {result.actions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="ai-action-btn"
+                        onClick={() => {
+                          setActionNote(null);
+                          setPending(item);
+                        }}
+                      >
+                        <strong>{item.label}</strong>
+                        {item.reason ? <small>{item.reason}</small> : null}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="ai-action-hint">{t("aiDiagnosis.actionsHint")}</p>
+                </div>
+              ) : null}
+
+              {actionNote ? <p className="ai-action-note">{actionNote}</p> : null}
+
               {result.needsMoreInfo.length > 0 ? (
                 <div className="ai-block ai-needs">
                   <span className="ai-block-label">
@@ -483,6 +557,46 @@ export function AiDiagnosisPanel({
           </button>
         ) : null}
       </div>
+
+      {/* 二次确认：AI 只能提动作，真正动手前必须由人点这一下。 */}
+      <Modal
+        open={pending !== null}
+        title={t("aiDiagnosis.confirmTitle")}
+        eyebrow="AI ACTION"
+        onClose={() => (applying ? undefined : setPending(null))}
+        footer={
+          <>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPending(null)}
+              disabled={applying}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => void runAction()}
+              disabled={applying}
+            >
+              {applying ? <Spinner size={13} /> : null}
+              {t("aiDiagnosis.confirmRun")}
+            </button>
+          </>
+        }
+      >
+        {pending ? (
+          <>
+            <p className="ai-confirm-title">{pending.label}</p>
+            {pending.targetName ? (
+              <p className="ai-confirm-meta">
+                {t("aiDiagnosis.confirmTarget", { name: pending.targetName })}
+              </p>
+            ) : null}
+            {pending.reason ? <p className="ai-confirm-reason">{pending.reason}</p> : null}
+            <p className="ai-confirm-body">{t("aiDiagnosis.confirmSnapshot")}</p>
+          </>
+        ) : null}
+      </Modal>
     </section>
   );
 }

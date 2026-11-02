@@ -853,6 +853,8 @@ export interface AiDiagnosis {
   likelyCause: string;
   evidence: string[];
   fixSteps: string[];
+  /** 可执行的修复动作（已过白名单校验，可能为空）。 */
+  actions: AiFixAction[];
   confidence: "high" | "medium" | "low";
   needsMoreInfo: string[];
   model: string;
@@ -863,6 +865,35 @@ export interface AiDiagnosis {
 }
 
 export type NexusSection = "trending" | "latest_added" | "latest_updated";
+
+/**
+ * AI 诊断给出的一条**可执行**修复动作。
+ *
+ * 安全边界：AI 只能从白名单 kind 里选、只能指向快照里出现过的模组 id；
+ * 真正的文件操作全部由 Rust 侧执行，前端只是把动作回传 + 展示确认弹窗。
+ */
+export interface AiFixAction {
+  id: string;
+  /** disableMod | enableMod | moveLoadOrder | proposePatch */
+  kind: string;
+  target: string;
+  targetName: string;
+  label: string;
+  reason: string;
+  /** moveLoadOrder 专用：first | last */
+  position?: string | null;
+}
+
+/** 执行一条 AI 动作的结果。 */
+export interface AiActionReport {
+  kind: string;
+  target: string;
+  message: string;
+  /** 执行前自动创建的环境快照 id（可据此回滚）。 */
+  snapshotId?: string | null;
+  /** proposePatch：前端据此提示用户去走 AI 补丁流程。 */
+  needsIntent: boolean;
+}
 
 /** 体检发现的一条文件级问题。 */
 export interface EnvIssue {

@@ -97,3 +97,24 @@ const sendNote = (await panel.locator(".ai-send-note").innerText()).replace(/\s+
 console.log("diagModelShown=" + (/当前模型\s*\S+/.test(sendNote) ? 1 : 0));
 
 await browser.close();
+
+// ── AI 动作的安全边界（静态断言，纯源码检查）─────────────────────────────
+// 「AI 不能直接改底层」靠三处纪律，缺一处就破功：
+//   ① 白名单常量唯一；② 解析时过滤；③ 执行前必须建快照、失败即中止。
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+const root = process.cwd();
+const aiSrc = readFileSync(join(root, "src-tauri/src/ai.rs"), "utf8");
+const actSrc = readFileSync(join(root, "src-tauri/src/aiact.rs"), "utf8");
+console.log(
+  "actionKinds=" +
+    (/pub const ACTION_KINDS: \[&str; 4\] = \[\s*"disableMod",\s*"enableMod",\s*"moveLoadOrder",\s*"proposePatch"/.test(
+      aiSrc,
+    )
+      ? 1
+      : 0),
+);
+console.log("actionsSanitized=" + (/actions: sanitize_actions\(payload\.actions, data\)/.test(aiSrc) ? 1 : 0));
+console.log("applyRechecks=" + (/ACTION_KINDS\.contains\(&action\.kind\.as_str\(\)\)/.test(actSrc) ? 1 : 0));
+console.log("snapshotBlocks=" + (/AI_ACTION_SNAPSHOT/.test(actSrc) ? 1 : 0));
+console.log("patchHandsOff=" + (/needs_intent: true/.test(actSrc) ? 1 : 0));
