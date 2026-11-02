@@ -11356,6 +11356,20 @@ body::before {
 }
 
 .env-healthy { color: var(--ok); }
+
+/* 灰「提示」档：有文件状态变化但没有任何丢失/大小异常。
+   刻意用中性灰而不是黄：杀毒软件扫描、外部工具接管都会改写元数据，游戏照常能跑，
+   打黄灯只会让玩家以为装坏了东西。 */
+.env-info { color: var(--muted-2, var(--muted)); }
+
+/* 列表下方那行小灰字，说明这些差异多半来自外部工具。 */
+.env-tolerance-hint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--muted);
+  opacity: 0.75;
+}
 .env-warning { color: var(--warn); }
 .env-critical { color: var(--danger); }
 
@@ -11422,6 +11436,11 @@ body::before {
 }
 
 .env-issue-size { border-left-color: var(--warn); }
+
+/* 只有状态变化的条目：中性色，别和真问题抢注意力 */
+.env-issue-time { border-left-color: var(--line-hot); }
+
+.env-issue-time .env-issue-kind { color: var(--muted); }
 
 .env-issue-kind {
   font-family: var(--mono);

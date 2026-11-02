@@ -1,9 +1,16 @@
 //! 环境体检与自愈。
 //!
 //! 部署记录里存了目标文件的（大小, 修改时间），这里拿它和磁盘现状比对：
-//!   - 目标不存在      → critical，需要重建链接
-//!   - 大小不一致      → warning，文件可能被替换或截断
-//!   - 时间不一致      → warning，多半是手动覆盖或游戏更新动过它
+//!   - 目标不存在        → critical，需要重建链接
+//!   - 大小差超过容差    → warning，文件可能被整体替换
+//!   - 只有时间/细微信息变 → info（灰「提示」），多半是杀软扫描或外部工具碰过
+//!
+//! 🔴 误报取舍（2026-11-02 用户实测反馈）：原先「字节数不等就报大小异常、时间戳
+//! 不等就报被改写」把玩家吓到了——Vortex 接管、杀软扫描都会改写元数据，游戏却
+//! 照常能跑。现在按文件类型分级：
+//!   - 脚本 / 配置（`.xl` `.reds` `.lua` `.json` …）工具会频繁重写，**只查存在性**；
+//!   - 其它文件允许 [`SIZE_TOLERANCE_BYTES`] 的字节抖动；
+//!   - 剩下的差异最多进 info 档，不再默认打黄灯。
 //!
 //! 自愈只做一件事：拿暂存区的源文件重建链接。源也没了就只能标记为需要重新导入，
 //! 不会去猜测内容、也不会偷偷下载任何东西。
@@ -14,6 +21,25 @@ use std::path::{Path, PathBuf};
 use crate::installer;
 use crate::schema::{CommandError, EnvDiagnosis, EnvIssue, HealReport};
 use crate::store::Store;
+
+/// 大小比对的容差。
+///
+/// `.archive` 这类文件被杀毒软件扫描、被 Vortex 重新落盘后，字节数可能有个位数到
+/// 几百字节的差异；这不是"被改写"，报出来只会制造焦虑。超过这个量级才当回事。
+const SIZE_TOLERANCE_BYTES: u64 = 1024;
+
+/// 这些后缀属于脚本 / 配置 / 元数据，外部工具（Vortex、CET、redscript、汉化包）
+/// 会频繁重写它们，比对大小与时间戳纯属噪音 —— 只查「还在不在」。
+fn is_tool_editable(relative_path: &str) -> bool {
+    let lower = relative_path.to_ascii_lowercase();
+    [
+        ".xl", ".xlp", ".reds", ".lua", ".toml", ".json", ".ini", ".yaml", ".yml", ".txt",
+        ".csv", ".xml", ".log", ".bak",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
+}
+
 
 /// 体检所有「已启用」且「有部署清单」的模组。
 ///
@@ -38,13 +64,7 @@ pub fn diagnose_environment(store: &Store) -> Result<EnvDiagnosis, CommandError>
         }
     }
 
-    let level = if issues.iter().any(|issue| issue.kind == "missing") {
-        "critical"
-    } else if issues.is_empty() {
-        "healthy"
-    } else {
-        "warning"
-    };
+    let level = classify(&issues);
     let summary = build_summary(level, checked_mods, checked_files, &issues);
 
     Ok(EnvDiagnosis {
@@ -130,15 +150,8 @@ pub fn heal_environment(store: &Store) -> Result<HealReport, CommandError> {
     // 校验游戏目录仍存在，避免绑定路径失效后误判为修好了。
     let _ = &game_root;
 
-    let level = if still_broken.iter().any(|issue| {
-        issue.kind == "missing" || issue.kind == "source_missing"
-    }) {
-        "critical"
-    } else if still_broken.is_empty() {
-        "healthy"
-    } else {
-        "warning"
-    };
+    // 等级口径与体检保持一致：只剩时间戳这类变化时是灰「提示」，不是黄灯。
+    let level = classify(&still_broken);
     let message = if repaired == 0 && still_broken.is_empty() {
         "环境本来就是好的，没有需要修复的文件。".to_string()
     } else if still_broken.is_empty() {
@@ -188,14 +201,23 @@ fn inspect_file(
         }
     };
 
+    // 脚本 / 配置类：工具会反复重写，只看存在性。大小与时间一律不比。
+    if is_tool_editable(&file.relative_path) {
+        return None;
+    }
+
     if let Some(expected) = file.size {
-        if meta.len() != expected {
+        let actual = meta.len();
+        // 容差内直接放过：杀软扫描 / 外部工具重写导致的字节抖动不算问题。
+        if actual.abs_diff(expected) > SIZE_TOLERANCE_BYTES {
             return Some(EnvIssue {
                 mod_id: mod_id.to_string(),
                 mod_name: mod_name.to_string(),
                 relative_path: file.relative_path.clone(),
                 kind: "size".to_string(),
-                detail: format!("文件大小对不上（记录 {expected} 字节，实际 {} 字节）。", meta.len()),
+                detail: format!(
+                    "文件大小有变化（记录 {expected} 字节，实际 {actual} 字节），可能被外部工具改写过。"
+                ),
             });
         }
     }
@@ -213,7 +235,8 @@ fn inspect_file(
                     mod_name: mod_name.to_string(),
                     relative_path: file.relative_path.clone(),
                     kind: "time".to_string(),
-                    detail: "文件的修改时间变了，可能被外部工具或游戏更新改写过。".to_string(),
+                    detail: "文件的修改时间变了，可能被杀毒软件或外部工具碰过；不影响游戏加载。"
+                        .to_string(),
                 });
             }
         }
@@ -222,19 +245,167 @@ fn inspect_file(
     None
 }
 
+/// 把问题列表折算成整体等级。
+///
+/// - 有文件丢失（`missing` / `source_missing`）→ `critical`（红）
+/// - 有大小超容差 → `warning`（黄），这才值得动手修
+/// - 只剩时间戳这类状态变化 → `info`（灰「提示」）：游戏通常照常能跑
+/// - 空 → `healthy`
+///
+/// `info` 这一档是 2026-11-02 新增的：原先只要有任何一条差异就整块打黄灯，
+/// 玩家看到一屏"警告"但游戏好好的，反而不知道该信哪个。
+fn classify(issues: &[EnvIssue]) -> &'static str {
+    if issues
+        .iter()
+        .any(|issue| issue.kind == "missing" || issue.kind == "source_missing")
+    {
+        "critical"
+    } else if issues.iter().any(|issue| issue.kind == "size") {
+        "warning"
+    } else if !issues.is_empty() {
+        "info"
+    } else {
+        "healthy"
+    }
+}
+
 fn build_summary(level: &str, mods: usize, files: usize, issues: &[EnvIssue]) -> String {
     if mods == 0 {
         return "还没有部署任何模组，先部署几个再来体检。".to_string();
     }
     match level {
         "healthy" => format!("{mods} 个模组、{files} 个文件全部正常。"),
+        "info" => format!(
+            "{mods} 个模组共 {files} 个文件，其中 {} 个文件状态有变化，核心文件都在，游戏通常可正常运行。",
+            issues.len()
+        ),
         "warning" => format!(
-            "{mods} 个模组共 {files} 个文件，其中 {} 个文件被改写过，游戏仍可运行。",
+            "{mods} 个模组共 {files} 个文件，其中 {} 个文件大小有变化，建议修复。",
             issues.len()
         ),
         _ => {
             let missing = issues.iter().filter(|issue| issue.kind == "missing").count();
             format!("{mods} 个模组共 {files} 个文件，有 {missing} 个文件丢失，建议立刻修复。")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{DeployedFile, LinkType};
+
+    fn fixture(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "cdl-env-{tag}-{}-{}",
+            std::process::id(),
+            crate::store::now_iso().replace(':', "-")
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// 造一条部署记录：文件真实存在，大小/时间按调用方给的期望值。
+    fn record(
+        root: &Path,
+        relative: &str,
+        bytes: usize,
+        expected_size: Option<u64>,
+        expected_time: Option<u64>,
+    ) -> DeployedFile {
+        let target = root.join(relative);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, vec![0u8; bytes]).unwrap();
+        DeployedFile {
+            source: target.to_string_lossy().to_string(),
+            target: target.to_string_lossy().to_string(),
+            link_type: LinkType::Copy,
+            relative_path: relative.replace('\\', "/"),
+            size: expected_size,
+            modified_time: expected_time,
+        }
+    }
+
+    /// 脚本/配置被工具重写（大小差很多、时间也变）→ 一条问题都不该报。
+    #[test]
+    fn tool_editable_files_are_only_checked_for_existence() {
+        let root = fixture("scripts");
+        for rel in ["r6/scripts/foo.reds", "archive/pc/mod/bar.xl", "bin/x64/plugins/cet/init.lua"] {
+            let file = record(&root, rel, 4096, Some(8), Some(1));
+            assert!(
+                inspect_file("m", "M", &file).is_none(),
+                "{rel} 属于工具会重写的文件，不该报问题"
+            );
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// `.archive` 几百字节抖动（杀软扫描 / 外部工具重写）在容差内 → 不报。
+    #[test]
+    fn small_size_drift_on_archive_is_tolerated() {
+        let root = fixture("tolerance");
+        let file = record(&root, "archive/pc/mod/a.archive", 2048, Some(2048 - 700), None);
+        assert!(inspect_file("m", "M", &file).is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 超出容差才算"大小有变化"，且 detail 用中性措辞。
+    #[test]
+    fn large_size_drift_is_reported_neutrally() {
+        let root = fixture("drift");
+        let file = record(&root, "archive/pc/mod/b.archive", 10_000, Some(1000), None);
+        let issue = inspect_file("m", "M", &file).expect("超出容差应报问题");
+        assert_eq!(issue.kind, "size");
+        assert!(issue.detail.contains("大小有变化"), "{}", issue.detail);
+        assert!(!issue.detail.contains("异常"), "不该再出现'异常'这类吓人措辞");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 时间戳变化只进 time 档（界面上是灰色「提示」），不升级成黄灯。
+    #[test]
+    fn timestamp_drift_is_not_a_warning_level_issue() {
+        let root = fixture("mtime");
+        let file = record(&root, "archive/pc/mod/c.archive", 512, Some(512), Some(1));
+        let issue = inspect_file("m", "M", &file).expect("时间变化仍要留痕");
+        assert_eq!(issue.kind, "time");
+        assert!(issue.detail.contains("不影响游戏加载"), "{}", issue.detail);
+        assert_eq!(classify(&[issue]), "info", "只有时间变化 → 灰「提示」");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 等级折算：丢失 > 大小 > 时间 > 健康。
+    #[test]
+    fn levels_rank_missing_above_size_above_time() {
+        let mk = |kind: &str| EnvIssue {
+            mod_id: "m".into(),
+            mod_name: "M".into(),
+            relative_path: "a.archive".into(),
+            kind: kind.into(),
+            detail: String::new(),
+        };
+        assert_eq!(classify(&[]), "healthy");
+        assert_eq!(classify(&[mk("time")]), "info");
+        assert_eq!(classify(&[mk("time"), mk("size")]), "warning");
+        assert_eq!(classify(&[mk("size"), mk("missing")]), "critical");
+        assert_eq!(classify(&[mk("source_missing")]), "critical");
+    }
+
+    /// 文件真丢了仍然要红：容差策略不能把"缺失"一起放过。
+    #[test]
+    fn missing_file_still_screams() {
+        let root = fixture("missing");
+        let file = DeployedFile {
+            source: root.join("gone").to_string_lossy().to_string(),
+            target: root.join("archive/pc/mod/gone.archive").to_string_lossy().to_string(),
+            link_type: LinkType::Copy,
+            relative_path: "archive/pc/mod/gone.archive".to_string(),
+            size: Some(10),
+            modified_time: Some(1),
+        };
+        let issue = inspect_file("m", "M", &file).expect("文件不存在必须报");
+        assert_eq!(issue.kind, "missing");
+        assert_eq!(classify(&[issue]), "critical");
+        let _ = fs::remove_dir_all(root);
     }
 }

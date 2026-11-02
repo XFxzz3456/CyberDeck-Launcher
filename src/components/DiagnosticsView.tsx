@@ -285,7 +285,13 @@ export function DiagnosticsView({
           <div className="env-head-right">
             {env ? (
               <span className={`env-level env-${env.level}`}>
-                {env.level === "healthy" ? "HEALTHY" : env.level === "warning" ? "WARNING" : "CRITICAL"}
+                {env.level === "healthy"
+                  ? "HEALTHY"
+                  : env.level === "info"
+                    ? t("diagnostics.envLevelInfo")
+                    : env.level === "warning"
+                      ? "WARNING"
+                      : "CRITICAL"}
               </span>
             ) : null}
             <button
@@ -300,7 +306,12 @@ export function DiagnosticsView({
               type="button"
               className="btn btn-primary"
               onClick={() => setConfirmHeal(true)}
-              disabled={healing || !env || env.issues.length === 0}
+              disabled={
+                healing ||
+                !env ||
+                // 只有时间戳这类状态变化时没有可重建的链接，点了也是白点。
+                env.issues.every((issue) => issue.kind === "time")
+              }
             >
               {t("diagnostics.oneClickFix")}
             </button>
@@ -347,6 +358,9 @@ export function DiagnosticsView({
               <p className="panel-note">
                 {t("diagnostics.moreIssues", { count: env.issues.length - 6 })}
               </p>
+            ) : null}
+            {env.issues.length > 0 ? (
+              <p className="env-tolerance-hint">{t("diagnostics.envToleranceHint")}</p>
             ) : null}
             {healNote ? <p className="env-heal-note">{healNote}</p> : null}
           </>

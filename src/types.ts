@@ -869,14 +869,25 @@ export interface EnvIssue {
   modId: string;
   modName: string;
   relativePath: string;
-  /** missing | size | time | source_missing */
+  /**
+   * missing | size | time | source_missing
+   *
+   * - missing / source_missing：真丢了，红
+   * - size：大小超出 1KB 容差，黄
+   * - time：只有时间戳变化，进灰「提示」档
+   */
   kind: string;
   detail: string;
 }
 
 /** 一次环境体检的结果。 */
 export interface EnvDiagnosis {
-  /** healthy | warning | critical */
+  /**
+   * healthy | info | warning | critical
+   *
+   * info 是"有文件状态变化但没有丢失/大小异常"时的灰「提示」档：杀毒软件扫描、
+   * 外部工具接管都会改写元数据，游戏照常能跑，不该打黄灯吓人。
+   */
   level: string;
   checkedMods: number;
   checkedFiles: number;

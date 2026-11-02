@@ -1406,16 +1406,24 @@ export const mockApi = {
     const checkedFiles = active.reduce((sum, mod) => sum + mod.deployedFiles.length, 0);
     const issues: EnvIssue[] = [];
     if (active.length > 0) {
+      // 演示"轻微差异"这条路径：只有时间戳变化 → 灰色「提示」，不吓人。
+      // （真丢文件的红色分支由 Rust 单测覆盖，演示里不必天天喊狼来了。）
       const victim = active[0];
       issues.push({
         modId: victim.id,
         modName: victim.name,
-        relativePath: "archive/pc/mod/missing_preview.archive",
-        kind: "missing",
-        detail: "游戏目录里的这个文件不见了。",
+        relativePath: victim.deployedFiles[0]?.relativePath ?? "archive/pc/mod/preview.archive",
+        kind: "time",
+        detail: "文件的修改时间变了，可能被杀毒软件或外部工具碰过；不影响游戏加载。",
       });
     }
-    const level = issues.some((issue) => issue.kind === "missing") ? "critical" : "healthy";
+    const level = issues.some((issue) => issue.kind === "missing")
+      ? "critical"
+      : issues.some((issue) => issue.kind === "size")
+        ? "warning"
+        : issues.length > 0
+          ? "info"
+          : "healthy";
     return {
       level,
       checkedMods: active.length,
@@ -1424,7 +1432,9 @@ export const mockApi = {
       summary:
         level === "critical"
           ? `${active.length} 个模组共 ${checkedFiles} 个文件，有 1 个文件丢失，建议立刻修复。`
-          : `${active.length} 个模组、${checkedFiles} 个文件全部正常。`,
+          : level === "info"
+            ? `${active.length} 个模组共 ${checkedFiles} 个文件，其中 ${issues.length} 个文件状态有变化，核心文件都在，游戏通常可正常运行。`
+            : `${active.length} 个模组、${checkedFiles} 个文件全部正常。`,
     };
   },
 

@@ -455,9 +455,19 @@ const UI_SCRIPTS = [
     ],
   },
   {
-    name: "环境体检面板",
+    name: "环境体检面板（防误报）",
     script: "check-env-panel.mjs",
-    expect: ["level>=1", "metrics>=1"],
+    expect: [
+      "level>=1",
+      "metrics>=1",
+      // 轻微差异只给灰色「提示」，且措辞里不许出现"异常/被改写"
+      "badgeInfo=1",
+      "toleranceHint=1",
+      "summaryCalm=1",
+      "alarmWording=0",
+      // 只有状态变化时"一键修复"没有可修的东西，按钮置灰
+      "fixDisabledParked=1",
+    ],
   },
   {
     // 7 项：接收条 + 协议归属。多这一项是因为它跨了「注册表状态 → 前端 → 下载队列」三段。
