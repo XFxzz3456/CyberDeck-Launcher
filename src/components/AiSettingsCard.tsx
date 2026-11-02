@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { BrainCircuit, KeyRound, ListRestart, LockKeyhole } from "lucide-react";
-import type { AiStatus, Settings } from "../types";
+import { BrainCircuit, CheckCircle2, KeyRound, ListRestart, LockKeyhole, Plus, Trash2, Zap } from "lucide-react";
+import type { AiProfileList, AiStatus, AiTestResult, Settings } from "../types";
 import {
   AI_PRESET_GROUPS,
   AI_PROTOCOL_LABEL_KEY,
@@ -39,12 +39,58 @@ export function AiSettingsCard({
   const [presetId, setPresetId] = useState("");
   const [models, setModels] = useState<string[] | null>(null);
   const [loadingModels, setLoadingModels] = useState(false);
+  /** 多套配置：列表 + 正在编辑哪一套（空串 = 新建）。 */
+  const [profiles, setProfiles] = useState<AiProfileList | null>(null);
+  const [editingId, setEditingId] = useState("");
+  const [profileName, setProfileName] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<AiTestResult | null>(null);
+
+  const activeProfile =
+    profiles?.profiles.find((item) => item.active) ?? profiles?.profiles[0] ?? null;
+
+  /** 把表单切到某一套配置（空 id = 拿当前激活值新建一套）。 */
+  const loadIntoForm = (id: string) => {
+    const target = profiles?.profiles.find((item) => item.profile.id === id);
+    setEditingId(target?.profile.id ?? "");
+    setProfileName(target?.profile.name ?? "");
+    setBaseUrl(target?.profile.baseUrl ?? activeProfile?.profile.baseUrl ?? settings.aiBaseUrl);
+    setModel(target?.profile.model ?? activeProfile?.profile.model ?? settings.aiModel);
+    setProtocol(
+      ((target?.profile.protocol ?? activeProfile?.profile.protocol ?? settings.aiProtocol) === "anthropic"
+        ? "anthropic"
+        : "openai") as "openai" | "anthropic",
+    );
+    setApiKey("");
+    setTestResult(null);
+  };
+
 
   useEffect(() => {
     setBaseUrl(settings.aiBaseUrl);
     setModel(settings.aiModel);
     setProtocol(settings.aiProtocol);
   }, [settings.aiBaseUrl, settings.aiModel, settings.aiProtocol]);
+
+  // 首次进页面：把配置列表拉出来，表单落在当前激活的那套上。
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .aiProfiles()
+      .then((next) => {
+        if (cancelled) return;
+        setProfiles(next);
+        const current = next.profiles.find((item) => item.active) ?? next.profiles[0];
+        if (current) {
+          setEditingId(current.profile.id);
+          setProfileName(current.profile.name);
+        }
+      })
+      .catch((error) => onError(error, t("aiSettings.errorLoadConfig")));
+    return () => {
+      cancelled = true;
+    };
+  }, [onError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,10 +115,13 @@ export function AiSettingsCard({
     if (preset.protocol) setProtocol(preset.protocol);
   };
 
-  const dirty =
-    baseUrl.trim() !== settings.aiBaseUrl ||
-    model.trim() !== settings.aiModel ||
-    protocol !== settings.aiProtocol;
+  const editingProfile = profiles?.profiles.find((item) => item.profile.id === editingId) ?? null;
+  const dirty = editingProfile
+    ? baseUrl.trim() !== editingProfile.profile.baseUrl ||
+      model.trim() !== editingProfile.profile.model ||
+      protocol !== editingProfile.profile.protocol ||
+      profileName.trim() !== editingProfile.profile.name
+    : true;
 
   const deprecationKey = deprecatedModelWarningKey(model);
 
@@ -90,28 +139,112 @@ export function AiSettingsCard({
     }
   };
 
+  /**
+   * 保存到当前这套配置档案。
+   *
+   * 关键点：key 是**这套配置独享**的（后端按 id 存到各自的 DPAPI 文件），
+   * 所以切换配置不会串 key；激活态变化时同步写回 settings，诊断/翻译立即生效。
+   */
   const save = async () => {
     if (!baseUrl.trim() || !model.trim()) return;
     setBusy(true);
     try {
-      onSettings({
-        ...settings,
-        aiBaseUrl: baseUrl.trim(),
-        aiModel: model.trim(),
-        aiProtocol: protocol,
-      });
-      if (apiKey.trim()) {
-        setStatus(await api.setAiKey(apiKey.trim()));
-        setApiKey("");
-      } else {
-        setStatus((current) =>
-          current ? { ...current, baseUrl: baseUrl.trim(), model: model.trim() } : current,
-        );
+      const previousActive = activeProfile?.profile.id ?? "";
+      const next = await api.aiProfileSave(
+        {
+          id: editingId,
+          name: profileName.trim(),
+          vendor: presetId || activeProfile?.profile.vendor || "",
+          baseUrl: baseUrl.trim(),
+          model: model.trim(),
+          protocol,
+        },
+        apiKey.trim() || null,
+      );
+      setProfiles(next);
+      const current = next.profiles.find((item) => item.active) ?? next.profiles[0];
+      if (current) {
+        setEditingId(current.profile.id);
+        setProfileName(current.profile.name);
+        // 激活态可能没变，但要保证 App 手里的 settings 与后端一致。
+        onSettings({
+          ...settings,
+          aiBaseUrl: current.profile.baseUrl,
+          aiModel: current.profile.model,
+          aiProtocol: current.profile.protocol === "anthropic" ? "anthropic" : "openai",
+        });
+        if (previousActive !== current.profile.id) setStatus(await api.aiStatus());
+      }
+      setApiKey("");
+      setTestResult(null);
+    } catch (error) {
+      onError(error, t("aiSettings.errorSaveConfig"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 切换当前使用的配置（后端会把值同步写回 settings 三个老字段）。 */
+  const useProfile = async (id: string) => {
+    setBusy(true);
+    try {
+      const next = await api.aiProfileActivate(id);
+      setProfiles(next);
+      const current = next.profiles.find((item) => item.profile.id === id);
+      if (current) {
+        loadIntoForm(id);
+        onSettings({
+          ...settings,
+          aiBaseUrl: current.profile.baseUrl,
+          aiModel: current.profile.model,
+          aiProtocol: current.profile.protocol === "anthropic" ? "anthropic" : "openai",
+        });
+        setStatus(await api.aiStatus());
       }
     } catch (error) {
       onError(error, t("aiSettings.errorSaveConfig"));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const deleteProfile = async (id: string) => {
+    setBusy(true);
+    try {
+      const next = await api.aiProfileDelete(id);
+      setProfiles(next);
+      const current = next.profiles.find((item) => item.active) ?? next.profiles[0];
+      if (current) loadIntoForm(current.profile.id);
+      setStatus(await api.aiStatus());
+    } catch (error) {
+      onError(error, t("aiSettings.errorSaveConfig"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 测试连接：用表单里现在这套值直接打 /models，不落盘、不改激活态。 */
+  const runTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(
+        await api.aiProfileTest(
+          {
+            id: editingId,
+            name: profileName.trim(),
+            vendor: presetId || activeProfile?.profile.vendor || "",
+            baseUrl: baseUrl.trim(),
+            model: model.trim(),
+            protocol,
+          },
+          apiKey.trim() || null,
+        ),
+      );
+    } catch (error) {
+      onError(error, t("aiSettings.errorTest"));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -150,6 +283,66 @@ export function AiSettingsCard({
             <Badge tone="muted">{t("aiSettings.storageEmpty")}</Badge>
           )}
         </div>
+      </div>
+
+      {/* 配置档案：本地 / 云端 / 中转站各存一套，点「使用」即刻切换。 */}
+      <div className="ai-profile-strip">
+        {profiles?.profiles.map((item) => (
+          <div
+            key={item.profile.id}
+            className={`ai-profile-card${item.active ? " is-active" : ""}`}
+          >
+            <div className="ai-profile-head">
+              <strong>{item.profile.name}</strong>
+              {item.active ? (
+                <Badge tone="green">{t("aiSettings.profileActive")}</Badge>
+              ) : null}
+              {item.hasKey ? null : (
+                <Badge tone="muted">{t("aiSettings.profileNoKey")}</Badge>
+              )}
+            </div>
+            <code>{item.profile.model}</code>
+            <div className="ai-profile-actions">
+              <button className="link-btn" onClick={() => loadIntoForm(item.profile.id)}>
+                {t("aiSettings.profileEdit")}
+              </button>
+              {item.active ? null : (
+                <button
+                  className="link-btn"
+                  onClick={() => void useProfile(item.profile.id)}
+                  disabled={busy}
+                >
+                  {t("aiSettings.profileUse")}
+                </button>
+              )}
+              {(profiles?.profiles.length ?? 0) > 1 ? (
+                <button
+                  className="link-btn danger-text"
+                  onClick={() => void deleteProfile(item.profile.id)}
+                  disabled={busy}
+                >
+                  {t("aiSettings.profileDelete")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <button className="ai-profile-add" onClick={() => loadIntoForm("")} disabled={busy}>
+          <Plus size={13} /> {t("aiSettings.profileNew")}
+        </button>
+      </div>
+
+      <div className="settings-field">
+        <span>{t("aiSettings.profileNameLabel")}</span>
+        <div className="settings-field-row">
+          <input
+            value={profileName}
+            onChange={(event) => setProfileName(event.target.value)}
+            placeholder={t("aiSettings.profileNamePlaceholder")}
+            spellCheck={false}
+          />
+        </div>
+        <small>{t("aiSettings.profileNameHint")}</small>
       </div>
 
       <div className="settings-field">
@@ -339,22 +532,50 @@ export function AiSettingsCard({
           }
         >
           {busy ? <Spinner size={13} /> : <KeyRound size={13} />}
-          {t("aiSettings.saveConfig")}
+          {editingId ? t("aiSettings.saveConfig") : t("aiSettings.profileCreate")}
         </button>
-        {status?.configured ? (
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => void runTest()}
+          disabled={testing || !baseUrl.trim()}
+          title={t("aiSettings.profileTestHint")}
+        >
+          {testing ? <Spinner size={13} /> : <Zap size={13} />}
+          {t("aiSettings.profileTest")}
+        </button>
+        {editingProfile?.hasKey ? (
           <button
             className="btn btn-ghost btn-sm danger-text"
             onClick={() => {
               void api
-                .clearAiKey()
-                .then((next) => setStatus(next))
+                .aiProfileClearKey(editingProfile.profile.id)
+                .then((next) => {
+                  setProfiles(next);
+                  setStatus(null);
+                  void api.aiStatus().then(setStatus);
+                })
                 .catch((error) => onError(error, t("aiSettings.errorClearKey")));
             }}
           >
+            <Trash2 size={13} />
             {t("aiSettings.removeKey")}
           </button>
         ) : null}
       </div>
+      {testResult ? (
+        <p className={testResult.ok ? "ai-test-note is-ok" : "ai-test-note is-bad"}>
+          {testResult.ok ? <CheckCircle2 size={12} /> : null}
+          {testResult.ok
+            ? t("aiSettings.profileTestDone", {
+                ms: testResult.latencyMs,
+                count: testResult.modelCount,
+              })
+            : t("aiSettings.profileTestFailed", {
+                ms: testResult.latencyMs,
+                message: testResult.message,
+              })}
+        </p>
+      ) : null}
       <p className="panel-note">
         <BrainCircuit size={12} /> {t("aiSettings.footNote")}
       </p>

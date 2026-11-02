@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Crown, ExternalLink, KeyRound, Link2, RefreshCw, Trash2 } from "lucide-react";
-import type { NexusStatus, NxmStatus, Settings } from "../types";
+import type { NexusStatus, NexusTestResult, NxmStatus, Settings } from "../types";
 import { api } from "../lib/api";
 import { notifyNexusStatusChanged, onNexusStatusChanged } from "../lib/nexusBus";
 import { t } from "../i18n";
@@ -26,6 +26,9 @@ export function NexusSettingsCard({
   // nxm:// 协议归属：真机读注册表，浏览器预览走 mock。
   const [nxm, setNxm] = useState<NxmStatus | null>(null);
   const [nxmBusy, setNxmBusy] = useState(false);
+  /** 测试连接结果：失败也留着显示（含 401 的状态码），不弹红框。 */
+  const [test, setTest] = useState<NexusTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -61,6 +64,24 @@ export function NexusSettingsCard({
       onError(error, t("nexusSettings.connectFailed"));
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * 测试连接：优先用输入框里的 key（还没保存也能先验），没填就用已保存的。
+   *
+   * 401 是这里最常见的失败：换账号、在 Nexus 上重新生成过 key、或 key 被撤销，
+   * 都会让旧 key 立刻失效。结果行里直接给「去重新生成」的入口。
+   */
+  const testConnection = async () => {
+    setTesting(true);
+    setTest(null);
+    try {
+      setTest(await api.nexusTestConnection(key.trim() || null));
+    } catch (error) {
+      onError(error, t("nexusSettings.testFailed"));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -134,6 +155,13 @@ export function NexusSettingsCard({
           <button className="btn btn-ghost btn-sm" onClick={() => void load()}>
             <RefreshCw size={12} /> {t("common.refresh")}
           </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => void testConnection()}
+            disabled={testing}
+          >
+            {testing ? <Spinner size={12} /> : <Link2 size={12} />} {t("nexusSettings.test")}
+          </button>
           <button className="btn btn-ghost btn-sm danger-text" onClick={() => void disconnect()} disabled={busy}>
             <Trash2 size={12} /> {t("nexusSettings.disconnect")}
           </button>
@@ -156,6 +184,14 @@ export function NexusSettingsCard({
           </button>
           <button
             className="btn btn-ghost btn-sm"
+            onClick={() => void testConnection()}
+            disabled={testing || !key.trim()}
+            title={t("nexusSettings.testHint")}
+          >
+            {testing ? <Spinner size={12} /> : <Link2 size={12} />} {t("nexusSettings.test")}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
             onClick={() =>
               void api
                 .openUrl("https://www.nexusmods.com/users/myaccount?tab=api")
@@ -166,6 +202,29 @@ export function NexusSettingsCard({
           </button>
         </div>
       )}
+
+      {test ? (
+        <div className={test.ok ? "inline-ok compact" : "inline-warning compact"}>
+          {test.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+          <span>
+            {test.statusCode ? `HTTP ${test.statusCode} · ` : ""}
+            {test.message}
+            {test.ok ? "" : ` ${t("nexusSettings.testElapsed", { ms: test.latencyMs })}`}
+          </span>
+          {!test.ok && test.statusCode === 401 ? (
+            <button
+              className="link-btn"
+              onClick={() =>
+                void api
+                  .openUrl("https://www.nexusmods.com/users/myaccount?tab=api")
+                  .catch((error) => onError(error, t("nexusSettings.openPageFailed")))
+              }
+            >
+              {t("nexusSettings.regenerateKey")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {status?.error ? (
         <div className="inline-warning compact">

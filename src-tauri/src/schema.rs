@@ -527,6 +527,12 @@ pub struct Settings {
     /// 旧状态文件没有这个字段，serde default 兜底为 tray，不会反序列化失败。
     #[serde(default = "default_close_behavior")]
     pub close_behavior: String,
+    /// 点 × / Alt+F4 时是否先弹确认（"最小化到托盘"模式下）。
+    ///
+    /// 用户可以在弹窗里勾「以后不再询问」，把这里置 false；托盘右键"彻底退出"
+    /// 永远直接退出，不受这个开关影响。
+    #[serde(default = "default_true")]
+    pub close_ask: bool,
     #[serde(default = "default_launch_method")]
     pub launch_method: String,
     /// 游戏来源平台偏好：auto / steam / gog / epic / manual。
@@ -553,6 +559,16 @@ pub struct Settings {
     /// 未知值在使用处按 openai 兜底（set_settings 会在保存时拦住非法值）。
     #[serde(default = "default_ai_protocol")]
     pub ai_protocol: String,
+    /// 多套 AI 配置（本地 / 云端 / 中转站各存一份，随时切换）。
+    ///
+    /// 这里只存**非机密**字段；每套配置的 API Key 各自独立加密存放（DPAPI），
+    /// 文件名按配置 id 区分。空数组 = 老用户还没迁移，读取时按当前
+    /// `ai_base_url/ai_model/ai_protocol` 自动补一条「默认配置」。
+    #[serde(default)]
+    pub ai_profiles: Vec<AiProfile>,
+    /// 当前激活的配置 id。空串按"第一条"处理。
+    #[serde(default)]
+    pub active_ai_profile_id: String,
     /// Hide adult Nexus results in the browser. Defaults to hiding them.
     #[serde(default = "default_true")]
     pub nexus_hide_adult: bool,
@@ -704,6 +720,7 @@ impl Default for Settings {
             auto_backup: true,
             confirm_uninstall: true,
             close_behavior: default_close_behavior(),
+            close_ask: true,
             launch_method: default_launch_method(),
             platform_pref: default_platform_pref(),
             archive_tool_path: String::new(),
@@ -712,6 +729,8 @@ impl Default for Settings {
             ai_base_url: default_ai_base_url(),
             ai_model: default_ai_model(),
             ai_protocol: default_ai_protocol(),
+            ai_profiles: Vec::new(),
+            active_ai_profile_id: String::new(),
             nexus_hide_adult: true,
             launch_args: String::new(),
             nxm_auto_download: true,
@@ -1251,6 +1270,63 @@ pub struct NexusUpdateReport {
     pub message: String,
     /// 本轮检查时间（ISO 8601）。
     pub generated_at: String,
+}
+
+/// 一套 AI 配置（非机密部分）。
+///
+/// 🔴 故意**不**存 key：密钥各自走 DPAPI 文件（`secrets/ai-profile-<id>.key`），
+/// 所以这份结构可以安全地写进 launcher-state.json、也可以被导出。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProfile {
+    /// 稳定 id（"default" 是老用户迁移出来的那条，沿用旧的密钥文件名）。
+    #[serde(default)]
+    pub id: String,
+    /// 玩家自己起的备注名，例如「DeepSeek 主力」「本地 Ollama」。
+    #[serde(default)]
+    pub name: String,
+    /// 预设厂商 id（`deepseek` / `ollama` …），自定义时为空串。
+    #[serde(default)]
+    pub vendor: String,
+    pub base_url: String,
+    pub model: String,
+    /// openai | anthropic
+    #[serde(default = "default_ai_protocol")]
+    pub protocol: String,
+}
+
+/// 给前端用的一套配置：多两个只读标记。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProfileView {
+    /// 嵌套而不是拍平：前端保存时要把整份 profile 原样传回去，
+    /// 拍平后 `hasKey/active` 两个只读字段会混进可写结构里，容易误写。
+    pub profile: AiProfile,
+    /// 这套配置是否已经存了可用的密钥。
+    pub has_key: bool,
+    /// 是否是当前激活的那一套。
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProfileList {
+    pub profiles: Vec<AiProfileView>,
+    pub active_id: String,
+}
+
+/// 「测试连接」结果。不做成错误，是为了让失败也能稳定显示延迟/状态码。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTestResult {
+    pub ok: bool,
+    #[serde(default)]
+    pub status_code: Option<u16>,
+    pub latency_ms: u64,
+    pub message: String,
+    /// 成功时顺带回传模型数量，便于确认"确实连到了那家服务"。
+    #[serde(default)]
+    pub model_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

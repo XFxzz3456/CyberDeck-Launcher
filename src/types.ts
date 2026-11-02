@@ -235,6 +235,8 @@ export interface Settings {
   confirmUninstall: boolean;
   /** 点击关闭按钮时的行为：tray = 最小化到托盘，exit = 直接退出。 */
   closeBehavior: "tray" | "exit";
+  /** 点 × / Alt+F4 时是否先弹确认（可在弹窗里勾"以后不再询问"）。 */
+  closeAsk: boolean;
   launchMethod: "auto" | "steam" | "direct";
   /** 游戏来源平台偏好：只影响自动嗅探顺序与界面提示。 */
   platformPref: "auto" | "steam" | "gog" | "epic" | "manual";
@@ -247,6 +249,11 @@ export interface Settings {
   aiModel: string;
   /** AI 接口协议：openai = OpenAI 兼容（默认），anthropic = Anthropic 原生。 */
   aiProtocol: "openai" | "anthropic";
+  /** 多套配置的镜像（演示模式用；真实数据一律走 aiProfiles 命令）。 */
+  aiProfiles?: AiProfile[];
+  activeAiProfileId?: string;
+  /** 演示模式下"是否存过 key"。 */
+  aiKeyStored?: boolean;
   nexusHideAdult: boolean;
   /** 自定义启动参数（#6）：空格分隔，支持双引号分词，后端白名单校验后逐参传递。 */
   launchArgs: string;
@@ -893,6 +900,49 @@ export interface AiActionReport {
   snapshotId?: string | null;
   /** proposePatch：前端据此提示用户去走 AI 补丁流程。 */
   needsIntent: boolean;
+}
+
+/** 「测试 Nexus 连接」结果：失败也返回结构化数据。 */
+export interface NexusTestResult {
+  ok: boolean;
+  statusCode?: number | null;
+  latencyMs: number;
+  message: string;
+  user?: string | null;
+}
+
+/** 一套 AI 配置（非机密字段；密钥各自走 DPAPI，不进 state 文件）。 */
+export interface AiProfile {
+  id: string;
+  name: string;
+  vendor: string;
+  baseUrl: string;
+  /** openai | anthropic */
+  protocol: string;
+  model: string;
+}
+
+/** 列表里的一项：多两个只读标记。 */
+export interface AiProfileView {
+  profile: AiProfile;
+  /** 这套配置是否已存了可用密钥。 */
+  hasKey: boolean;
+  /** 是否是当前激活的那一套。 */
+  active: boolean;
+}
+
+export interface AiProfileList {
+  profiles: AiProfileView[];
+  activeId: string;
+}
+
+/** 「测试连接」结果：失败也返回结构化数据，不做成异常。 */
+export interface AiTestResult {
+  ok: boolean;
+  statusCode?: number | null;
+  latencyMs: number;
+  message: string;
+  modelCount: number;
 }
 
 /** 体检发现的一条文件级问题。 */

@@ -50,6 +50,45 @@ pub fn key_path_from(data_dir: &Path) -> PathBuf {
     data_dir.join("secrets").join("ai-api.key")
 }
 
+/// 某一套 AI 配置的密钥文件路径。
+///
+/// `default`（老用户迁移出来的那条）刻意沿用旧的 `ai-api.key`：
+/// 迁移只改元数据、不动密钥文件，避免"升级后 key 消失"这类最伤人的事故。
+/// 其它配置各自一份 `ai-profile-<id>.key`，互不影响。
+pub fn key_path_for(store: &Store, profile_id: &str) -> PathBuf {
+    let id = profile_id.trim();
+    if id.is_empty() || id == "default" {
+        return key_path(store);
+    }
+    store
+        .data_dir
+        .join("secrets")
+        .join(format!("ai-profile-{}.key", sanitize_profile_id(id)))
+}
+
+/// 只允许字母数字与短横线：id 会进文件名，必须挡住路径穿越。
+fn sanitize_profile_id(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+        .take(40)
+        .collect()
+}
+
+pub fn load_key_for(store: &Store, profile_id: &str) -> AppResult<Option<String>> {
+    if profile_id.trim().is_empty() || profile_id.trim() == "default" {
+        return load_key(store);
+    }
+    secret::load(&key_path_for(store, profile_id))
+}
+
+pub fn save_key_for(store: &Store, profile_id: &str, key: &str) -> AppResult<()> {
+    secret::save(&key_path_for(store, profile_id), key)
+}
+
+pub fn clear_key_for(store: &Store, profile_id: &str) -> AppResult<()> {
+    secret::clear(&key_path_for(store, profile_id))
+}
+
 /// 旧版本遗留的 DeepSeek 专用 key 文件名（0.7.0 及更早）。
 fn legacy_key_path(store: &Store) -> PathBuf {
     store.data_dir.join("secrets").join("deepseek-api.key")
@@ -680,6 +719,16 @@ fn models_endpoint(base: &str) -> String {
 /// Key 来自本机 DPAPI 存储，可选——Ollama 等本地服务不需要鉴权，没有
 /// Key 时发匿名请求，由服务商决定是否拒绝。
 pub fn list_models(store: &Store, base_url: &str, protocol: Option<&str>) -> AppResult<Vec<String>> {
+    let key = load_key(store)?;
+    list_models_with_key(base_url, protocol, key.as_deref())
+}
+
+/// 同上，但密钥由调用方给：`测试连接` 需要在保存之前就验证这一套配置。
+pub fn list_models_with_key(
+    base_url: &str,
+    protocol: Option<&str>,
+    key: Option<&str>,
+) -> AppResult<Vec<String>> {
     if base_url.trim().is_empty() {
         return Err(CommandError::new(
             "AI_NOT_CONFIGURED",
@@ -693,7 +742,7 @@ pub fn list_models(store: &Store, base_url: &str, protocol: Option<&str>) -> App
     };
     let client = build_client_with_timeout("Models", 15, 10)?;
     let mut request = client.get(&url);
-    if let Some(key) = load_key(store)? {
+    if let Some(key) = key {
         request = match protocol {
             ApiProtocol::OpenAi => request.bearer_auth(key),
             ApiProtocol::Anthropic => request

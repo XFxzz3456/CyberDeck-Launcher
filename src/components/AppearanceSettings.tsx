@@ -106,6 +106,8 @@ export function AppearanceSettings({
   onSplash,
   closeBehavior,
   onCloseBehavior,
+  closeAsk,
+  onCloseAsk,
   background,
   hiddenViews = {},
   onToggleHiddenView,
@@ -127,6 +129,9 @@ export function AppearanceSettings({
   /** 关闭窗口行为：由 SettingsView 传入（原本是页脚那张独立 panel）。 */
   closeBehavior: "tray" | "exit";
   onCloseBehavior: (value: "tray" | "exit") => void;
+  /** 点 × 时是否先弹确认（对应 settings.closeAsk）。 */
+  closeAsk: boolean;
+  onCloseAsk: (value: boolean) => void;
   background?: BackgroundControl;
   hiddenViews?: HiddenViewsMap;
   onToggleHiddenView?: (view: HideableView, hidden: boolean) => void;
@@ -399,6 +404,16 @@ export function AppearanceSettings({
               </button>
             </div>
             <small className="setting-item-note">{t("settings.closeBehaviorNote")}</small>
+            {closeBehavior === "tray" ? (
+              <label className="setting-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={closeAsk}
+                  onChange={(event) => onCloseAsk(event.target.checked)}
+                />
+                <span>{t("settings.closeAskLabel")}</span>
+              </label>
+            ) : null}
           </div>
         </div>
       </SettingCard>

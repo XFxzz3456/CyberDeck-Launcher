@@ -25,6 +25,8 @@
 - **2026-11-01 20:53 设置卡片底色统一**：删掉 `.settings-tab-panel .panel` 的 12% 白提亮，改吃基础 .panel 渐变。exe md5 `3df1bab9f8d5116daf1d87d46dbdfd99`，冒烟 `2026-11-01T12:53:24Z stage=frontend mods=186`。
 - **2026-11-01 21:21 工具栏两组重构**：左「视图与过滤」/ 右「动作与工具」，AI 汉化与翻译名称合并为「AI 工具▾」，三档容器查询收低频不换行。exe md5 `f34048c581e4b473571361fd75e474c8`，冒烟 `2026-11-01T13:21:03Z stage=frontend mods=186`。
 - **2026-11-02 00:55 批次 5 构建（播放集缩放对齐 / 毛玻璃质感 / 补全封面进工具栏 / 通知限时）**：exe 11,178,496 B / md5 `288567e268b825f75f274041260e0ef7`，冒烟 `2026-11-01T16:55:29Z stage=frontend mods=186`（sync removed=0 repaired=0 deferred=72）。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,303,788 B，包内 exe md5 一致；zip 改用 UTF-8 文件名，修掉旧包 GBK 乱码隐患），已同步网盘。
+- **2026-11-03 00:1x 批次 8+9 完成（未构建）**：AI 诊断可执行动作、AI 多套配置、退出确认弹窗、Nexus 401 出口。`cargo test` 262 通过；全量门禁 41/41 绿（新增「AI 可执行修复」「AI 多套配置」「关闭确认与 Nexus 401」）。等 localhost 验收后再构建。
+
 - **2026-11-02 23:24 批次 6+7 构建并替换 release**：exe 11,181,568 B / md5 `a2f360de70f7968bb572fde0cfea9c56`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T15:24:21Z stage=frontend mods=186`、`integrity=0x2000`、`sync removed=0 repaired=0 deferred=72`。本轮含：动画速度滑块 / AI 空响应重试 / 兼容性体检重写（版本号显示 2.5）/ 收编禁用只断链接 / 环境体检降噪。便携版与网盘尚未重做（等确认）。
 - **2026-11-02 22:0x 批次 6 完成代码与门禁（动效速度滑块 / AI 空响应容错 / 兼容性体检重写）**：`cargo test` 182 通过 / 2 ignored，全量门禁 37/37 绿（新增 `check-compat-health.mjs`）。**尚未构建 exe**——按交付顺序规则先在 localhost 验收，用户确认后再构建、替换 release、重打便携版并同步网盘。构建后在此行补 exe 大小 / md5 / 冒烟结果。
 

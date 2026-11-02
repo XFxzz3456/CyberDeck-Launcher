@@ -84,7 +84,7 @@ import { BackgroundCropDialog } from "./components/BackgroundCropDialog";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { TaskCenter } from "./components/TaskCenter";
 import { DownloadsView } from "./components/DownloadsView";
-import { ConfirmDialog, ToastHost, type ToastItem } from "./components/ui";
+import { ConfirmDialog, Modal, ToastHost, type ToastItem } from "./components/ui";
 import { BootSkeletonGrid } from "./components/ModCardSkeleton";
 import {
   canNotify,
@@ -171,6 +171,18 @@ export default function App() {
   const scaleRef = useRef(preferences.scale);
   scaleRef.current = preferences.scale;
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let dispose: (() => void) | undefined;
+    void listen("close-requested", () => {
+      setCloseRemember(false);
+      setCloseAskOpen(true);
+    }).then((unlisten) => {
+      dispose = unlisten;
+    });
+    return () => dispose?.();
+  }, []);
+
+  useEffect(() => {
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
@@ -251,6 +263,14 @@ export default function App() {
   const [launching, setLaunching] = useState(false);
   const [appData, setAppData] = useState("");
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  /**
+   * 点 × / Alt+F4 时的确认弹窗。
+   *
+   * 关闭拦截在 Rust 侧（prevent_close + emit "close-requested"），这里只负责问；
+   * 真正的隐藏/退出由 close_window_action 执行，避免"弹窗被关掉后窗口卡住"。
+   */
+  const [closeAskOpen, setCloseAskOpen] = useState(false);
+  const [closeRemember, setCloseRemember] = useState(false);
   // 游戏更新熔断的解除：点按钮后短暂禁用，避免连点。
   const [unlocking, setUnlocking] = useState(false);
   const [switchingProfile, setSwitchingProfile] = useState(false);
@@ -2725,7 +2745,14 @@ export default function App() {
             ) : null}
 
             {view === "downloads" ? (
-              <DownloadsView onNavigateDiscover={() => setView("discover")} dataDir={appData || null} />
+              <DownloadsView
+                onNavigateDiscover={() => setView("discover")}
+                onOpenNexusSettings={() => {
+                  setSettingsTabRequest("game");
+                  setView("settings");
+                }}
+                dataDir={appData || null}
+              />
             ) : null}
 
             {view === "diagnostics" ? (
@@ -2971,6 +2998,49 @@ export default function App() {
       />
 
       {/* 启用拦截：缺前置时先说清楚代价，用户点「仍然启用」才继续。 */}
+      <Modal
+        open={closeAskOpen}
+        title={t("closeAsk.title")}
+        eyebrow="CLOSE WINDOW"
+        onClose={() => setCloseAskOpen(false)}
+        footer={
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={() => setCloseAskOpen(false)}>
+              {t("common.cancel")}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setCloseAskOpen(false);
+                void api.closeWindowAction("exit", closeRemember).catch(() => undefined);
+              }}
+            >
+              {t("closeAsk.exit")}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setCloseAskOpen(false);
+                void api.closeWindowAction("hide", closeRemember).catch(() => undefined);
+              }}
+            >
+              {t("closeAsk.minimize")}
+            </button>
+          </>
+        }
+      >
+        <p className="close-ask-body">{t("closeAsk.body")}</p>
+        <label className="close-ask-remember">
+          <input
+            type="checkbox"
+            checked={closeRemember}
+            onChange={(event) => setCloseRemember(event.target.checked)}
+          />
+          <span>{t("closeAsk.remember")}</span>
+        </label>
+        <p className="close-ask-hint">{t("closeAsk.trayHint")}</p>
+      </Modal>
+
       <ConfirmDialog
         open={Boolean(depGuard)}
         title={t("depGuard.title", { name: depGuard?.mod.name ?? "" })}

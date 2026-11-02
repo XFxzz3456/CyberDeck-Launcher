@@ -19,6 +19,10 @@ import type {
   DeepScanRef,
   DeepScanReport,
   AiActionReport,
+  NexusTestResult,
+  AiProfile,
+  AiProfileList,
+  AiTestResult,
   AiFixAction,
   EnvDiagnosis,
   GameInfo,
@@ -618,6 +622,57 @@ export const api = {
   ): Promise<AiDiagnosis> {
     if (!isTauri) return mockApi.aiDiagnose(includeLogs, consent, focus);
     return call<AiDiagnosis>("ai_diagnose", { includeLogs, consent, focus });
+  },
+
+  /**
+   * 关闭弹窗选完之后调用：`action` = hide（收进托盘）| exit（彻底退出）。
+   * `remember` 为真时后端会记住这次选择，下次不再询问。
+   */
+  async closeWindowAction(action: "hide" | "exit", remember: boolean): Promise<void> {
+    if (!isTauri) return;
+    await call<void>("close_window_action", { action, remember });
+  },
+
+  /**
+   * 测试 Nexus 连接：传了 key 就用它（保存前先验），否则用已存的。
+   * 失败不抛错，返回结构化结果，设置页据此显示状态码与原因。
+   */
+  async nexusTestConnection(key: string | null): Promise<NexusTestResult> {
+    if (!isTauri) return mockApi.nexusTestConnection(key);
+    return call<NexusTestResult>("nexus_test_connection", { key });
+  },
+
+  /** 多套 AI 配置：列表（首次调用会把老状态迁移成一条「默认配置」）。 */
+  async aiProfiles(): Promise<AiProfileList> {
+    if (!isTauri) return mockApi.aiProfiles();
+    return call<AiProfileList>("ai_profiles");
+  },
+
+  /** 新增/修改一套配置；`key` 为 null 表示不动已存的密钥。 */
+  async aiProfileSave(profile: AiProfile, key: string | null): Promise<AiProfileList> {
+    if (!isTauri) return mockApi.aiProfileSave(profile, key);
+    return call<AiProfileList>("ai_profile_save", { profile, key });
+  },
+
+  async aiProfileDelete(id: string): Promise<AiProfileList> {
+    if (!isTauri) return mockApi.aiProfileDelete(id);
+    return call<AiProfileList>("ai_profile_delete", { id });
+  },
+
+  async aiProfileActivate(id: string): Promise<AiProfileList> {
+    if (!isTauri) return mockApi.aiProfileActivate(id);
+    return call<AiProfileList>("ai_profile_activate", { id });
+  },
+
+  async aiProfileClearKey(id: string): Promise<AiProfileList> {
+    if (!isTauri) return mockApi.aiProfileClearKey(id);
+    return call<AiProfileList>("ai_profile_clear_key", { id });
+  },
+
+  /** 测试连接：不落盘、不改激活态。 */
+  async aiProfileTest(profile: AiProfile, key: string | null): Promise<AiTestResult> {
+    if (!isTauri) return mockApi.aiProfileTest(profile, key);
+    return call<AiTestResult>("ai_profile_test", { profile, key });
   },
 
   /**

@@ -45,6 +45,10 @@ import type {
   Settings,
   Snapshot,
   AiActionReport,
+  NexusTestResult,
+  AiProfile,
+  AiProfileList,
+  AiTestResult,
   AiFixAction,
   EnvDiagnosis,
   EnvIssue,
@@ -171,6 +175,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoBackup: true,
   confirmUninstall: true,
   closeBehavior: "tray",
+  closeAsk: true,
   launchMethod: "auto",
   platformPref: "auto",
   archiveToolPath: "",
@@ -588,6 +593,49 @@ function loadDb(): DemoDb {
   const fresh = createInitial();
   saveDb(fresh);
   return fresh;
+}
+
+/** 演示用的两套配置：任何入口调用前都先补一次，避免"某个页面先存了别的东西"导致列表丢失。 */
+function ensureMockProfiles(db: DemoDb): void {
+  if (db.state.settings.aiProfiles && db.state.settings.aiProfiles.length > 0) {
+    if (!db.state.settings.activeAiProfileId) {
+      db.state.settings.activeAiProfileId = db.state.settings.aiProfiles[0].id;
+    }
+    return;
+  }
+  db.state.settings.aiProfiles = [
+    {
+      id: "default",
+      name: "默认配置",
+      vendor: "openai",
+      baseUrl: db.state.settings.aiBaseUrl,
+      model: db.state.settings.aiModel,
+      protocol: db.state.settings.aiProtocol,
+    },
+    {
+      id: "p-local",
+      name: "本地 Ollama",
+      vendor: "ollama",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "qwen3:8b",
+      protocol: "openai",
+    },
+  ];
+  db.state.settings.activeAiProfileId = "default";
+}
+
+/** 把演示状态拼成配置列表（hasKey/active 两个只读标记在这里算）。 */
+function mockProfileList(db: DemoDb, activeId: string): AiProfileList {
+  const list = db.state.settings.aiProfiles ?? [];
+  const defaultHasKey = db.state.settings.aiKeyStored !== false;
+  return {
+    profiles: list.map((item) => ({
+      profile: item,
+      hasKey: item.id === "default" ? defaultHasKey : true,
+      active: item.id === activeId,
+    })),
+    activeId,
+  };
 }
 
 function saveDb(db: DemoDb): void {
@@ -2711,6 +2759,111 @@ export const mockApi = {
         truncated: false,
         totalResources: 3,
       })),
+    };
+  },
+
+  /** 演示：一套默认 + 一套本地，切换/保存都只改内存。 */
+  /** 演示：填了 key 就算通过，空 key 一律 401——两种排版都能看到。 */
+  async nexusTestConnection(key: string | null): Promise<NexusTestResult> {
+    await sleep(520);
+    if (!key || key.trim().length < 8) {
+      return {
+        ok: false,
+        statusCode: 401,
+        latencyMs: 260,
+        message:
+          "Nexus API Key 已失效（HTTP 401）。请重新在「设置 → 工具组件 → Nexus Mods」填写 Personal API Key。",
+        user: null,
+      };
+    }
+    return {
+      ok: true,
+      statusCode: 200,
+      latencyMs: 210,
+      message: "连接成功，已登录为 demo_user。",
+      user: "demo_user",
+    };
+  },
+
+  /** 演示模式没有真实窗口：调用即忽略（预览里不会真退出）。 */
+  async closeWindowAction(_action: "hide" | "exit", _remember: boolean): Promise<void> {
+    await sleep(60);
+  },
+
+  async aiProfiles(): Promise<AiProfileList> {
+    await sleep(120);
+    const db = loadDb();
+    ensureMockProfiles(db);
+    saveDb(db);
+    return mockProfileList(db, db.state.settings.activeAiProfileId ?? "default");
+  },
+
+  async aiProfileSave(profile: AiProfile, key: string | null): Promise<AiProfileList> {
+    await sleep(260);
+    const db = loadDb();
+    ensureMockProfiles(db);
+    const list = db.state.settings.aiProfiles ?? [];
+    const id = profile.id || `p-${list.length + 1}`;
+    const next: AiProfile = { ...profile, id };
+    const index = list.findIndex((item) => item.id === id);
+    if (index >= 0) list[index] = next;
+    else list.push(next);
+    db.state.settings.aiProfiles = list;
+    if (key) db.state.settings.aiKeyStored = true;
+    saveDb(db);
+    return mockProfileList(db, db.state.settings.activeAiProfileId ?? "default");
+  },
+
+  async aiProfileDelete(id: string): Promise<AiProfileList> {
+    await sleep(200);
+    const db = loadDb();
+    ensureMockProfiles(db);
+    db.state.settings.aiProfiles = (db.state.settings.aiProfiles ?? []).filter(
+      (item) => item.id !== id,
+    );
+    if (db.state.settings.activeAiProfileId === id) {
+      db.state.settings.activeAiProfileId = db.state.settings.aiProfiles[0]?.id ?? "default";
+    }
+    saveDb(db);
+    return mockProfileList(db, db.state.settings.activeAiProfileId ?? "default");
+  },
+
+  async aiProfileActivate(id: string): Promise<AiProfileList> {
+    await sleep(180);
+    const db = loadDb();
+    ensureMockProfiles(db);
+    db.state.settings.activeAiProfileId = id;
+    const target = (db.state.settings.aiProfiles ?? []).find((item) => item.id === id);
+    if (target) {
+      db.state.settings.aiBaseUrl = target.baseUrl;
+      db.state.settings.aiModel = target.model;
+      db.state.settings.aiProtocol = target.protocol === "anthropic" ? "anthropic" : "openai";
+    }
+    saveDb(db);
+    return mockProfileList(db, id);
+  },
+
+  async aiProfileClearKey(id: string): Promise<AiProfileList> {
+    await sleep(150);
+    const db = loadDb();
+    ensureMockProfiles(db);
+    if (id === "default") db.state.settings.aiKeyStored = false;
+    saveDb(db);
+    return mockProfileList(db, db.state.settings.activeAiProfileId ?? "default");
+  },
+
+  async aiProfileTest(profile: AiProfile, _key: string | null): Promise<AiTestResult> {
+    await sleep(700);
+    // 演示：本地地址一律失败，云端一律成功——两种状态的排版都能被看到。
+    const local = /127\.0\.0\.1|localhost/.test(profile.baseUrl);
+    return {
+      ok: !local,
+      statusCode: local ? null : 200,
+      latencyMs: local ? 1200 : 320,
+      message: local
+        ? "连接 AI 服务失败：本地服务未启动。"
+        : "连接成功，服务返回 14 个可用模型。",
+      modelCount: local ? 0 : 14,
     };
   },
 

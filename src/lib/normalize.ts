@@ -97,6 +97,7 @@ const SETTING_TEXT_KEYS = [
 ] as const;
 
 const SETTING_BOOL_KEYS = [
+  "closeAsk",
   "writeModlist",
   "autoBackup",
   "confirmUninstall",
@@ -188,6 +189,7 @@ export const FALLBACK_SETTINGS: Settings = {
   autoBackup: true,
   confirmUninstall: true,
   closeBehavior: "tray",
+  closeAsk: true,
   launchMethod: "auto",
   platformPref: "auto",
   archiveToolPath: "",

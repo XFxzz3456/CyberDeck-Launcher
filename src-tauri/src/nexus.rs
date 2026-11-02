@@ -16,7 +16,7 @@ use crate::secret;
 use crate::store::Store;
 use reqwest::blocking::{Client, Response};
 use reqwest::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -58,7 +58,7 @@ fn api_error(status: StatusCode, body: &str) -> CommandError {
     match status {
         StatusCode::UNAUTHORIZED => CommandError::new(
             "NEXUS_AUTH",
-            "Nexus API Key 无效或已过期。请重新生成并填写。",
+            "Nexus API Key 已失效（HTTP 401）。请重新在「设置 → 工具组件 → Nexus Mods」             填写 Personal API Key —— 换账号、在 Nexus 网站上重新生成过 Key、或 Key 被撤销，             都会让旧 Key 立刻失效。",
         ),
         StatusCode::FORBIDDEN => CommandError::new(
             "NEXUS_FORBIDDEN",
@@ -202,6 +202,61 @@ struct ApiDownloadLink {
 fn validate_key(key: &str) -> AppResult<ApiValidate> {
     let client = client()?;
     get_json::<ApiValidate>(&client, key, &format!("{API_BASE}/users/validate.json"))
+}
+
+/// 「测试连接」结果：失败也返回结构化数据，前端好稳定地显示状态码与原因。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NexusTestResult {
+    pub ok: bool,
+    #[serde(default)]
+    pub status_code: Option<u16>,
+    pub latency_ms: u64,
+    pub message: String,
+    /// 校验成功时 Nexus 回的用户名（证明连的是谁的号）。
+    #[serde(default)]
+    pub user: Option<String>,
+}
+
+/// 用给定 key（或已保存的 key）打一次 `/users/validate.json`。
+///
+/// 故意不抛错：设置页需要把 401 / 网络错误 / 未配置都显示成一行文字 + 状态码，
+/// 而不是一个会消失的红框。
+pub fn test_connection(store: &Store, key_override: Option<&str>) -> NexusTestResult {
+    let key = key_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| secret::load(&key_path(store)).ok().flatten());
+    let Some(key) = key else {
+        return NexusTestResult {
+            ok: false,
+            status_code: None,
+            latency_ms: 0,
+            message: "还没有填写 Nexus API Key。".to_string(),
+            user: None,
+        };
+    };
+    let started = std::time::Instant::now();
+    let outcome = validate_key(&key);
+    let latency_ms = started.elapsed().as_millis() as u64;
+    match outcome {
+        Ok(info) => NexusTestResult {
+            ok: true,
+            status_code: Some(200),
+            latency_ms,
+            message: format!("连接成功，已登录为 {}。", info.name),
+            user: Some(info.name),
+        },
+        Err(err) => NexusTestResult {
+            ok: false,
+            // 401 时把状态码显式带出来，前端据此高亮「去重新生成 Key」。
+            status_code: if err.code == "NEXUS_AUTH" { Some(401) } else { None },
+            latency_ms,
+            message: err.message,
+            user: None,
+        },
+    }
 }
 
 pub fn status(store: &Store) -> NexusStatus {

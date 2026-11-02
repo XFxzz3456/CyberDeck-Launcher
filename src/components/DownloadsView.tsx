@@ -71,9 +71,12 @@ function SpeedSparkline({ history }: { history: number[] }) {
  */
 export function DownloadsView({
   onNavigateDiscover,
+  onOpenNexusSettings,
   dataDir,
 }: {
   onNavigateDiscover?: () => void;
+  /** Nexus 鉴权失败时的一键出口：跳到「设置 → 游戏与路径 → Nexus Mods」。 */
+  onOpenNexusSettings?: () => void;
   /** 数据目录根路径（打开"默认下载目录"时拼 downloads 子目录用）。 */
   dataDir?: string | null;
 }) {
@@ -339,7 +342,17 @@ export function DownloadsView({
                   <div className="dl-bar" aria-hidden="true">
                     <span style={{ width: pct !== null ? `${pct}%` : task.status === "downloading" ? "30%" : "0%" }} />
                   </div>
-                  {task.error ? <div className="download-error">{task.error}</div> : null}
+                  {task.error ? (
+                    <div className="download-error">
+                      <span>{task.error}</span>
+                      {/* 401 / Key 失效属于"要去改配置"，重试解决不了：给直达入口。 */}
+                      {onOpenNexusSettings && /401|API Key 已失效|Key 无效/.test(task.error) ? (
+                        <button className="link-btn" onClick={onOpenNexusSettings}>
+                          {t("downloads.openNexusSettings")}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="download-actions">
                     {task.status === "downloading" || task.status === "queued" ? (
                       <button

@@ -1,6 +1,7 @@
 mod adopt;
 mod ai;
 mod aiact;
+mod aiprofile;
 mod aifix;
 mod ailoc;
 mod backup;
@@ -39,6 +40,7 @@ mod wolvenkit;
 
 use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
+    AiProfileList,
     AdoptCandidate, AdoptReport, AdoptScanReport,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
@@ -1625,6 +1627,20 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+/// 测试 Nexus 连接：不落盘、不改已保存的 Key，失败也返回结构化结果。
+#[tauri::command]
+async fn nexus_test_connection(
+    app: tauri::AppHandle,
+    key: Option<String>,
+) -> AppResult<nexus::NexusTestResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        Ok(nexus::test_connection(store.inner(), key.as_deref()))
+    })
+    .await
+    .map_err(|e| CommandError::new("NEXUS_TEST_TASK", format!("测试连接任务异常：{e}")))?
+}
+
 #[tauri::command]
 async fn nexus_status(app: tauri::AppHandle) -> NexusStatus {
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -2302,6 +2318,49 @@ fn nexus_list_update_backups(store: State<'_, Store>) -> Vec<updates::UpdateBack
 #[tauri::command]
 fn ai_status(store: State<'_, Store>) -> AiStatus {
     ai::status(&store)
+}
+
+/// 多套 AI 配置：列表（首次调用会把老状态迁移成一条「默认配置」）。
+#[tauri::command]
+fn ai_profiles(store: State<'_, Store>) -> AiProfileList {
+    aiprofile::list(&store)
+}
+
+/// 保存一套配置（新增或修改）。`key` 为空表示不动已存的密钥。
+#[tauri::command]
+fn ai_profile_save(
+    store: State<'_, Store>,
+    profile: schema::AiProfile,
+    key: Option<String>,
+) -> AppResult<AiProfileList> {
+    aiprofile::save(&store, profile, key)
+}
+
+#[tauri::command]
+fn ai_profile_delete(store: State<'_, Store>, id: String) -> AppResult<AiProfileList> {
+    aiprofile::delete(&store, &id)
+}
+
+/// 切换当前使用的配置（同步写回 settings.ai_* 三个老字段）。
+#[tauri::command]
+fn ai_profile_activate(store: State<'_, Store>, id: String) -> AppResult<AiProfileList> {
+    aiprofile::activate(&store, &id)
+}
+
+/// 清掉某一套配置的密钥（配置本身保留）。
+#[tauri::command]
+fn ai_profile_clear_key(store: State<'_, Store>, id: String) -> AppResult<AiProfileList> {
+    aiprofile::clear_key(&store, &id)
+}
+
+/// 测试连通性：不落盘、不改激活态，失败也返回结构化结果而不是抛错。
+#[tauri::command]
+fn ai_profile_test(
+    store: State<'_, Store>,
+    profile: schema::AiProfile,
+    key: Option<String>,
+) -> Result<schema::AiTestResult, CommandError> {
+    Ok(aiprofile::test(&store, profile, key))
 }
 
 #[tauri::command]
@@ -3389,6 +3448,45 @@ fn close_behavior(app: &AppHandle) -> String {
     app.state::<Store>().snapshot_data().settings.close_behavior
 }
 
+/// 点 × 时是否先确认（与 close_behavior 分开：一个决定去哪，一个决定问不问）。
+fn close_ask(app: &AppHandle) -> bool {
+    app.state::<Store>().snapshot_data().settings.close_ask
+}
+
+/// 关闭弹窗选完之后调这个：`action` = hide | exit，`remember` = 以后不再问。
+///
+/// 前端的弹窗只负责"问"，真正的窗口动作放在 Rust：这样即使用户在网页层面
+/// 关掉了弹窗，也不会出现"窗口既不退也不藏"的僵局。
+#[tauri::command]
+fn close_window_action(
+    app: tauri::AppHandle,
+    action: String,
+    remember: bool,
+) -> AppResult<()> {
+    let store = app.state::<Store>();
+    if remember {
+        let mut state = store
+            .data
+            .lock()
+            .map_err(|_| CommandError::new("STATE_LOCK", "状态被占用，稍后再试。"))?;
+        if action == "exit" {
+            state.settings.close_behavior = "exit".to_string();
+        } else {
+            // 记住"最小化"：以后点 × 直接收进托盘，不再弹窗。
+            state.settings.close_ask = false;
+        }
+        store.save(&state)?;
+    }
+    if action == "exit" {
+        log_lifecycle(&app, "stage=close action=exit chosen");
+        request_exit(&app);
+    } else {
+        log_lifecycle(&app, "stage=close action=hide-to-tray chosen");
+        hide_main_window(&app);
+    }
+    Ok(())
+}
+
 /// 真正退出的唯一入口：有进行中任务先确认，没有才退。
 fn request_exit(app: &AppHandle) {
     let busy = app.state::<BusyTasks>().labels();
@@ -3610,17 +3708,25 @@ pub fn run() {
                 Err(err) => log_startup(&diag_dir, &format!("stage=tray err {err}")),
             }
 
-            // 关闭拦截：默认隐藏到托盘，只有偏好为 exit 时才走真正退出。
+            // 关闭拦截：三种走向，托盘右键"彻底退出"不走这里（那边永远直接退）。
             window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     // prevent_close 必须同步调用：回调返回后再拦就晚了。
                     api.prevent_close();
-                    if close_behavior(&lifecycle) == "tray" {
-                        log_lifecycle(&lifecycle, "stage=close action=hide-to-tray");
-                        hide_main_window(&lifecycle);
-                    } else {
+                    let behavior = close_behavior(&lifecycle);
+                    let ask = close_ask(&lifecycle);
+                    if behavior == "exit" {
                         log_lifecycle(&lifecycle, "stage=close action=exit");
                         request_exit(&lifecycle);
+                    } else if !ask {
+                        // 用户勾过"以后不再询问"：直接最小化，不再打扰。
+                        log_lifecycle(&lifecycle, "stage=close action=hide-to-tray silent");
+                        hide_main_window(&lifecycle);
+                    } else {
+                        // 先把窗口显示出来：最小化状态下弹窗看不见。
+                        log_lifecycle(&lifecycle, "stage=close action=ask");
+                        show_main_window(&lifecycle);
+                        let _ = lifecycle.emit("close-requested", ());
                     }
                 }
             });
@@ -3684,6 +3790,7 @@ pub fn run() {
             detect_tool,
             list_busy_tasks,
             nexus_status,
+            nexus_test_connection,
             nexus_set_key,
             nexus_clear_key,
             nexus_browse,
@@ -3741,7 +3848,13 @@ pub fn run() {
     safemode_exit,
     compat_scan,
             ai_status,
-            ai_set_key,
+            ai_profiles,
+    ai_profile_save,
+    ai_profile_delete,
+    ai_profile_activate,
+    ai_profile_clear_key,
+    ai_profile_test,
+    ai_set_key,
             ai_clear_key,
             ai_diagnose,
     ai_apply_action,
@@ -3766,7 +3879,8 @@ pub fn run() {
             open_logs_folder,
             reveal_mod,
             app_data_dir,
-            ping
+            ping,
+            close_window_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberDeck Launcher");

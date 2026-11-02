@@ -282,6 +282,32 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 1.0.0 批次 9：多套 AI 配置（本地/云端/中转站各一套，可切换可测试）
+    name: "AI 多套配置",
+    script: "check-ai-profiles.mjs",
+    expect: [
+      "profiles>=2",
+      "activeMarked=1",
+      "switched=1",
+      "testResult=1",
+      "testBadStyle=1",
+      "created=1",
+      "pageerrors=0",
+    ],
+  },
+  {
+    // 1.0.0 批次 9：退出确认开关 + Nexus 401 出口
+    name: "关闭确认与 Nexus 401",
+    script: "check-close-nexus.mjs",
+    expect: [
+      "closeAskToggle=1",
+      "closeAskToggleWorks=1",
+      "nexus401=1",
+      "nexusRegenEntry=1",
+      "pageerrors=0",
+    ],
+  },
+  {
     // 1.0.0 批次 8：AI 诊断给出可执行动作（确认 + 快照后才动手）
     name: "AI 可执行修复",
     script: "check-ai-actions.mjs",

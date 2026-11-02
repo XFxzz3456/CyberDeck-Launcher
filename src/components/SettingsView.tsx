@@ -699,6 +699,8 @@ export function SettingsView({
             onSplash={onSplash}
             closeBehavior={settings.closeBehavior}
             onCloseBehavior={(value) => update({ closeBehavior: value })}
+            closeAsk={settings.closeAsk}
+            onCloseAsk={(value) => update({ closeAsk: value })}
             background={backgroundControl}
             hiddenViews={hiddenViews}
             onToggleHiddenView={onToggleHiddenView}
