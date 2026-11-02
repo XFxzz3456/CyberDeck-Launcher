@@ -282,6 +282,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 发版纪律：三处版本号必须一致（package.json / Cargo.toml / tauri.conf.json）
+    name: "版本号一致性",
+    script: "check-version-sync.mjs",
+    expect: ["version_sync=1"],
+  },
+  {
     // 1.0.0 批次 9：多套 AI 配置（本地/云端/中转站各一套，可切换可测试）
     name: "AI 多套配置",
     script: "check-ai-profiles.mjs",
