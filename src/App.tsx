@@ -2744,6 +2744,11 @@ export default function App() {
                     void api.openPath(path).catch((error) => showError(error, t("err.openPath")));
                   }}
                 onAdopt={() => void handleAdoptScan()}
+                onOpenAiSettings={() => {
+                  // 诊断空响应时的「前往 AI 配置」落点：设置页 → AI 分区。
+                  setSettingsTabRequest("ai");
+                  setView("settings");
+                }}
                 onOpenUrl={(url) => {
                   void api.openUrl(url).catch((error) => showError(error, t("err.openRelease")));
                 }}

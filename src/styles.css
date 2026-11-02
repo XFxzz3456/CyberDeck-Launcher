@@ -6285,6 +6285,38 @@ input::placeholder {
   color: var(--accent-text-hover);
 }
 
+/* 引导式失败（AI_EMPTY / AI_BAD_JSON）：不是"出错了"，而是"这次没成，改这里"。
+   用告警色而不是危险色——红色读起来像"你的操作有问题"，这里问题在服务端/配置。 */
+.ai-guide {
+  margin-top: 11px;
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
+  background: rgba(var(--accent-rgb), 0.06);
+  padding: 11px 12px;
+}
+
+.ai-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-text);
+  font-size: var(--fs-body);
+}
+
+.ai-guide-body {
+  margin: 7px 0 0;
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.ai-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .ai-empty {
   display: flex;
   align-items: center;

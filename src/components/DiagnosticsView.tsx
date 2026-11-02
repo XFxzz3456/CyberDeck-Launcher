@@ -76,6 +76,7 @@ export function DiagnosticsView({
   onSettings,
   onError,
   openLogsRequest = 0,
+  onOpenAiSettings,
 }: {
   report: DiagnosticsReport | null;
   loading: boolean;
@@ -93,6 +94,8 @@ export function DiagnosticsView({
   onSettings: (settings: Settings) => void;
   onError: (error: unknown, title?: string) => void;
   openLogsRequest?: number;
+  /** 「前往 AI 配置」：跳到设置页 AI 分区。 */
+  onOpenAiSettings?: () => void;
 }) {
   const [env, setEnv] = useState<EnvDiagnosis | null>(null);
   const [envLoading, setEnvLoading] = useState(false);
@@ -355,6 +358,7 @@ export function DiagnosticsView({
         settings={settings}
         onSettings={onSettings}
         onError={onError}
+        onOpenAiSettings={onOpenAiSettings}
       />
 
       <div className="diagnostics-grid">

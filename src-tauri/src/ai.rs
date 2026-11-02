@@ -31,6 +31,14 @@ use walkdir::WalkDir;
 const MAX_CONTEXT_CHARS: usize = 180_000;
 const MAX_LOG_FILES: usize = 4;
 const LOG_TAIL_BYTES: u64 = 8 * 1024;
+/// 送给模型的单文件日志上限（字符数）。
+///
+/// 8 KB 尾读是为了"找得到最近的错误"，但整段塞进提示词会吃掉几千 token，
+/// 长日志还会把真正有用的那几行挤到注意力之外。只送最后 2000 字符，
+/// 并在末尾明确标注被截断，模型才不会把截断处当成日志全貌。
+const LOG_PROMPT_CHARS: usize = 2000;
+/// 截断标记：模型看到它就知道"上面不是完整日志"。
+const LOG_TRUNCATED_MARK: &str = "[日志已截断]";
 
 /// AI API Key 的 DPAPI 存储路径（服务商无关命名）。
 pub fn key_path(store: &Store) -> PathBuf {
@@ -287,6 +295,9 @@ fn collect_logs(game_root: Option<&Path>, focus: Option<&str>) -> Vec<LogContext
             } else {
                 text
             };
+            // 只送最后 LOG_PROMPT_CHARS 个字符。按 char 截（不是按字节），
+            // 否则中日文/emoji 会被切断成半个字符。
+            let text = tail_chars(&text, LOG_PROMPT_CHARS);
             let name = path
                 .strip_prefix(root)
                 .unwrap_or(&path)
@@ -295,6 +306,20 @@ fn collect_logs(game_root: Option<&Path>, focus: Option<&str>) -> Vec<LogContext
             Some(LogContext { name, tail: text })
         })
         .collect()
+}
+
+/// 取字符串最后 `limit` 个字符；超出时在开头标 `[日志已截断]`。
+///
+/// 标记放开头而不是结尾：日志的结构是"越往下越新"，用户/模型都是先看尾部，
+/// 把标记塞在最后一行会被当成日志内容本身。
+fn tail_chars(text: &str, limit: usize) -> String {
+    let total = text.chars().count();
+    if total <= limit {
+        return text.to_string();
+    }
+    let skipped = total - limit;
+    let tail: String = text.chars().skip(skipped).collect();
+    format!("{LOG_TRUNCATED_MARK}（省略前 {skipped} 个字符）\n{tail}")
 }
 
 fn redact(text: &str, game_root: Option<&Path>, data_dir: &Path) -> (String, usize) {
@@ -407,9 +432,9 @@ fn build_context(
         load_order: data.load_order.clone(),
         logs,
         log_note: if include_logs && focus == Some("logs") {
-            "日志只保留每个错误前后 5 行；路径与邮箱已脱敏。".to_string()
+            "日志只保留每个错误前后 5 行（超出 2000 字符的部分标 [日志已截断]）；路径与邮箱已脱敏。".to_string()
         } else if include_logs {
-            "日志只保留每个文件最后 8 KB，路径与邮箱已脱敏。".to_string()
+            "日志只保留每个文件最后 2000 个字符（超出部分标 [日志已截断]），路径与邮箱已脱敏。".to_string()
         } else {
             "本次未发送日志。".to_string()
         },
@@ -419,7 +444,8 @@ fn build_context(
     redact(&raw, game_root, Path::new(&data.staging_dir))
 }
 
-#[derive(Debug, Serialize)]
+// Clone：空响应重试要把原 messages 原样再发一遍。
+#[derive(Debug, Clone, Serialize)]
 struct ChatMessage {
     role: &'static str,
     content: String,
@@ -811,6 +837,66 @@ fn chat_completion(
     protocol: ApiProtocol,
     request: &ChatRequest,
 ) -> AppResult<String> {
+    // 第一次请求：按调用方的参数（温度/输出上限/JSON 约束）走。
+    // 第一次的原始体用不上：只有"两次都空"才取证，那时的 raw_body 才有诊断价值。
+    let (content, _) = request_once(client, url, key, protocol, request)?;
+    if !content.trim().is_empty() {
+        return Ok(content);
+    }
+
+    // ── 空响应（HTTP 200 但 content 为空）─────────────────────────────
+    // 常见来源：中转站把响应体换成了自己的包装、模型被 max_tokens 卡死在第一帧、
+    // 或 json_object 约束下模型直接吐了空。这些都不是"用户配置错了"，
+    // 而是单次请求的偶发结果 —— 立刻用默认参数重试一次，多半就回来了。
+    //
+    // 重试必须隔 1 秒：连续两次瞬发请求容易被中转站/官方风控判成刷接口。
+    std::thread::sleep(Duration::from_secs(1));
+    let retry = ChatRequest {
+        model: request.model.clone(),
+        messages: request.messages.clone(),
+        // 降级到通用温度：0.1/0.2 这类低温度在某些模型上会加剧"什么都不说"。
+        temperature: 0.7,
+        // 输出空间至少给到 2048：原来是 1200 时，长一点的诊断 JSON 会被截断成空。
+        max_tokens: request.max_tokens.max(RETRY_MIN_MAX_TOKENS),
+        // 保留调用方的 JSON 约束（诊断/翻译都依赖它），否则重试得到的是散文。
+        response_format: ResponseFormat { kind: request.response_format.kind },
+    };
+    let (content, raw_body) = match request_once(client, url, key, protocol, &retry) {
+        Ok(result) => result,
+        // 重试阶段本身失败（网络/HTTP 错误）就直接把原始错误交给上层，
+        // 不要用"空内容"覆盖掉更有信息量的 401/429。
+        Err(err) => return Err(err),
+    };
+    if !content.trim().is_empty() {
+        return Ok(content);
+    }
+
+    // 两次都空：把原始响应体打到控制台（截断，绝不打印 Key），
+    // 这是判断"是不是中转站返回了奇怪格式"的唯一证据。
+    let snapshot: String = raw_body.chars().take(LOG_RAW_BODY_CHARS).collect();
+    eprintln!("[ai] 连续两次空响应；原始响应体（截断 {LOG_RAW_BODY_CHARS} 字符）：{snapshot}");
+    Err(CommandError::new(
+        "AI_EMPTY",
+        "AI 未能生成有效结果。请检查：1. 模型名称是否可用；2. 第三方中转站余额是否充足；3. 尝试在设置中更换模型（如切换至 DeepSeek-V3 或 V4 Pro）。",
+    ))
+}
+
+/// 重试时保证的最小输出上限。诊断 JSON 有可能会被 1200 这一档截断成空。
+const RETRY_MIN_MAX_TOKENS: u32 = 2048;
+/// 空响应时打印原始响应体的截断长度（够看清包装结构，又不至于刷屏）。
+const LOG_RAW_BODY_CHARS: usize = 2000;
+
+/// 发一次请求并解析出正文；同时把原始响应体带回来——空响应时要靠它取证。
+///
+/// 返回值第二项是原始 JSON 文本（解析失败时是解析前的原文），
+/// 调用方只在"连续两次都空"时才打印它，正常路径不会多占内存。
+fn request_once(
+    client: &Client,
+    url: &str,
+    key: &str,
+    protocol: ApiProtocol,
+    request: &ChatRequest,
+) -> AppResult<(String, String)> {
     let response = match protocol {
         ApiProtocol::OpenAi => client
             .post(url)
@@ -846,11 +932,15 @@ fn chat_completion(
             http_error_message(status.as_u16(), &body, ErrorContext::Chat),
         ));
     }
+    // 先把正文读成字符串：解析要它，空响应取证也要它（一次读取，别读两遍）。
+    let raw_body = response
+        .text()
+        .map_err(|e| CommandError::new("AI_PARSE", format!("读取 AI 响应失败：{e}")))?;
     // Anthropic 的 content 是分块数组（text 块可能多段，thinking 等类型直接跳过）；
     // OpenAI 是 choices[0].message.content。两套解析各自对准自己的形状。
     let content = match protocol {
         ApiProtocol::OpenAi => {
-            let parsed: ChatResponse = response.json().map_err(|e| {
+            let parsed: ChatResponse = serde_json::from_str(&raw_body).map_err(|e| {
                 CommandError::new("AI_PARSE", format!("AI 服务返回了无法解析的响应：{e}"))
             })?;
             parsed
@@ -861,7 +951,7 @@ fn chat_completion(
                 .unwrap_or_default()
         }
         ApiProtocol::Anthropic => {
-            let parsed: AnthropicResponse = response.json().map_err(|e| {
+            let parsed: AnthropicResponse = serde_json::from_str(&raw_body).map_err(|e| {
                 CommandError::new("AI_PARSE", format!("AI 服务返回了无法解析的响应：{e}"))
             })?;
             parsed
@@ -873,10 +963,8 @@ fn chat_completion(
                 .join("\n")
         }
     };
-    if content.trim().is_empty() {
-        return Err(CommandError::new("AI_EMPTY", "AI 服务返回了空内容。"));
-    }
-    Ok(content)
+    // 空内容不在这里报错：交给 chat_completion 决定要不要重试。
+    Ok((content, raw_body))
 }
 
 /// Anthropic Messages API 的响应体：`content` 是分块数组，我们只认 `text` 块。
@@ -986,7 +1074,8 @@ pub fn diagnose(
             },
         ],
         temperature: 0.2,
-        max_tokens: 1200,
+        // 诊断 JSON 有时带 3-5 条证据+步骤，1200 会被截断成空响应；给到 2400。
+        max_tokens: 2400,
         response_format: ResponseFormat { kind: "json_object" },
     };
 
@@ -2043,6 +2132,102 @@ mod tests {
         assert!(extracted.contains("line 7"));
         assert!(!extracted.contains("line 2"));
         assert!(!extracted.contains("line 11"));
+    }
+
+    #[test]
+    fn log_tail_is_capped_and_marked() {
+        // 未超限：原样返回，不出现标记。
+        let short = "abc";
+        assert_eq!(tail_chars(short, 10), "abc");
+        // 超限：只留最后 limit 个字符，并在开头标注被省略多少。
+        let long: String = (0..50).map(|i| char::from(b'0' + (i % 10) as u8)).collect();
+        let capped = tail_chars(&long, 10);
+        assert!(capped.starts_with(LOG_TRUNCATED_MARK), "缺少截断标记：{capped}");
+        assert!(capped.contains("省略前 40 个字符"));
+        assert!(capped.ends_with(&long[40..]), "尾部内容必须保留");
+        // 按 char 而不是字节截：中日文不会被切成半个字符。
+        let cjk = "日志".repeat(20);
+        let capped = tail_chars(&cjk, 4);
+        assert!(capped.ends_with("日志日志"));
+    }
+
+    /// 空响应必须自动重试一次，且重试参数要"更宽松"（温度 0.7 / 输出上限 ≥2048）。
+    ///
+    /// 之前的行为是第一次空就直接把 AI_EMPTY 抛给用户，而空响应多数是偶发，
+    /// 用户看到红框只能反复点重试。这个用例把"自动重试"钉死。
+    #[test]
+    fn empty_reply_is_retried_once_with_roomier_params() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let reply = |content: &str| {
+                serde_json::json!({ "choices": [{ "message": { "content": content } }] }).to_string()
+            };
+            // 第一跳：故意返回空内容（HTTP 200）。
+            let (mut stream, _) = listener.accept().unwrap();
+            let first = read_http_request(&mut stream);
+            assert!(first.contains("POST /chat/completions"));
+            let body = reply("");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+
+            // 第二跳：重试。断言参数被降级成"默认可出话"的那一档。
+            let (mut stream, _) = listener.accept().unwrap();
+            let second = read_http_request(&mut stream);
+            assert!(second.contains("\"temperature\":0.7"), "重试应降到 0.7 温度：{second}");
+            let max_tokens = second
+                .rsplit("\"max_tokens\":")
+                .next()
+                .and_then(|tail| tail.split([',', '}']).next())
+                .and_then(|value| value.trim().parse::<u32>().ok())
+                .expect("请求体里应有 max_tokens");
+            assert!(
+                max_tokens >= 2048,
+                "重试的输出上限至少要 2048，实际 {max_tokens}"
+            );
+            let body = reply("{\"summary\":\"重试成功\",\"confidence\":\"high\"}");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".test-tmp")
+            .join(format!("ai-retry-{}", uuid::Uuid::new_v4().simple()));
+        let store = Store::load(root.join("data")).unwrap();
+        secret::save(&key_path(&store), "sk-local-test").unwrap();
+        let mut data = AppStateData::new(store.staging_dir().to_string_lossy().to_string());
+        data.settings.ai_base_url = format!("http://{address}");
+        data.settings.ai_model = "local-test".to_string();
+        let report = DiagnosticsReport {
+            generated_at: now_iso(),
+            game: None,
+            frameworks: Vec::new(),
+            issues: Vec::new(),
+            summary: String::new(),
+            summary_level: String::new(),
+            deployed_mods: 0,
+            enabled_mods: 0,
+            total_mods: 0,
+            conflict_count: 0,
+            log_paths: Vec::new(),
+            backup: None,
+            dependencies: Default::default(),
+        };
+
+        let result = diagnose(&store, &report, &data, false, true, None).expect("重试后应成功");
+        assert_eq!(result.summary, "重试成功");
+        server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

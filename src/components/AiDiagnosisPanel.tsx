@@ -24,7 +24,7 @@ import {
   matchAiPreset,
   presetsByGroup,
 } from "../lib/aiPresets";
-import { api } from "../lib/api";
+import { api, normalizeError } from "../lib/api";
 import { relativeTime } from "../lib/format";
 import { t } from "../i18n";
 import { Badge, Spinner } from "./ui";
@@ -40,11 +40,14 @@ export function AiDiagnosisPanel({
   settings,
   onSettings,
   onError,
+  onOpenAiSettings,
 }: {
   report: DiagnosticsReport;
   settings: Settings;
   onSettings: (settings: Settings) => void;
   onError: (error: unknown, title?: string) => void;
+  /** 「前往 AI 配置」：跳到设置页的 AI 分区（由 App 提供导航能力）。 */
+  onOpenAiSettings?: () => void;
 }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,11 @@ export function AiDiagnosisPanel({
   const [includeLogs, setIncludeLogs] = useState(false);
   const [result, setResult] = useState<AiDiagnosis | null>(null);
   const [showContext, setShowContext] = useState(false);
+  /**
+   * 空响应（AI_EMPTY）与格式错（AI_BAD_JSON）不弹红框了：这类失败用户改不动代码，
+   * 只能去改配置。就地给一段"改什么"的引导 + 一个直达按钮，比一条会消失的 toast 有用。
+   */
+  const [guide, setGuide] = useState<{ code: string; message: string } | null>(null);
   const [editing, setEditing] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [baseUrl, setBaseUrl] = useState(settings.aiBaseUrl);
@@ -138,11 +146,19 @@ export function AiDiagnosisPanel({
   const run = async () => {
     if (!consent) return;
     setBusy(true);
+    setGuide(null);
     try {
       setResult(await api.aiDiagnose(includeLogs, true));
       setShowContext(false);
     } catch (error) {
-      onError(error, t("aiDiagnosis.errorDiagnose"));
+      // 引导式失败：AI_EMPTY / AI_BAD_JSON 都是"模型这次没好好回"，
+      // 提示里给出可执行的下一步，并挂一个「前往 AI 配置」按钮。
+      const parsed = normalizeError(error);
+      if (parsed.code === "AI_EMPTY" || parsed.code === "AI_BAD_JSON") {
+        setGuide({ code: parsed.code, message: parsed.message });
+      } else {
+        onError(error, t("aiDiagnosis.errorDiagnose"));
+      }
     } finally {
       setBusy(false);
     }
@@ -355,7 +371,31 @@ export function AiDiagnosisPanel({
             </button>
           </div>
 
-          {!result ? (
+          {guide ? (
+            <div className="ai-guide" role="alert">
+              <div className="ai-guide-head">
+                <AlertTriangle size={15} />
+                <strong>{t("aiDiagnosis.guideTitle")}</strong>
+              </div>
+              <p className="ai-guide-body">{guide.message}</p>
+              <div className="ai-guide-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    // 两个出口都给：能跳设置就跳，跳不了（未接线）就地把面板切成编辑态。
+                    if (onOpenAiSettings) onOpenAiSettings();
+                    else setEditing(true);
+                  }}
+                >
+                  <KeyRound size={12} /> {t("aiDiagnosis.guideAction")}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => void run()} disabled={busy || !consent}>
+                  <RefreshCw size={12} /> {t("aiDiagnosis.guideRetry")}
+                </button>
+              </div>
+            </div>
+          ) : !result ? (
             <div className="ai-empty">
               <Send size={15} />
               <span>{t("aiDiagnosis.emptyHint")}</span>
