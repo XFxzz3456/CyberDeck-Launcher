@@ -1413,6 +1413,16 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
                 state.mods[index] = entry.clone();
                 store.save(&state)?;
                 plan_for(&entry)?
+            } else if entry.origin == "adopted" {
+                // 收编 Mod 的母本在外部工具目录里，本启动器没存它的原始路径；
+                // 暂存副本一丢就只能靠重新扫描收编。这里**不能**走下面那条
+                // "清理失效记录"的路：那会把库里的条目直接删掉——用户只是点了
+                // 一下启用，模组就从列表里消失了，比报错更让人困惑。
+                return Err(CommandError::new(
+                    "ADOPT_STAGING_MISSING",
+                    "这个模组是从外部工具（如 Vortex）接管的，暂存副本已不存在，无法原地重新启用。\
+                     请重新扫描并收编一次；外部工具里的原始文件不受影响。",
+                ));
             } else {
                 // 源文件在外部被删了（Vortex 清理、手动删目录）。这不是用户的
                 // 操作失误，弹红框只会让人反复点重试：清掉残留链接和失效记录，
@@ -1868,7 +1878,16 @@ pub fn collect_conflicts(mods: &[ModEntry]) -> Vec<ConflictInfo> {
 /// - `Ok(false)`：已删除，且部署后没被外部改过
 /// - `Ok(true)`：已删除，但这是 Copy 部署且部署后被改过（调用方要告知用户）
 /// - `Err(reason)`：跳过，原因给上层拼提示用
-fn remove_deployed_file(file: &DeployedFile, game_root: &Path) -> Result<bool, String> {
+///
+/// `trust_manifest`：跳过硬链接身份校验，只按部署清单删。目前只有「收编 Mod 且
+/// 暂存副本已不存在」会这么传——那两种情况叠在一起时 inode 无从比较，而清单是
+/// 唯一凭据；同时收编 Mod 的母本在外部工具目录里，删掉游戏侧不会丢数据。反过来
+/// 若因此拒删，"禁用"就是假的：文件还在 archive/pc/mod 里被游戏加载。
+fn remove_deployed_file(
+    file: &DeployedFile,
+    game_root: &Path,
+    trust_manifest: bool,
+) -> Result<bool, String> {
     let target = safe_join(game_root, &file.relative_path)
         .map_err(|err| format!("跳过不安全路径 {}：{err}", file.relative_path))?;
     if !is_within(game_root, &target) {
@@ -1888,8 +1907,9 @@ fn remove_deployed_file(file: &DeployedFile, game_root: &Path) -> Result<bool, S
         .as_ref()
         .map(|meta| meta.file_type().is_symlink())
         .unwrap_or(false);
-    if !is_symlink && file.link_type == LinkType::HardLink {
+    if !is_symlink && file.link_type == LinkType::HardLink && !trust_manifest {
         let source = PathBuf::from(&file.source);
+        // 比 inode 是最硬的证据：暂存副本与落地文件必须是同一个文件对象。
         if !same_file_identity(&source, &target) {
             return Err(format!(
                 "目标已不是启动器创建的那个硬链接，拒绝删除：{}",
@@ -1929,21 +1949,38 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
         .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
     let mut entry = state.mods[index].clone();
     let mut warnings = Vec::new();
+    let staging_gone = !Path::new(&entry.staging_path).is_dir();
+    // 收编（adopted）来的 Mod：物理文件在外部工具（Vortex）的目录里，本启动器只
+    // 负责把它链进游戏目录。所以禁用 = 纯断链接，**绝不**把游戏目录里的文件搬回 /
+    // 复制回暂存区：
+    //   1. 那会凭空造出一份用户不知道的副本，且和外部工具里的原件分叉；
+    //   2. 目标目录名被占用时（staging/adopt-xxx 已存在）会直接抛
+    //      「恢复目标已存在」，把禁用整个卡死——这就是 2026-11-02 报的那个错。
+    // 自建 Mod 仍然保留恢复逻辑：它们的暂存区是唯一母本，丢了就再也修不回来。
+    let adopted = entry.origin == "adopted";
     // Recover before removing the only remaining verified game-side copies.
     // Without this, undeploy clears the manifest and permanently loses the
     // information needed to repair an old absolute staging path.
-    if !Path::new(&entry.staging_path).is_dir() && !entry.deployed_files.is_empty() {
+    if !adopted && staging_gone && !entry.deployed_files.is_empty() {
         if recover_staging(store, &mut entry, game_root)? {
             let mut repaired = state.clone();
             repaired.mods[index] = entry.clone();
             store.save(&repaired)?;
         }
     }
+    if adopted && staging_gone {
+        warnings.push(
+            "这是从外部工具接管的模组：禁用只断开了游戏目录里的链接，原始文件仍在外部工具的目录里；暂存副本已不存在，重新启用需要重新扫描收编。"
+                .to_string(),
+        );
+    }
     // Copy 部署后被外部改过的文件（见下方 P2-2 说明），循环后统一汇总成一条提示。
     let mut edited_copies: Vec<String> = Vec::new();
 
+    // 收编 Mod 且暂存副本已消失：inode 无从比对，按清单直删（见 remove_deployed_file 说明）。
+    let trust_manifest = adopted && staging_gone;
     for file in entry.deployed_files.iter().rev() {
-        match remove_deployed_file(file, game_root) {
+        match remove_deployed_file(file, game_root, trust_manifest) {
             Ok(edited) => {
                 if edited {
                     edited_copies.push(file.relative_path.clone());
@@ -1998,6 +2035,10 @@ fn staging_present(entry: &ModEntry) -> bool {
 /// 返回删不掉的项（空 = 全部清干净）。玩家已经删掉的落地文件直接跳过——那本来
 /// 就没有残留可清，不该混进提示里当异常。
 fn purge_links(entry: &ModEntry, game_root: &Path) -> Vec<String> {
+    // 收编 Mod 的暂存副本可能早就不在了；此时无法比 inode，按清单直删
+    // （见 remove_deployed_file 的 trust_manifest 说明），否则一条链接都断不掉。
+    let trust_manifest =
+        entry.origin == "adopted" && !Path::new(&entry.staging_path).is_dir();
     let mut notes = Vec::new();
     for file in entry.deployed_files.iter().rev() {
         let already_gone = safe_join(game_root, &file.relative_path)
@@ -2006,7 +2047,7 @@ fn purge_links(entry: &ModEntry, game_root: &Path) -> Vec<String> {
         if already_gone {
             continue;
         }
-        if let Err(reason) = remove_deployed_file(file, game_root) {
+        if let Err(reason) = remove_deployed_file(file, game_root, trust_manifest) {
             notes.push(reason);
         }
     }

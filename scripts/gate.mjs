@@ -282,6 +282,12 @@ const UI_SCRIPTS = [
     expect: ["checks_failed=0"],
   },
   {
+    // 1.0.0 批次 6：收编禁用只断链接（用户实测「恢复目标已存在」）+ 测试接线
+    name: "收编禁用红线",
+    script: "check-adopt-safety.mjs",
+    expect: ["checks_failed=0"],
+  },
+  {
     // 1.0.0 批次 6：兼容性体检重构（只查核心前置、版本号换社区叫法、不再报"未知"）
     name: "兼容性体检（防焦虑）",
     script: "check-compat-health.mjs",

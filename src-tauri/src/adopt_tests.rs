@@ -293,10 +293,17 @@ fn adopt_copy_and_redeploy() {
     assert_eq!(fs::read(&target).unwrap(), b"original-bytes");
 }
 
-/// 旧状态仍记录已经搬走的 staging 路径：撤除前先从自己的部署清单恢复，
-/// 随后正常撤除并再次部署。不会改写或搬动游戏侧原文件来“凑”暂存。
+/// 收编 Mod 的暂存副本丢失后，禁用仍然成功：**只断链接，不重建暂存**。
+///
+/// 这条用例 2026-11-02 重写过。旧版本断言"撤除前先从游戏目录把文件复制回暂存区"，
+/// 结果就是玩家报的那个错：`staging/adopt-xxx` 这个目录名还被占着时直接抛
+/// 「恢复目标已存在」，禁用彻底卡死；即便不冲突，也会凭空多出一份用户不知道的
+/// 副本，和外部工具里的原件分叉。收编语义下这层恢复本来就没有意义——母本在
+/// Vortex 目录里，本启动器只是把它链进游戏目录。
+///
+/// 代价（有意接受）：重新启用需要重新扫描收编，不能靠暂存副本原地复活。
 #[test]
-fn broken_staging_recovers_before_undeploy_and_redeploys() {
+fn adopted_undeploy_cuts_links_without_rebuilding_staging() {
     let _guard = lock();
     let fixture = Fixture::new();
     let target = fixture.game_file("recover.archive", b"verified-original");
@@ -311,16 +318,23 @@ fn broken_staging_recovers_before_undeploy_and_redeploys() {
     let moved = fixture.root.join("old-staging-location");
     fs::rename(&old, &moved).unwrap();
 
-    undeploy_mod(&fixture.store, &id, &fixture.game).unwrap();
-    assert!(!target.exists());
-    let repaired = fixture.store.snapshot_data().mods.remove(0);
-    assert!(!repaired.enabled);
-    assert_eq!(repaired.staging_path, fixture.store.staging_dir().join(&id).to_string_lossy());
-    assert_eq!(fs::read(PathBuf::from(&repaired.staging_path).join("recover.archive")).unwrap(), b"verified-original");
-    // 清单保留到 save 完成后的旧文件不在内存中被提前清空；这里验证最终重新部署。
+    let warnings = undeploy_mod(&fixture.store, &id, &fixture.game).unwrap();
+    assert!(!target.exists(), "游戏目录里的链接必须断掉");
+    let entry = fixture.store.snapshot_data().mods.remove(0);
+    assert!(!entry.enabled);
+    assert!(entry.deployed_files.is_empty());
+    assert!(
+        !fixture.store.staging_dir().join(&id).exists(),
+        "绝不允许把游戏目录的文件复制回暂存区：{}",
+        fixture.store.staging_dir().join(&id).display()
+    );
+    assert!(
+        warnings.iter().any(|item| item.contains("重新扫描收编")),
+        "要明说重新启用需要重新收编：{warnings:?}"
+    );
+    // 重新启用会明确报"暂存不见了"，而不是静默失败或凭空成功。
     let game = validate_game_dir(&fixture.game).unwrap();
-    assert_eq!(deploy_mod(&fixture.store, &id, &game).unwrap().deployed, 1);
-    assert_eq!(fs::read(target).unwrap(), b"verified-original");
+    assert!(deploy_mod(&fixture.store, &id, &game).is_err());
 }
 
 #[test]
@@ -347,8 +361,63 @@ fn broken_staging_recovers_while_mod_remains_enabled() {
     assert_eq!(fs::metadata(&target).unwrap().len(), before.len());
 }
 
+/// 玩家实测场景的逐字复现：暂存记录指向的旧路径已经不在，但 `staging/<id>`
+/// 这个**目录名被占着**（旧数据目录迁移 / 同名残留）。旧实现在这里抛
+/// 「恢复目标已存在，请先检查暂存目录」，禁用彻底卡死。
 #[test]
-fn broken_staging_refuses_changed_game_file() {
+fn adopted_undeploy_survives_taken_staging_name() {
+    let _guard = lock();
+    let fixture = Fixture::new();
+    let target = fixture.game_file("taken.archive", b"taken-name-bytes");
+    adopt::execute(
+        &fixture.store,
+        &[candidate(&fixture, "archive/pc/mod/taken.archive")],
+        &mut no_progress,
+    )
+    .unwrap();
+    let id = fixture.store.snapshot_data().mods[0].id.clone();
+    let old = PathBuf::from(&fixture.store.snapshot_data().mods[0].staging_path);
+    // ① 真实成因：记录里还写着旧数据目录的绝对路径（迁移前），那个目录早就没了。
+    fs::rename(&old, fixture.root.join("moved-away")).unwrap();
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        state.mods[0].staging_path = fixture
+            .root
+            .join("old-data")
+            .join("staging")
+            .join(&id)
+            .to_string_lossy()
+            .to_string();
+        fixture.store.save(&state).unwrap();
+    }
+    // ② 当前暂存区里同名目录被占着（同名残留）——旧实现正是在这里抛
+    //    「恢复目标已存在」，因为它把 next_root 算成了这个路径。
+    let taken = fixture.store.staging_dir().join(&id);
+    fs::create_dir_all(&taken).unwrap();
+    fs::write(taken.join("someone-else.bin"), b"occupied").unwrap();
+
+    let warnings = undeploy_mod(&fixture.store, &id, &fixture.game)
+        .expect("收编模组禁用不得因为暂存目录名被占而失败");
+    assert!(!target.exists(), "链接必须断掉");
+    assert!(
+        taken.join("someone-else.bin").is_file(),
+        "不得改动不属于这个模组的暂存内容"
+    );
+    assert!(
+        !warnings.iter().any(|item| item.contains("恢复目标已存在")),
+        "{warnings:?}"
+    );
+    let entry = fixture.store.snapshot_data().mods.remove(0);
+    assert!(!entry.enabled && entry.deployed_files.is_empty());
+}
+
+/// 暂存副本没了、游戏侧文件又被外部改过：既比不了 inode，也谈不上"恢复暂存"。
+///
+/// 收编语义下按部署清单直删——清单是唯一凭据，母本在外部工具目录里，删了不丢
+/// 数据；反过来若因此拒删，"禁用"就是假的（文件还躺在 archive/pc/mod 里被加载）。
+/// 旧版本断言这里返回 `STAGING_RECOVERY_CHANGED` 硬错误，等于禁用永远失败。
+#[test]
+fn adopted_undeploy_trusts_manifest_when_staging_is_gone() {
     let _guard = lock();
     let fixture = Fixture::new();
     let target = fixture.game_file("changed.archive", b"before");
@@ -363,10 +432,16 @@ fn broken_staging_refuses_changed_game_file() {
     fs::rename(&old, fixture.root.join("moved-staging")).unwrap();
     fs::remove_file(&target).unwrap();
     fs::write(&target, b"externally changed").unwrap();
-    let error = undeploy_mod(&fixture.store, &id, &fixture.game).unwrap_err();
-    assert_eq!(error.code, "STAGING_RECOVERY_CHANGED");
-    assert_eq!(fs::read(&target).unwrap(), b"externally changed");
-    assert!(fixture.store.snapshot_data().mods[0].enabled);
+
+    let warnings = undeploy_mod(&fixture.store, &id, &fixture.game).unwrap();
+    assert!(!target.exists(), "禁用必须真的切断链接");
+    let entry = fixture.store.snapshot_data().mods.remove(0);
+    assert!(!entry.enabled);
+    assert!(entry.deployed_files.is_empty());
+    assert!(
+        warnings.iter().any(|item| item.contains("重新扫描收编")),
+        "{warnings:?}"
+    );
 }
 
 /// 测试 4：verify_copy 大小不符 → ADOPT_VERIFY_FAILED；

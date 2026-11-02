@@ -3754,6 +3754,17 @@ pub fn run() {
 }
 
 #[cfg(test)]
+mod adopt_tests;
+#[cfg(test)]
+mod ai_tools_tests;
+#[cfg(test)]
+mod game_tests;
+#[cfg(test)]
+mod installer_tests;
+#[cfg(test)]
+mod nxm_tests;
+
+#[cfg(test)]
 mod background_tests {
     use super::{base64_encode, prepare_background, BACKGROUND_MAX_EDGE, BACKGROUND_MAX_SOURCE};
 
