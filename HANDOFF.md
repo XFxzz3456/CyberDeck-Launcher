@@ -25,6 +25,8 @@
 - **2026-11-01 20:53 设置卡片底色统一**：删掉 `.settings-tab-panel .panel` 的 12% 白提亮，改吃基础 .panel 渐变。exe md5 `3df1bab9f8d5116daf1d87d46dbdfd99`，冒烟 `2026-11-01T12:53:24Z stage=frontend mods=186`。
 - **2026-11-01 21:21 工具栏两组重构**：左「视图与过滤」/ 右「动作与工具」，AI 汉化与翻译名称合并为「AI 工具▾」，三档容器查询收低频不换行。exe md5 `f34048c581e4b473571361fd75e474c8`，冒烟 `2026-11-01T13:21:03Z stage=frontend mods=186`。
 - **2026-11-02 00:55 批次 5 构建（播放集缩放对齐 / 毛玻璃质感 / 补全封面进工具栏 / 通知限时）**：exe 11,178,496 B / md5 `288567e268b825f75f274041260e0ef7`，冒烟 `2026-11-01T16:55:29Z stage=frontend mods=186`（sync removed=0 repaired=0 deferred=72）。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,303,788 B，包内 exe md5 一致；zip 改用 UTF-8 文件名，修掉旧包 GBK 乱码隐患），已同步网盘。
+- **2026-11-03 00:48 批次 8+9 构建并替换 release**：exe 11,262,976 B / md5 `acbe573c37bb9cd02d12245fea8d2aa0`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T16:48:41Z stage=frontend mods=119`、`integrity=0x2000`。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,357,550 B，包内 exe md5 一致）。
+  ⚠️ **冒烟发现数据异常**：release 库从 186 条降到 119 条，缺失的 71 条**全部是 enable 状态的收编（adopt-）模组**，另有 4 条新收编。与 23:24 那次冒烟的 `deferred=72 warnings=72`（72 个模组的游戏侧文件校验不到）数量吻合，高度怀疑是一次"清理失效记录/库同步"批量删除了实体文件已不在游戏目录的收编项。已备份当前状态为 `launcher-state.before-restore-*.json`，**未擅自恢复**，等用户确认。
 - **2026-11-03 00:1x 批次 8+9 完成（未构建）**：AI 诊断可执行动作、AI 多套配置、退出确认弹窗、Nexus 401 出口。`cargo test` 262 通过；全量门禁 41/41 绿（新增「AI 可执行修复」「AI 多套配置」「关闭确认与 Nexus 401」）。等 localhost 验收后再构建。
 
 - **2026-11-02 23:24 批次 6+7 构建并替换 release**：exe 11,181,568 B / md5 `a2f360de70f7968bb572fde0cfea9c56`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T15:24:21Z stage=frontend mods=186`、`integrity=0x2000`、`sync removed=0 repaired=0 deferred=72`。本轮含：动画速度滑块 / AI 空响应重试 / 兼容性体检重写（版本号显示 2.5）/ 收编禁用只断链接 / 环境体检降噪。便携版与网盘尚未重做（等确认）。
