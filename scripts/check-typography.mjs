@@ -47,6 +47,11 @@ const CSS_FILES = collectCss(path.join(root, "src"));
 const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 const css = strip(readFileSync(`${root}src/styles.css`, "utf8"));
 const allCss = CSS_FILES.map((f) => ({ file: path.relative(root, f), text: strip(readFileSync(f, "utf8")) }));
+// 令牌定义只在主样式表里查一次（--fw-* 只该在 styles.css 定义），
+// 但「有没有被引用」必须全量 CSS 一起看：组件级 CSS（Splash / Help / Safety /
+// GlossaryShare）里引用令牌完全合法。2026-11-03 就踩了这个坑——--fw-logo 被
+// 移到 SplashScreen.css 后，只在 styles.css 里数引用会误判成 0 次的孤儿令牌。
+const cssAllText = allCss.map((f) => f.text).join("\n");
 
 // ── 1) 静态：字重全部令牌化（全量 CSS）────────────────────────────
 // 刻意保留 400 的 12 处（行内数值/统计，历史误用已修，不许抬回去）。
@@ -72,7 +77,7 @@ check("无 600/650/800/900 幽灵档位", phantom.length === 0, `got=${phantom.j
 const TOKENS = ["display", "title", "label", "body", "hint", "mono", "badge", "logo"];
 const tokenState = TOKENS.map((name) => {
   const defs = [...css.matchAll(new RegExp(`--fw-${name}:\\s*(\\d+)`, "g"))];
-  const uses = [...css.matchAll(new RegExp(`var\\(--fw-${name}\\)`, "g"))].length;
+  const uses = [...cssAllText.matchAll(new RegExp(`var\\(--fw-${name}\\)`, "g"))].length;
   return { name, defs: defs.length, value: defs[0]?.[1] ?? null, uses };
 });
 check(

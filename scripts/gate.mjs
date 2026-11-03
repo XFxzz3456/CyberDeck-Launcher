@@ -6,11 +6,18 @@
 // 不满足就非零退出，并写一份 report.json 说明哪一项、期望什么、实际什么。
 //
 // 用法：
-//   node scripts/gate.mjs                 # 全量
+//   node scripts/gate.mjs                 # 全量（40 项左右，串行时约 7min，现在并发约 2-3min）
+//   node scripts/gate.mjs --fast          # 只跑 tsc / vite build / 命令契约 / 版本号，约 40s
+//                                         # 改 CSS、文案、截图这类不碰 Rust 与交互的改动用它
 //   node scripts/gate.mjs --skip-ui       # 只跑 cargo test / tsc / vite build（无浏览器环境时用）
-//   node scripts/gate.mjs --only=profiles # 只跑名字里含 profiles 的 UI 脚本（调试用）
+//   node scripts/gate.mjs --only=profiles # 只跑名字里含 profiles 的检查（调试用）
+//   node scripts/gate.mjs --jobs=5        # 调 UI 检查的并发度（默认 3，也可用 GATE_JOBS 环境变量）
+//
+// 为什么 UI 检查要并发：38 个脚本各自起一个 headless Chromium、各自加载一次页面，
+// 每个约 10s 里只有 2s 在断言、8s 是「起浏览器 + 加载」的固定开销。串行时这 5 分钟
+// 纯粹是在等浏览器启动。并发 3 路后总时长压到 1/3 左右，判定逻辑与报告格式不变。
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +35,33 @@ const value = (name) => {
 
 const skipUi = flag("skip-ui");
 const only = value("only");
+// --fast：只跑静态检查（tsc / vite build / 命令契约 / 版本号），跳过 cargo test 与全部 UI 脚本。
+// 改 CSS、文案、截图这类不碰 Rust 和交互的改动，用它，约 40s 出结果。
+const fast = flag("fast");
+// 并发度：38 个 UI 脚本串行时，每个约 8s 的「起浏览器 + 加载页面」固定开销要吃掉 5 分钟。
+// 本机 8 核 32G，默认 3 路并发就够把总时长压到 1/3，再高会和 cargo / 浏览器抢 CPU。
+const jobs = Math.max(
+  1,
+  Number(value("jobs") ?? process.env.GATE_JOBS ?? 3) || 3,
+);
+const UI_TIMEOUT_MS = 240_000;
+
+/** 脚本是否要起浏览器（= 需要 vite preview 在跑）。按源码里有没有 import playwright 判定。 */
+const browserScriptCache = new Map();
+function isBrowserScript(script) {
+  if (!browserScriptCache.has(script)) {
+    let source = "";
+    try {
+      source = readFileSync(join(ROOT, "scripts", script), "utf8");
+    } catch {
+      // 读不到就按「要浏览器」处理：宁可多起一次预览，也不要因为判错而漏跑。
+      browserScriptCache.set(script, true);
+      return true;
+    }
+    browserScriptCache.set(script, /\bplaywright\b/.test(source));
+  }
+  return browserScriptCache.get(script);
+}
 
 // ---------------------------------------------------------------- 环境准备
 
@@ -142,26 +176,54 @@ function runCommand(spec) {
   };
 }
 
-function runUiScript(spec) {
-  const started = Date.now();
-  const result = spawnSync(process.execPath, [join("scripts", spec.script)], {
-    cwd: ROOT,
-    env: { ...baseEnv, NO_PROXY: "127.0.0.1,localhost", GATE_PORT: String(PORT) },
-    encoding: "utf8",
-    timeout: 240_000,
-    maxBuffer: 32 * 1024 * 1024,
+/**
+ * 异步版：并发池里必须用它。spawnSync 会卡住事件循环，导致「并发」退化成串行。
+ * 每个脚本各自起一个 headless Chromium，彼此不共享 localStorage / 页面状态，
+ * 只读同一个 vite preview，因此并发是安全的（已核对：没有脚本自起服务或占固定端口，
+ * 写文件的四个脚本各写各的 shots 子目录，mkdirSync recursive 可重复执行）。
+ */
+function runUiScriptAsync(spec) {
+  return new Promise((resolvePromise) => {
+    const started = Date.now();
+    const child = spawn(process.execPath, [join("scripts", spec.script)], {
+      cwd: ROOT,
+      env: { ...baseEnv, NO_PROXY: "127.0.0.1,localhost", GATE_PORT: String(PORT) },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    // stdout 只用来解析 key=value，封顶避免异常脚本刷爆内存。
+    child.stdout.on("data", (chunk) => {
+      if (stdout.length < 8 * 1024 * 1024) stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 4 * 1024 * 1024) stderr += chunk.toString();
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, UI_TIMEOUT_MS);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolvePromise(collectUiResult(spec, started, { stdout, stderr, status: code, timedOut }));
+    });
   });
-  const stdout = result.stdout ?? "";
-  const stderr = result.stderr ?? "";
+}
+
+/** 同步 / 异步两条路径共用的结果整形与断言，保证判定逻辑只有一份。 */
+function collectUiResult(spec, started, { stdout, stderr, status, timedOut }) {
   const map = parseOutput(stdout);
   const expectations = spec.expect.map((expression) => ({
     expression,
     ...checkExpectation(map, expression),
   }));
   const failures = expectations.filter((item) => !item.ok).map((item) => item.detail);
-  if (result.status !== 0) {
+  if (timedOut) {
+    failures.push(`脚本超时（${Math.round(UI_TIMEOUT_MS / 1000)}s）`);
+  } else if (status !== 0) {
     failures.push(
-      `脚本退出码 ${result.status}：` +
+      `脚本退出码 ${status}：` +
         stderr.split(/\r?\n/).filter(Boolean).slice(-6).join(" | "),
     );
   }
@@ -175,6 +237,39 @@ function runUiScript(spec) {
     output: tail(stdout.trim(), 2000),
     failures,
   };
+}
+
+/**
+ * 并发池：按 UI_SCRIPTS 顺序发车，结果按下标回收，报告里的顺序与串行时一致。
+ * 完成即打一行，失败详情紧跟其后；成功项不再逐条打断言（要看细节就 --only=xxx 单跑）。
+ */
+async function runUiPool(specs, concurrency) {
+  const collected = new Array(specs.length);
+  let cursor = 0;
+  let done = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = cursor++;
+      if (index >= specs.length) return;
+      const spec = specs[index];
+      const result = await runUiScriptAsync(spec);
+      collected[index] = result;
+      done += 1;
+      log(
+        `  ${result.ok ? "✓" : "✗"} [${done}/${specs.length}] ${result.name}（${(
+          result.ms / 1000
+        ).toFixed(1)}s）`,
+      );
+      if (!result.ok) {
+        log(indent(result.detail));
+        log(indent(result.failures.join("\n")));
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(concurrency, specs.length)) }, worker),
+  );
+  return collected.filter(Boolean);
 }
 
 function tail(text, limit) {
@@ -255,7 +350,7 @@ const COMMANDS = [
   },
 ];
 
-// 九个单点验收脚本：每项都能单独重跑，这里只负责把它们变成断言。
+// 单点验收脚本：每项都能单独重跑，这里只负责把它们变成断言。默认并发执行（见 --jobs）。
 const UI_SCRIPTS = [
   {
     // r22：侧栏主操作区/辅助区分区 + 辅助区 Flex 沉底（无 absolute）
@@ -713,9 +808,16 @@ function log(line) {
 
 log(`◆ CyberDeck Launcher 合入门禁 · ${startedAt.toLocaleString("zh-CN")}`);
 log(`  根目录 ${ROOT}`);
+if (fast) log(`  模式 --fast：跳过 cargo test 与需要浏览器的检查，只验静态项`);
 
-for (const spec of COMMANDS) {
-  if (only && !spec.name.toLowerCase().includes(only.toLowerCase())) continue;
+const activeCommands = COMMANDS.filter((spec) => {
+  if (only && !spec.name.toLowerCase().includes(only.toLowerCase())) return false;
+  // --fast 下 cargo test 也跳过：它只跟 Rust 改动相关，占了 40 多秒。
+  if (fast && spec.name.includes("cargo")) return false;
+  return true;
+});
+
+for (const spec of activeCommands) {
   log(`\n▸ ${spec.name}`);
   const result = runCommand(spec);
   results.push(result);
@@ -723,8 +825,18 @@ for (const spec of COMMANDS) {
   if (!result.ok) log(indent(result.failures.join("\n")));
 }
 
+// 脚本要不要浏览器，按「源码里有没有 import playwright」自动判定——比手工加标记可靠，
+// 新脚本放错分组也不会漏。纯静态的那几个（版本号/命令契约/安全模式/收编/impeccable 审计）
+// 在 --fast 下照跑，因为它们本来就不需要预览服务。
+const uiSpecs = skipUi
+  ? []
+  : UI_SCRIPTS.filter(
+      (spec) => !only || spec.script.toLowerCase().includes(only.toLowerCase()),
+    ).filter((spec) => !fast || !isBrowserScript(spec.script));
+const needPreview = uiSpecs.some((spec) => isBrowserScript(spec.script));
+
 let preview = null;
-if (!skipUi) {
+if (needPreview) {
   log("\n▸ 启动预览服务");
   try {
     preview = await startPreview();
@@ -742,18 +854,22 @@ if (!skipUi) {
     });
     log(`  ✗ ${error.message ?? error}`);
   }
+}
 
-  if (preview) {
-    for (const spec of UI_SCRIPTS) {
-      if (only && !spec.script.toLowerCase().includes(only.toLowerCase())) continue;
-      log(`\n▸ ${spec.name}（${spec.script}）`);
-      const result = runUiScript(spec);
-      results.push(result);
-      log(result.ok ? `  ✓ 通过（${(result.ms / 1000).toFixed(1)}s）` : `  ✗ 失败`);
-      log(indent(result.detail));
-      if (!result.ok) log(indent(result.failures.join("\n")));
-    }
-  }
+// 预览服务起不来时，浏览器脚本没法跑，但纯静态脚本不受影响，照跑。
+const runnable = preview
+  ? uiSpecs
+  : uiSpecs.filter((spec) => !isBrowserScript(spec.script));
+
+if (runnable.length > 0) {
+  log(`\n▸ 检查 ${runnable.length} 项 · 并发 ${Math.min(jobs, runnable.length)}`);
+  const uiResults = await runUiPool(runnable, jobs);
+  results.push(...uiResults);
+  const uiFailed = uiResults.filter((item) => !item.ok).length;
+  log(
+    `\n  ${uiFailed === 0 ? "✓ 全部通过" : `✗ 失败 ${uiFailed} 项`}` +
+      `（合计 ${(uiResults.reduce((sum, item) => sum + item.ms, 0) / 1000).toFixed(0)}s 工时）`,
+  );
 }
 
 if (preview) {
