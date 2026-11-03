@@ -17,6 +17,7 @@ import { gameVersionText } from "../lib/gameVersion";
 import { useAppVersion } from "../lib/appVersion";
 import { t } from "../i18n";
 import type { HiddenViewsMap } from "../lib/uiPrefs";
+import { LogoMark } from "./LogoMark";
 
 export type View =
   | "library"
@@ -130,9 +131,11 @@ export function Sidebar({
       data-collapsed={collapsed ? "true" : "false"}
     >
       <div className="sidebar-logo" onClick={() => onNavigate("library")}>
-        {/* r20：Logo 去图形化——纯文字「CD」，压在切角黄块上，随主题前景色走。 */}
+        {/* 2026-11-03：Logo 改图形徽章（纯 SVG，主色走 currentColor）。
+            三个方案见 components/LogoMark.tsx，className 沿用 logo-glyph
+            以继承既有的 hover 缩放 + 发光。 */}
         <div className="logo-mark">
-          <span className="logo-glyph" aria-hidden="true">CD</span>
+          <LogoMark className="logo-glyph" size={30} />
         </div>
         <div className="logo-copy">
           <strong>{t("app.brand")}</strong>

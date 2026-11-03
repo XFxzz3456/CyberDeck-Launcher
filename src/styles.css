@@ -1050,24 +1050,23 @@ pre {
   height: 43px;
   flex: 0 0 43px;
   position: relative;
-  background: var(--yellow);
+  /* 2026-11-03 图形徽章：底子从「实心 accent 色块」改成一层很淡的 accent 釉色，
+     图形本身用 currentColor = --accent 描边。这样赛博主题下整枚徽章是赛博黄，
+     现代主题下自动变纯黑 / 纯白，不需要为每套主题单独写一份 logo。 */
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
   clip-path: polygon(0 0, 100% 0, 100% 72%, 72% 100%, 0 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 亮色主题下 --bg 是纯白，压在 accent 色块上会和底色撞在一起；
-     --accent-ink 就是为"写在 accent 上"准备的前景色，两套主题都成立。 */
-  color: var(--accent-ink);
+  color: var(--accent);
 }
 
 /* r20：Logo 改纯文字「CD」——大号粗体压在切角块上。 */
-/* 同上：字形留一点余量，避免 44px 方框里上下不对称（看起来像偏下 1px）。 */
+/* 2026-11-03：.logo-glyph 现在是内联 SVG，不再需要字体相关属性；
+   只保留 hover 用的过渡。类名保留是为了不改 Sidebar 的既有结构。 */
 .logo-glyph {
-  font-family: var(--display);
-  font-size: 19px;
-  font-weight: var(--fw-logo);
-  letter-spacing: 0.5px;
-  line-height: 1.12;
+  display: block;
   transition:
     transform 180ms cubic-bezier(0.2, 0.7, 0.3, 1),
     filter 180ms ease;
@@ -1108,14 +1107,9 @@ pre {
   color: var(--muted-2);
 }
 
-.logo-mark::before {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.24);
-  clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%);
-  pointer-events: none;
-}
+/* 2026-11-03：内层细框已移除。徽章底板改成淡釉色之后，这层 4px 内缩的细框
+   和图形本体抢空间——43px 的方框里塞「外环 + 内环 + 图形」三层线，27px 的
+   图形会被压得看不清。现在只留底板这一层边界。 */
 
 .sidebar-section-label {
   display: flex;
@@ -9284,7 +9278,9 @@ body.is-reordering * {
   background: var(--accent-hover);
 }
 
-.logo-mark,
+/* 启动致命错误页 / 开机启动页仍然是「实心 accent 块 + 深色字」，
+   所以只有它们继续吃 --accent-ink；.logo-mark 自 2026-11-03 起是淡釉底板 +
+   currentColor 描边，颜色由自己的规则给（= --accent），不能并进这一组。 */
 .fatal-mark,
 .boot-logo {
   color: var(--accent-ink);
@@ -15604,6 +15600,13 @@ body::before {
 .row-chip-lang {
   color: var(--info, #57c8ff);
   border-color: color-mix(in srgb, var(--info, #57c8ff) 50%, transparent);
+}
+
+/* 收编（接管）标签的列表视图样式：与卡片上的 .adopted-tag 同色系，
+   但沿用 .row-chip 的尺寸，避免在紧凑行里撑高。 */
+.row-chip-adopt {
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .row-chip-missing,

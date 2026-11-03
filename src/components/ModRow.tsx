@@ -134,6 +134,13 @@ export function ModRow({
               {mod.name}
             </span>
           ) : null}
+          {/* 收编（接管）标记：与卡片视图保持一致，列表视图也要能看出
+              这个 Mod 的物理文件还在外部工具 / 游戏目录里。 */}
+          {mod.origin === "adopted" ? (
+            <span className="row-chip row-chip-adopt" title={t("modCard.adoptedTagTitle")}>
+              {t("modCard.adoptedTag")}
+            </span>
+          ) : null}
           {mod.origin === "modpack" ? (
             <span className="row-chip cover-pack" title={t("modCard.packTitle")}>
               {t("modCard.packBadge")}
