@@ -26,7 +26,7 @@
 | `0.8.0-r3 ~ r6` | 2026-10-26 → 10-27 | 直启游戏 / 回归门禁 / NXM 接管 / AI 接入去服务商化 | 门禁脚本体系（当前 41 条）从这里起步 |
 | `0.9.0-rN`（r30 → r35） | 2026-10-28 → 10-31 | 开源与工程化 | MIT 开源上 GitHub、物理自同步、Vortex 收编、AI 汉化 / AI 补丁、动效体系 |
 | `1.0.0` | 2026-10-31 | 首个正式版 | 三处版本号统一为 `1.0.0`，发布便携版与网盘 |
-| `1.0.0` 追加批次 1–9 | 2026-11-01 → 11-02 | 主题打磨 + 体检降噪 + AI 能力 | 毛玻璃层级与赛博碳灰、动画速度滑块、兼容性体检重写、环境体检容差、AI 可执行修复、AI 多套配置、退出确认弹窗、Nexus 401 出口 |
+| `1.0.0` 追加批次 1–10 | 2026-11-01 → 11-03 | 主题打磨 + 体检降噪 + AI 能力 + 品牌徽章 | 毛玻璃层级与赛博碳灰、动画速度滑块、兼容性体检重写、环境体检容差、AI 可执行修复、AI 多套配置、退出确认弹窗、Nexus 401 出口、SVG 图形徽章与列表接管标签 |
 
 ### 版本号规则
 
@@ -37,6 +37,41 @@
 | **PATCH** | 修 bug、调样式、改文案 | 用户无感或只感觉到"变好了" |
 
 `-rN` 是同日多次构建的批次号，**不参与 SemVer 比较**（`1.0.0-r5` 与 `1.0.0` 是同一版本的两个构建）。
+
+---
+## [1.0.0] - 2026-11-03 追加批次 10（SVG 图形徽章 / 列表接管标签 / i18n 门禁转绿）
+
+Logo 从纯文字「CD」换掉——原来的字母组合太像光驱，辨识度低。
+
+### ✨ 新功能与特性 (New Features)
+
+- **Logo 改纯 SVG 图形徽章**（`src/components/LogoMark.tsx` 新增，`Sidebar.tsx` 接入）
+  - 三套方案并存，切换只改 `LOGO_VARIANT` 一行：`A` = C/D 几何融合 + 切角断线，`B` = 数据芯片 + D 形插槽，`C` = 六边形扫描徽章 + 电路节点。当前启用 **B**。
+  - 三套统一 `viewBox="0 0 40 40"`、主体落在 3~37 安全区；描边一律 `currentColor`，颜色由 `.logo-mark` 的 `color: var(--accent)` 提供，因此赛博主题下为 `#fcee0a`、现代黑白主题下自动变纯黑 / 纯白，无需为每套主题单独写 logo。
+  - **未改动**：`.logo-mark` 的 43×43 占位尺寸、图标宽度、右侧「CYBERDECK / MOD LOADER」文字排版；`.logo-glyph` 类名保留，hover 的 `scale(1.06)` 与 `drop-shadow` 自动继承。
+- **列表视图补齐「接管」标签**（`ModRow.tsx` + `.row-chip-adopt`）：`origin == "adopted"` 的模组此前只有卡片视图能看出文件在外部目录，列表视图现在同样标注，两种视图口径一致。
+
+### 🎨 样式
+
+- `.logo-mark` 底板从「实心 accent 色块 + 深色字」改为 `color-mix(in srgb, var(--accent) 12%, transparent)` 淡釉 + `inset 0 0 0 1px` 45% 描边，图形本体反向变成 accent 描边。
+- 移除 `.logo-mark::before` 那层 `inset: 4px` 内框：43px 方框里塞「外环 + 内环 + 图形」三层线，27~30px 的图形会被压糊。启动致命错误页 / 开机启动页仍是实心 accent 块，`--accent-ink` 只留给它们。
+
+### 🐞 修复
+
+- **CI i18n 门禁红叉**：`DownloadsView.tsx` 残留 1 处中文，实为匹配 Rust 后端错误回传（`401` / `API Key 已失效` / `Key 无效`）的正则，不是界面文案。抽成模块级常量 `AUTH_ERROR_RE` 并加 `// i18n-ignore` 说明其为协议字段。`check-i18n --fail` 由 1 处降为 0 处。
+
+### 验证
+
+- `npx tsc --noEmit` → exit 0
+- `node scripts/check-commands.mjs` → commands=146 / registered=146 / invoked=141 / missing=0
+- `node scripts/check-i18n.mjs --fail` → 合计 0 处、0 个文件
+- `npx vite build` → 通过（3.29s，仅 chunk >500kB 提示）
+- 真实侧栏截图（30px 图形 / 43px 徽章，`deviceScaleFactor: 3`）在 Cyber `#FCEE0A`、Netrunner `#3DF2FF`、Mono `#F2F2F2`、Daylight `#B23A0E` 四套主题下均已确认可读。
+
+### 已知边界
+
+- Logo 目前定稿为方案 B；A / C 的代码完整保留在 `LogoMark.tsx`，改 `LOGO_VARIANT` 即可切换，A 在 30px 下 D 的横臂偏小、C 在 30px 下三条扫描线会略像「≡」。
+- 本轮只改前端渲染，Rust 侧未动，`cargo test` 未重跑。
 
 ---
 ## [1.0.0] - 2026-11-02 追加批次 9（AI 多套配置 / 退出确认弹窗 / Nexus 401 出口）
