@@ -71,6 +71,13 @@ jobs:
       - name: 文案硬编码检查
         run: node scripts/check-i18n.mjs --fail
 
+      # 三处版本号（package.json / Cargo.toml / tauri.conf.json）必须同值。
+      # 只改一两处不会报错，只会让「关于页 1.0.0、文件名 1.0.1」这种问题
+      # 一路滑到用户手里——发版脚本 bump-version.mjs 已经保证同改，
+      # 这里卡的是「手工改版本号」和「合并冲突解错」这两条绕过去的路径。
+      - name: 版本号一致性
+        run: node scripts/check-version-sync.mjs
+
       - name: 构建前端产物
         run: npx vite build
 

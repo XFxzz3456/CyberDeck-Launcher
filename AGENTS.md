@@ -82,6 +82,9 @@ grep -rn '"v\?[0-9]\+\.[0-9]\+\.[0-9]\+"' src/ --include="*.ts" --include="*.tsx
 
 ### 1.5 版本发布收尾 checklist
 
+> `npm run release` 已把下面第 1、4、5 项串成一条链（门禁 → 升版三处+CHANGELOG → 构建 → 同步 release 目录），
+> 但它**不替代**人工的 tag / 推送 / 文档双同步，也不打便携 ZIP。
+
 - [ ] 三处 `version` 完全一致
 - [ ] `cargo check` 通过（`NO_PROXY=127.0.0.1,localhost`）
 - [ ] `tsc --noEmit` + `vite build` 通过
@@ -109,8 +112,16 @@ NO_PROXY=127.0.0.1,localhost cargo check
 # Rust 测试
 NO_PROXY=127.0.0.1,localhost cargo test
 
-# 全量门禁（cargo test → tsc → vite build → 7 个 UI 脚本）
+# 全量门禁（cargo test → tsc → vite build → 38 个 UI 脚本，并发执行）
 NO_PROXY=127.0.0.1,localhost node scripts/gate.mjs
+
+# 只验静态项（tsc / vite build / 命令契约 / 版本号），改 CSS 与文案时用，约 40s
+node scripts/gate.mjs --fast
+
+# 一键发版：门禁 → 升版（三处 + CHANGELOG）→ 构建 → 同步 release 目录 → 打印 tag 命令
+# 先 --dry-run 看一眼版本会从多少升到多少
+npm run release -- --dry-run
+npm run release
 
 # 正式构建（只能用 tauri.cmd，且关 LTO）
 CARGO_PROFILE_RELEASE_LTO=false node_modules/.bin/tauri.cmd build --no-bundle

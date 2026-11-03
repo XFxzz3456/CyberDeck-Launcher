@@ -8,7 +8,8 @@
 
 - **一个日期一条记录**：同一天内的多个批次合并为一条，按「新增 / 变更 / 修复 / 移除」归类；只有跨版本线（0.7 → 0.8 → 0.9 → 1.0）才新开版本段。
 - `-rN` 是同日构建批次号，**不参与 SemVer 比较**。合并后的记录在段内用「r26–r33」标注覆盖范围，二进制产物统一登记在文末「发布产物记录」。
-- 发版前跑 `node scripts/bump-version.mjs`（默认 dry-run，按证据判定 patch/minor/major）；`--apply` 同步 `package.json` / `Cargo.toml` / `tauri.conf.json` 并在本文件插入新条目。三处一致性由 `node scripts/check-version-sync.mjs` 把关。
+- 发版前跑 `node scripts/bump-version.mjs`（默认 dry-run，按证据判定 patch/minor/major）；`--apply` 同步 `package.json` / `Cargo.toml` / `tauri.conf.json` 并在本文件插入新条目。三处一致性由 `node scripts/check-version-sync.mjs` 把关（CI 也跑）。
+- 整条发版链用 `npm run release`：门禁 → 升版 → `tauri build --no-bundle` → 备份并替换 `release/CyberDeck Launcher.exe`（打印大小与 md5）→ 打印 commit / tag / push 命令。脚本**不** commit、不 tag、不推送、不打便携 ZIP。
 - 事故复盘、架构决策与里程碑统一归档在 `docs/PROJECT_HISTORY.md`，本文件只留摘要与锚点链接。
 
 ## 版本演进史（总览）
