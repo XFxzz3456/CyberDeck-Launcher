@@ -142,6 +142,19 @@ try {
     await page.waitForTimeout(600);
   }
 
+  // 并发跑门禁时（默认 3~N 路浏览器）固定 sleep 会不够：外观页的开关由 React
+  // 挂载后才带上 is-on 类，渲染慢半拍就可能探针读到 null，报出「开关态配色缺失」
+  // 的假红（实测串行必过、3 路并发偶发）。改成等真实渲染条件，最多等 15s。
+  await page.waitForSelector(".toggle-track", { timeout: 15000 }).catch(() => {});
+  await page
+    .waitForFunction(
+      () =>
+        !!document.querySelector(".toggle.is-on .toggle-track") &&
+        !!document.querySelector(".toggle:not(.is-on) .toggle-track"),
+      { timeout: 15000 },
+    )
+    .catch(() => {});
+
   const probe = await page.evaluate(() => {
     const varColor = (name) => {
       const el = document.createElement("span");
@@ -195,6 +208,10 @@ try {
       toggleTrack: pick(".toggle-track"),
       onBg: onTrack ? getComputedStyle(onTrack).backgroundColor : null,
       offBg: offTrack ? getComputedStyle(offTrack).backgroundColor : null,
+      toggleStats: {
+        total: document.querySelectorAll(".toggle").length,
+        on: document.querySelectorAll(".toggle.is-on").length,
+      },
       offenders,
     };
   });
@@ -228,7 +245,7 @@ try {
     check(
       "开关开/关态靠轨道背景色区分",
       Boolean(probe.onBg) && Boolean(probe.offBg) && probe.onBg !== probe.offBg,
-      `on=${probe.onBg} off=${probe.offBg}`,
+      `on=${probe.onBg} off=${probe.offBg} 开关数=${JSON.stringify(probe.toggleStats ?? null)}`,
       "toggleStateColor",
     );
   }
