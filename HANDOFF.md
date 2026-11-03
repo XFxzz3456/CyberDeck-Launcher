@@ -32,6 +32,14 @@
 - **2026-11-03 00:1x 批次 8+9 完成（未构建）**：AI 诊断可执行动作、AI 多套配置、退出确认弹窗、Nexus 401 出口。`cargo test` 262 通过；全量门禁 41/41 绿（新增「AI 可执行修复」「AI 多套配置」「关闭确认与 Nexus 401」）。等 localhost 验收后再构建。
 - **2026-11-03 21:50 批次 10 完成代码与门禁（未构建）**：Logo 改纯 SVG 图形徽章（`components/LogoMark.tsx` 新增，A/B/C 三方案并存，当前 `LOGO_VARIANT = "B"`；`.logo-mark` 43×43 占位与「CYBERDECK」文字排版未动，描边走 `currentColor` 随主题变色）、列表视图补「接管」标签（`.row-chip-adopt`）、`DownloadsView` 的鉴权正则加 `// i18n-ignore` 让 CI i18n 门禁归零。门禁：`node scripts/gate.mjs` **42/42 全绿**（命令契约 146/146/141 missing 0、core-tests 通过、`tsc` 0 错、`vite build` 通过、其余 38 项 UI 检查全过，含 `check-sidebar`）。已提交 `c8a83e3`（i18n）+ `c47eb9d`（logo 与接管标签）。**未构建 exe**——按交付顺序规则先在 localhost 验收。
 
+- **2026-11-04 01:10 发版链路落地（方案 B，提交 `32b6729`）**：新增 `scripts/release.mjs` + `npm run release`，把原先手工串联的五件事收成一条链——预检 → 门禁 → 升版（三处 + CHANGELOG）→ `tauri build --no-bundle` → 备份并替换 `release/CyberDeck Launcher.exe`（打印大小 / md5）→ 打印 commit / tag / push 命令。刻意不做：不自动 commit / tag / push、不打便携 ZIP。
+  - 分段开关：`--dry-run`（预检 + 预演升版判定，不动文件）、`--skip-gate`、`--skip-bump`、`--skip-build`、`--fast`、`--level=patch|minor|major`。
+  - 两条防呆：① 产物 mtime 早于本次构建开始即报错，防 `tauri build` 命中缓存秒退被当成新包；② 目标 exe 被占用时自动 `taskkill` 启动器再重试（已授权的部署方式）。
+  - CI `frontend` job 补 `node scripts/check-version-sync.mjs`——bump 脚本已保证同改，这一步卡的是「手工改版本号」和「合并冲突解错」。
+  - 验证：`--dry-run` 预演 **1.0.0 → 1.1.0**（minor：v1.0.0 后新增 14 个 Tauri 命令、5 个 Rust 模块、`LogoMark.tsx`）；`gate --fast` 5/5 绿（命令契约 / tsc / vite build / 安全模式 / 收编 / 版本号，约 20s）。
+  - ⚠️ 踩坑记录：验证时误用 `--skip-gate --skip-build` 跑了一遍，bump 真的落盘（三处版本号改 1.1.0 + CHANGELOG 插入自动摘要），已 `git checkout` 整体回退到 1.0.0。教训——`--skip-build` 的语义是「只升版不构建」，不是「什么都不做」；要空跑请用 `--dry-run`。
+  - **本次未升版、未构建**：1.1.0 留给品牌批次验收提交之后执行 `npm run release`。
+
 - **2026-11-02 23:24 批次 6+7 构建并替换 release**：exe 11,181,568 B / md5 `a2f360de70f7968bb572fde0cfea9c56`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T15:24:21Z stage=frontend mods=186`、`integrity=0x2000`、`sync removed=0 repaired=0 deferred=72`。本轮含：动画速度滑块 / AI 空响应重试 / 兼容性体检重写（版本号显示 2.5）/ 收编禁用只断链接 / 环境体检降噪。便携版与网盘尚未重做（等确认）。
 - **2026-11-02 22:0x 批次 6 完成代码与门禁（动效速度滑块 / AI 空响应容错 / 兼容性体检重写）**：`cargo test` 182 通过 / 2 ignored，全量门禁 37/37 绿（新增 `check-compat-health.mjs`）。**尚未构建 exe**——按交付顺序规则先在 localhost 验收，用户确认后再构建、替换 release、重打便携版并同步网盘。构建后在此行补 exe 大小 / md5 / 冒烟结果。
 
