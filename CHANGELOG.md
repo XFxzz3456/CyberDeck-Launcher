@@ -30,6 +30,7 @@
 | `1.0.0` 批次 1–4 | 2026-11-01 | 更新检查与自更新、毛玻璃层级、工具栏分组 |
 | `1.0.0` 批次 5–9 | 2026-11-02 | 体检降噪、兼容性体检重写、AI 可执行修复、AI 多配置、退出弹窗、Nexus 401 |
 | `1.0.0` 批次 10 | 2026-11-03 | SVG 图形徽章、列表接管标签、i18n 门禁转绿 |
+| `1.1.0` | 2026-11-03/04 | 品牌全链路统一、一键发版链路、门禁并发化 7m23s→2m55s |
 
 ### 版本号规则
 
@@ -40,6 +41,52 @@
 | **PATCH** | 修 bug、调样式、改文案 | 用户无感或只感觉到「变好了」 |
 
 ---
+
+## [1.1.0] - 2026-11-03/04（品牌统一 · 发版链路 · 门禁加速）
+
+### 新增
+
+- **品牌全链路统一**：`LogoMark` 改为纯 SVG 图形徽章（数据芯片 + 控制台插槽，全 path 用 `currentColor` 随主题变色）；
+  18 个 exe 图标（ico / icns / 各尺寸 png / Square*Logo）、`public/favicon.svg`、闪屏、骨架屏、致命错误页同步换新
+- **一键发版链路** `npm run release`（`scripts/release.mjs`）：预检 → 门禁 → 升版（三处 + CHANGELOG）→ `tauri build --no-bundle` → 备份并替换 release 目录 exe → 打印 commit/tag/push 命令；
+  分段开关 `--dry-run` / `--skip-gate` / `--skip-bump` / `--skip-build` / `--level=`
+- `package.json` 补 `gate` / `gate:fast` / `bump` / `release` / `version:check`
+- CI `frontend` job 增加 `check-version-sync.mjs`，卡住「手工改版本号」与「合并冲突解错」
+- `make-readme-shots.mjs` 支持 `SHOT_ONLY` 定向补拍，新增 `seedDemoState` / `shotClip` / `runImport` 辅助
+
+### 变更
+
+- **门禁并发化**：`runUiScript` 由 `spawnSync`（阻塞事件循环，实为伪并发）改为异步 `spawn` + 并发池，按「脚本是否 import playwright」自动分组，只有浏览器组占并发位；
+  全量 **7m23s → 2m55s**，新增 `--fast`（仅静态项，13s）与 `--jobs=N`
+- 排版检查令牌扫描范围由 `styles.css` 扩到 `src/**/*.css`（`fw-logo` 的消费方在 `SplashScreen.css`）
+- `.splash-text` 字重接上 `var(--fw-logo)`，该令牌正式投入使用
+- 便携包说明模板升为 `docs/PORTABLE-README-1.1.0.txt`（新增「全新品牌标识」一节）
+
+### 修复
+
+- 门禁「排版层级」并发假红：进外观 tab 后只 `waitForTimeout(600)` 就读 `.toggle.is-on` 计算样式，CPU 占满时 React 尚未挂载完 → 改为 `waitForSelector` + `waitForFunction` 等真实渲染条件，失败信息补开关计数
+- `package.json` 的 `gate/bump/release/version:check` 在上一次回退时被 `git checkout --` 一并还原，导致 `npm run release` 报 Missing script
+- `check-typography` 误报 `fw-logo` 令牌未使用（扫描范围不全）
+- `make-readme-shots` 的 `addInitScript` 内 `localStorage.clear()` 每次导航都执行，冲掉播种的 demo 状态（reload 即丢失）
+- 截图场景 `danger-hold` 点不到清除按钮（设置页默认停「外观」tab，需先切「游戏与路径」）
+
+### 移除
+
+- `assets/icon.png`、`assets/icon-cd.png`（旧文字标）
+- `docs/screenshots/native-060.png`、`native-070.png`、`native-070-settings.png`、`native-release.png`（旧品牌遗留，无任何引用）
+
+### 验证
+
+- 门禁 42 项全绿，211s（38 个 UI 项并发 3 路）
+- exe：9.84 MB（10,317,824 B），md5 `2e4fcda63a3dbf927ce9eabcd1be2062`；冒烟 `startup.log` 出现 `stage=frontend mods=119`
+- 便携包：5.07 MB，md5 `bdb92eca02b7f26f2740a0d9582c496a`；全新解压首跑 `stage=load ok dir=<解压目录>\cyberdeck-data`（便携模式生效）
+- 33 张 README 截图逐张目视验收
+
+### 已知边界
+
+- 便携 ZIP 不在 `release.mjs` 内（对外分发需单独确认后打包）
+- `bump-version.mjs` 插入的 CHANGELOG 摘要直接堆提交标题，会把已在 1.0.0 段记录过的条目重复列出，**仍需人工按版本线收敛**
+- 门禁的 UI 脚本普遍依赖固定 `waitForTimeout`，本次只修了 typography 一处，其余在低配或高并发下仍有假红风险
 
 ## [1.0.0] - 2026-11-03（批次 10）
 

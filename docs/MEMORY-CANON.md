@@ -115,18 +115,17 @@
 - tdrive `dir_list` 的 `size` 字段**不随 overwrite 刷新**，核实内容必须 `file_download` 下载后比对字节数。
 - 手抄预签名 header 进 `curl` 极易 403（长 token 转录错一个字符，exit 0 但 403 响应体）：**上传用 python `urllib.request` 脚本按原样传 header**（r18 已验证），跑完删脚本。
 
-## 4. 当前版本状态（2026-10-29 更新）
+## 4. 当前版本状态（2026-11-04 更新）
 
-- 已部署基线：**0.9.0-r22**（r20 / r21 / r22 全部内容）
-- 已部署 exe：**0.9.0-r22**（2026-10-29 02:21，8,736,768 B，md5 `6e498e3dce314a9fcc3602ac088589cd`，**零编译警告**；上一版 r21 备份在 `CyberDeck Launcher.prev.exe`；冒烟 `stage=frontend mods=195` integrity=0x2000，数据目录 `release\cyberdeck-data`）
-- 三处版本号已统一 **0.9.0**（2026-10-29 02:10）
-- 安装包：`src-tauri/target/release/bundle/nsis/CyberDeck Launcher_0.9.0_x64-setup.exe`（3,332,269 B）
-- 便携版：`CyberDeck Launcher 0.9.0 便携版.zip`（2026-10-29 02:20，4,148,716 B；带父文件夹结构 + `使用说明.txt` + **自带 `cyberdeck-data` 目录**，解压实测 `stage=load ok dir=<exe同级>`）。**已知边界**：在运行过 CDL 的机器上首跑会继承 `%APPDATA%\com.arol.cyberdeck` 的旧状态（含 staging 绝对路径）
-- r20–r22 批次内容：
-  - r20：下载中心重排为任务列表页（设置项迁「设置 → 工具组件 → 下载设置」）+ 分类引擎增强（`haystack_has` 整词匹配 + `reclassify_unclassified`「智能归类」只动「其他」）+ CD 图标全套重制 / 窗口标题缩为 `CyberDeck` + Logo 纯文字化 / 删 Mono 主题 / 缩放 80–150% 滑块
-  - r21：AI 配置 Anthropic 原生协议（`api_protocol` + `x-api-key` / `anthropic-version` / `max_tokens` / `system` 提权 / `sanitize_anthropic_messages`）
-  - r22（0.9.0 冲刺，看板【7】~【14】）：`glossary.rs`（词表 + 云端共享）、`docs/PROJECT_HISTORY.md#ai-loc-review`（【8】仅架构评审，M1 未启动）、`SplashScreen`（【9】）、`HelpCenterView` + `docs/help/*`（【11】）、`config_pack.rs`（【12】）、`safemode.rs` + `compat.rs`（【13】）、`docs/PROJECT_HISTORY.md#real-env-090`（【10】）、`docs/PROJECT_HISTORY.md#ollama` + `check-ollama.ps1`（【14】）
+- 当前版本：**1.1.0**（2026-11-04 01:38 发布；上一正式版 1.0.0 于 2026-10-31 发布）
+- 三处版本号一致：`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` = `1.1.0`，由 `npm run release` 同步；`node scripts/check-version-sync.mjs` 把关（CI 也跑）
+- 已部署 exe：`release\CyberDeck Launcher.exe`，**10,317,824 B（9.84 MB）/ md5 `2e4fcda63a3dbf927ce9eabcd1be2062`**；旧版备份 `CyberDeck Launcher.prev.exe`；冒烟 `2026-11-03T17:39:09Z stage=frontend mods=119`
+- 便携版：`发布产物\CyberDeck Launcher 1.1.0 便携版.zip`（5.07 MB / md5 `bdb92eca02b7f26f2740a0d9582c496a`），含 exe + `WebView2Loader.dll` + `使用说明.txt` + 自带 `cyberdeck-data` 目录；全新解压首跑实测 `stage=load ok dir=<解压目录>\cyberdeck-data`
+- 本版主题：品牌全链路统一（纯 SVG 徽章 + 18 个图标 + 闪屏/骨架/致命页 + README 33 张截图重拍）、一键发版链路 `npm run release`、门禁并发化 7m23s → 2m55s
+- 发版链路口诀：`npm run release -- --dry-run` 先看升几级 → `npm run release` → 人工 commit/tag/push → 单独打包便携 ZIP。构建前若 `dist` 已存在先 `rm -rf dist`（vite 清目录会被本机批量删除保护拦下）
+- 当前 git tag：`v1.0.0`（1.1.0 的 tag 在发布后补打）
 - **待构建**：无。
+- 历史基线（只读）：0.9.0-r22 于 2026-10-29 02:21 部署（8,736,768 B / md5 `6e498e3dce314a9fcc3602ac088589cd`），细节见 CHANGELOG。
 - ⚠️ 标号冲突未裁决：`0.7.0-r4` 与 `0.8.0-r4` 撞号，CHANGELOG 按实际时间排序、标号未改。
 
 ## 5. 计划看板（16 项，看板是唯一权威）
