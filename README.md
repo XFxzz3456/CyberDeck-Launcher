@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/brand/badge.svg" width="96" height="96" alt="CyberDeck Launcher"></p>
+
 # CyberDeck Launcher
 
 **v1.0.0 · 首个正式版（STABLE）**

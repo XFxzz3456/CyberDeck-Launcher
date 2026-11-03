@@ -30,13 +30,8 @@
   overflow: hidden;
 }
 
-.splash-glyph {
-  font-family: var(--display, var(--sans, sans-serif));
-  font-size: 34px;
-  /* r42：900 在本机没有 Black 字面，写它只是让浏览器退化，纯误导。 */
-  font-weight: var(--fw-logo, 700);
-  letter-spacing: 0.02em;
-}
+/* 2026-11-03：.splash-glyph（字面「CD」的字体规则）已删除，标记改由
+   components/LogoMark.tsx 的图形徽章渲染，颜色继承 .splash-mark 的 color。 */
 
 /* 一条扫光：比旋转 spinner 更克制，也不会在 800ms 里显得杂乱。 */
 .splash-scan {
@@ -55,6 +50,10 @@
 .splash-text {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;
+  /* 2026-11-03：字面「CD」换成图形徽章后，这是全站唯一剩下的 ASCII 装饰字标，
+     --fw-logo 本来就只为它而存在（其余场景的 "CYBERDECK" 走 --fw-badge）。
+     不写这一行，--fw-logo 会变成 0 引用的孤儿令牌，check-typography 直接判红。 */
+  font-weight: var(--fw-logo);
   letter-spacing: 0.22em;
   color: var(--text-dim);
   opacity: 0.8;

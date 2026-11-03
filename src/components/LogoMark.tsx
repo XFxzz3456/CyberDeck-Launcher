@@ -16,7 +16,12 @@ import type { ReactElement } from "react";
 
 export type LogoVariant = "A" | "B" | "C";
 
-/** 当前启用方案：A = C/D 几何融合，B = 数据芯片，C = 六边形扫描徽章。 */
+/**
+ * 当前启用方案：A = C/D 几何融合，B = 数据芯片，C = 六边形扫描徽章。
+ * 2026-11-03 用户拍板定稿 **B**（数据芯片 + D 形内嵌插槽）——30px 真实尺寸下
+ * 引脚与插槽都清晰，一眼是「芯片」不像光驱；A 的 D 横臂偏细、C 的三条扫描线
+ * 易被读成菜单图标。A / C 保留在文件里，后续想换只改这一行即可。
+ */
 export const LOGO_VARIANT: LogoVariant = "B";
 
 interface MarkProps {

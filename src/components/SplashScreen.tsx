@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LogoMark } from "./LogoMark";
 import "./SplashScreen.css";
 
 /**
@@ -46,7 +47,9 @@ export function SplashScreen({
   return (
     <div className={`splash${leaving ? " is-leaving" : ""}`} role="presentation">
       <div className="splash-mark">
-        <span className="splash-glyph">CD</span>
+        {/* 2026-11-03：字面「CD」换成图形徽章。这里底板是实心 accent 色块，
+            所以图形走 .splash-mark 的 color（= --accent-ink）反色显示。 */}
+        <LogoMark size={44} />
         <span className="splash-scan" />
       </div>
       <div className="splash-text">LOADING // CYBERDECK</div>

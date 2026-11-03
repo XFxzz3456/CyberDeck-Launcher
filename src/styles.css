@@ -5096,12 +5096,9 @@ pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  color: #060708;
-  font-family: var(--mono);
-  font-weight: var(--fw-logo);
-  font-size: 26px;
-  letter-spacing: -5px;
+  /* 2026-11-03：内容从「C / D」两个字母换成 LogoMark 图形徽章，
+     字体相关属性（family / weight / size / letter-spacing）随之删除，
+     图形颜色由 color 经 currentColor 提供。 */
   animation: boot-pulse 2s ease-in-out infinite;
 }
 
@@ -5173,11 +5170,9 @@ pre {
   height: 56px;
   background: var(--red);
   color: #060708;
-  font-family: var(--mono);
-  font-weight: var(--fw-logo);
   display: grid;
   place-items: center;
-  font-size: 18px;
+  /* 2026-11-03：字面「CD」换成 LogoMark 图形徽章，字体属性删除。 */
 }
 
 .fatal-screen h1 {
@@ -9278,12 +9273,14 @@ body.is-reordering * {
   background: var(--accent-hover);
 }
 
-/* 启动致命错误页 / 开机启动页仍然是「实心 accent 块 + 深色字」，
-   所以只有它们继续吃 --accent-ink；.logo-mark 自 2026-11-03 起是淡釉底板 +
-   currentColor 描边，颜色由自己的规则给（= --accent），不能并进这一组。 */
+/* 启动致命错误页 / 开机启动页的底板是**固定色**（--red / --yellow），不跟主题
+   accent 走，所以前景也固定深色 #060708——这里**不能**用 --accent-ink：现代主题的
+   accent 是纯黑 / 纯白，accent-ink 会是白色，白图形压在黄底上直接看不见。
+   .logo-mark 是淡釉底板 + currentColor 描边，颜色由自己的规则给（= --accent），
+   不并进这一组。 */
 .fatal-mark,
 .boot-logo {
-  color: var(--accent-ink);
+  color: #060708;
 }
 
 body ::selection {

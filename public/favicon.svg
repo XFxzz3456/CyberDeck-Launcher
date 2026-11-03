@@ -1,6 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#07090c"/>
-  <path d="M8 8h48v34L42 56H8z" fill="#fcee0a"/>
-  <path d="M38 46h12V34z" fill="#07090c"/>
-  <text x="13" y="45" font-family="Consolas, monospace" font-size="28" font-weight="700" fill="#07090c" letter-spacing="-4">NC</text>
+  <!--
+    CyberDeck Launcher favicon（2026-11-03 随品牌徽章一起换）
+
+    图形语言与 src-tauri/icons/ 的应用图标、src/components/LogoMark.tsx 的
+    方案 B 一致：黄底切角 + 数据芯片 + 两侧引脚。
+    与 1024 版徽章的唯一差别是**去掉中心的 D 形插槽**——favicon 实际只在
+    16~32px 显示，那点空间画三层线必然糊成一团，保留「芯片 + 引脚」的剪影
+    已经是这个尺寸能承载的上限。
+
+    旧的 NC 版（NightCity 时代）随之退役。
+  -->
+  <path d="M0 0 H64 V46 L46 64 H0 Z" fill="#fcee0a"/>
+  <g fill="none" stroke="#07090c" stroke-linecap="square" stroke-linejoin="miter">
+    <!-- 芯片体（右上切角） -->
+    <path d="M17 14 H38.5 L46 21.5 V50 H17 Z" stroke-width="3.6"/>
+    <!-- 左侧三根引脚 -->
+    <path d="M10 22 H17 M10 32 H17 M10 42 H17" stroke-width="3.2"/>
+    <!-- 右侧三根引脚 -->
+    <path d="M46 26 H53 M46 36 H53 M46 46 H53" stroke-width="3.2"/>
+  </g>
 </svg>

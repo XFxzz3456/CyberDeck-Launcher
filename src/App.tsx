@@ -53,6 +53,7 @@ import {
 } from "./lib/uiPrefs";
 import type { SettingsTabId } from "./components/SettingsTabs";
 import { Sidebar } from "./components/Sidebar";
+import { LogoMark } from "./components/LogoMark";
 import { TitleBar } from "./components/TitleBar";
 import { TopBar } from "./components/TopBar";
 import { LibraryView, type SortMode } from "./components/LibraryView";
@@ -2387,7 +2388,11 @@ export default function App() {
     return (
       <>
         <div className="fatal-screen">
-          <div className="fatal-mark">CD</div>
+          {/* 2026-11-03：品牌标记统一成图形徽章（原来是字面「CD」）。
+              这里底色是 --red，`color` 走 #060708，currentColor 描边即为深色。 */}
+          <div className="fatal-mark">
+            <LogoMark size={30} />
+          </div>
           <h1>{t("boot.fatalTitle")}</h1>
           <pre>{bootError}</pre>
           <button className="btn btn-primary" onClick={() => window.location.reload()}>
@@ -2405,9 +2410,10 @@ export default function App() {
         <div className="boot-screen boot-screen-rich">
           <div className="boot-grid" />
           <div className="boot-content">
+            {/* 2026-11-03：启动页的「C / D」两个字母换成同一枚图形徽章，
+                与侧栏 Logo、应用图标保持同一套图形语言。 */}
             <div className="boot-logo">
-              <span>C</span>
-              <span>D</span>
+              <LogoMark size={40} />
             </div>
             <div className="boot-title">{t("boot.brandLine")}</div>
             <div className="boot-sub">{t("boot.sub")}</div>

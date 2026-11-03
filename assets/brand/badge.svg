@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!--
+    注意：这里**刻意不写 width / height**。写了固定尺寸后，浏览器把它当
+    顶层文档渲染时会按 1024 排布再从左上角裁剪，64px 视口下只剩一块黄底
+    （2026-11-03 踩过，小尺寸预览全黄就是这原因）。只留 viewBox，让它随视口缩放。
+  -->
+  <!--
+    CyberDeck Launcher 品牌徽章 · 方案 B（用户 2026-11-03 拍板）
+
+    这是「应用图标 / favicon / README 徽章」的唯一源头。
+    - 图形与 src/components/LogoMark.tsx 的 MarkB 完全同源（同一套 path），
+      改图形时两边要一起改，否则界面里的 Logo 和桌面图标会长得不一样。
+    - 底板沿用界面上 .logo-mark 的切角形状（右下角切掉，polygon 100% 72% → 72% 100%）。
+    - 颜色在这里是写死的：应用图标没有 CSS 变量可用，只能取赛博主题的
+      强调色（赛博黄 #fcee0a）与底色（碳黑 #07090c）两个值。界面里走 currentColor。
+    - 不写任何文字：32×32 任务栏尺寸下字会糊成一团，图形本身才是辨识主体。
+  -->
+  <path d="M0 0 H1024 V737.28 L737.28 1024 H0 Z" fill="#fcee0a"/>
+  <g transform="translate(496 484) scale(16.2) translate(-20.25 -20)"
+     fill="none" stroke="#07090c" stroke-linecap="square" stroke-linejoin="miter">
+    <!-- 芯片体：右上角切角 -->
+    <path d="M8 7.5 H26 L32.5 14 V32.5 H8 Z" stroke-width="2.9"/>
+    <!-- 左侧三根引脚 -->
+    <path d="M3 13 H8 M3 20 H8 M3 27 H8" stroke-width="2.5"/>
+    <!-- 右侧三根引脚 -->
+    <path d="M32.5 17 H37.5 M32.5 24 H37.5 M32.5 30 H37.5" stroke-width="2.5"/>
+    <!-- 内嵌 D 形插槽（控制台插槽的隐喻） -->
+    <path d="M14 15 H20 L24.5 20 L20 25 H14 Z" stroke-width="2.4"/>
+  </g>
+</svg>
