@@ -16,6 +16,13 @@ const STATUS_KEY: Record<DownloadTaskStatus, MessageKey> = {
   cancelled: "downloads.statusCancelled",
 } as const;
 
+/**
+ * 鉴权类失败的判别正则。
+ * 匹配的是 Rust 后端回传的错误文案（协议字段，不走前端词表），
+ * 因此这里的中文不是界面文案，不参与 i18n。 // i18n-ignore
+ */
+const AUTH_ERROR_RE = /401|API Key 已失效|Key 无效/; // i18n-ignore
+
 function percent(task: DownloadTask): number | null {
   if (!task.total || task.total <= 0) return null;
   return Math.min(100, Math.round((task.received / task.total) * 100));
@@ -346,7 +353,7 @@ export function DownloadsView({
                     <div className="download-error">
                       <span>{task.error}</span>
                       {/* 401 / Key 失效属于"要去改配置"，重试解决不了：给直达入口。 */}
-                      {onOpenNexusSettings && /401|API Key 已失效|Key 无效/.test(task.error) ? (
+                      {onOpenNexusSettings && AUTH_ERROR_RE.test(task.error) ? (
                         <button className="link-btn" onClick={onOpenNexusSettings}>
                           {t("downloads.openNexusSettings")}
                         </button>
