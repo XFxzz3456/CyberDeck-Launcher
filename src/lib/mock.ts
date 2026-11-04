@@ -2353,7 +2353,21 @@ export const mockApi = {
 
   async attachModFromNexus(id: string, url: string): Promise<void> {
     await sleep(150);
-    console.info("[demo] attach_nexus", id, url);
+    const db = loadDb();
+    const target = db.state.mods.find((item) => item.id === id);
+    if (!target) return;
+    // 演示模式也要真的落库：只打一行 console.info 会让 App 的「已保存」toast
+    // 变成假成功（刷新后数据回退）。这里按真实命令的语义写上 nexus 引用。
+    target.nexus = {
+      modId: Number(/mods\/(\d+)/.exec(url)?.[1] ?? 0),
+      fileId: target.nexus?.fileId ?? null,
+      url,
+      version: target.nexus?.version ?? target.version,
+      pictureUrl: target.nexus?.pictureUrl ?? null,
+      latestVersion: target.nexus?.latestVersion ?? null,
+      lastCheck: target.nexus?.lastCheck ?? null,
+    };
+    saveDb(db);
   },
 
   async updateModMetadata(

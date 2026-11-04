@@ -112,30 +112,71 @@ const IGNORE_KEY = "ncl.ui.depIgnores.v1";
 
 type IgnoreMap = Record<string, string[]>;
 
-export function readDepIgnores(): IgnoreMap {
-  try {
-    const raw = window.localStorage.getItem(IGNORE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const out: IgnoreMap = {};
-    for (const [modId, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (Array.isArray(value)) {
-        out[modId] = value.filter((item): item is string => typeof item === "string");
-      }
+/**
+ * 进程内缓存。
+ *
+ * 为什么要缓存：`missingDependencyNames()` 在模组网格里**每个可见卡片**都会被调一次，
+ * 每次调用都会走到这里。原实现每次都 `localStorage.getItem` + `JSON.parse`，
+ * 几百个卡片滚动时就是几百次同步 IO + 反序列化，掉帧直接从这儿来。
+ * 忽略表只由本文件的三个写入口改动，改了就让缓存失效即可，没必要每次重读。
+ */
+let cache: IgnoreMap | null = null;
+
+/** 忽略表的变更版本号：React 侧用它判断「要不要重算依赖相关的列表」。 */
+let version = 0;
+const listeners = new Set<() => void>();
+
+/** 给 `useSyncExternalStore` 用的版本号快照。 */
+export function depIgnoresVersion(): number {
+  return version;
+}
+
+/** 给 `useSyncExternalStore` 用的订阅入口。 */
+export function subscribeDepIgnores(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function parseIgnores(raw: string | null): IgnoreMap {
+  if (!raw) return {};
+  const parsed: unknown = JSON.parse(raw);
+  if (typeof parsed !== "object" || parsed === null) return {};
+  const out: IgnoreMap = {};
+  for (const [modId, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (Array.isArray(value)) {
+      out[modId] = value.filter((item): item is string => typeof item === "string");
     }
-    return out;
-  } catch {
-    return {};
   }
+  return out;
+}
+
+/**
+ * 读忽略表。**返回值是共享的只读快照**：不要就地修改它，
+ * 修改请走 ignoreDependency / restoreDependency（它们会用新对象替换缓存）。
+ */
+export function readDepIgnores(): IgnoreMap {
+  if (cache) return cache;
+  try {
+    cache = parseIgnores(window.localStorage.getItem(IGNORE_KEY));
+  } catch {
+    // 存量数据被手改坏 / 隐私模式读不到：当作「没有任何忽略」，不要让依赖面板整块崩掉。
+    cache = {};
+  }
+  return cache;
 }
 
 function writeDepIgnores(map: IgnoreMap): void {
+  cache = map;
+  version += 1;
   try {
     window.localStorage.setItem(IGNORE_KEY, JSON.stringify(map));
   } catch {
     // 隐私模式下写不进去：忽略只在本次会话生效，不报错打断用户。
   }
+  // 写盘失败也要通知：本次会话内界面得跟着变，否则用户以为点了没反应。
+  for (const listener of listeners) listener();
 }
 
 export function isDependencyIgnored(modId: string, frameworkId: string): boolean {
@@ -144,21 +185,24 @@ export function isDependencyIgnored(modId: string, frameworkId: string): boolean
 
 export function ignoreDependency(modId: string, frameworkId: string): void {
   const map = readDepIgnores();
-  const list = new Set(map[modId] ?? []);
-  list.add(frameworkId);
-  map[modId] = [...list];
-  writeDepIgnores(map);
+  const current = map[modId] ?? [];
+  if (current.includes(frameworkId)) return;
+  writeDepIgnores({ ...map, [modId]: [...current, frameworkId] });
 }
 
 export function restoreDependency(modId: string, frameworkId: string): void {
   const map = readDepIgnores();
-  const list = (map[modId] ?? []).filter((item) => item !== frameworkId);
+  const current = map[modId] ?? [];
+  if (!current.includes(frameworkId)) return;
+  const list = current.filter((item) => item !== frameworkId);
   if (list.length === 0) {
-    delete map[modId];
+    // 删掉整个键：空数组也算「有记录」，留着会让 DiagnosticsView 的计数多算。
+    const { [modId]: _removed, ...rest } = map;
+    void _removed;
+    writeDepIgnores(rest);
   } else {
-    map[modId] = list;
+    writeDepIgnores({ ...map, [modId]: list });
   }
-  writeDepIgnores(map);
 }
 
 export function clearAllDependencyIgnores(): void {

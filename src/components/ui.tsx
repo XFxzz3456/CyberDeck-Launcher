@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent, type Variants } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-react";
 import { t } from "../i18n";
+import { useEscLayer } from "../lib/escLayer";
+import { useFocusTrap } from "../lib/focusTrap";
 import { makeBackdropVariants, makeModalVariants, useMotionFactor, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 
@@ -113,6 +115,9 @@ function ModalShell({
   backdropVariants: Variants;
 }) {
   const isPresent = useIsPresent();
+  // 焦点陷阱：Tab 不跑到背后的主界面上，关窗后焦点回到原处。
+  const dialogRef = useRef<HTMLElement>(null);
+  useFocusTrap(dialogRef, true);
   return (
     <div
       className="modal-portal"
@@ -130,6 +135,8 @@ function ModalShell({
       />
       <motion.section
         className="modal"
+        ref={dialogRef}
+        tabIndex={-1}
         style={{ width }}
         role="dialog"
         aria-modal="true"
@@ -172,14 +179,8 @@ export function Modal({
   onClose: () => void;
   width?: number;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  // Esc 只关最上面这层（见 lib/escLayer：叠了两层时按一次不会全关）。
+  useEscLayer(open, onClose);
 
   const motionEnabled = useMotionEnabled();
   const springs = useMotionSprings();

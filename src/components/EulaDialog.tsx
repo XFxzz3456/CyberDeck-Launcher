@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ScrollText, ShieldAlert } from "lucide-react";
 import eulaSource from "../assets/eula.md?raw";
 import { parseMarkdownLite, splitInlineBold, type MdBlock } from "../lib/markdownLite";
+import { useEscLayer } from "../lib/escLayer";
 import { t } from "../i18n";
 
 export type EulaMode = "gate" | "viewer";
@@ -45,14 +46,8 @@ export function EulaDialog({
     }
   }, []);
 
-  useEffect(() => {
-    if (mode !== "viewer") return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose?.();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, onClose]);
+  // viewer 模式的 Esc 也走弹层栈：协议是从设置里打开的，别把设置一起关掉。
+  useEscLayer(mode === "viewer", () => onClose?.());
 
   const isGate = mode === "gate";
 

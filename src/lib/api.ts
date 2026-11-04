@@ -104,6 +104,21 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   return invoke<T>(command, args);
 }
 
+/**
+ * 所有「返回整个快照」的命令都必须走这里。
+ *
+ * 快照是 UI 的唯一数据来源，只要有一个入口漏掉归一化，脏数据就会直达渲染层——
+ * 而 `launcher-state.json` 是用户可手改、旧版本迁移过、写入还可能被打断的文件，
+ * 一个 `gameDir: 123` 就能让 `bound.trim()` 白屏（见 lib/normalize.ts）。
+ * 旧代码只有 `bootstrap` 调了 normalizeSnapshot，另外 5 个命令全部直通 invoke。
+ */
+async function snapshotCall(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<Snapshot> {
+  return normalizeSnapshot(await call<Snapshot>(command, args));
+}
+
 export const api = {
   isDemo: !isTauri,
 
@@ -115,8 +130,8 @@ export const api = {
   },
 
   async refreshGame(): Promise<Snapshot> {
-    if (!isTauri) return mockApi.refreshGame();
-    return call<Snapshot>("refresh_game");
+    if (!isTauri) return normalizeSnapshot(await mockApi.refreshGame());
+    return snapshotCall("refresh_game");
   },
 
   async detectGamePath(): Promise<GameInfo | null> {
@@ -125,19 +140,19 @@ export const api = {
   },
 
   async setGameDir(path: string): Promise<Snapshot> {
-    if (!isTauri) return mockApi.setGameDir(path);
-    return call<Snapshot>("set_game_dir", { path });
+    if (!isTauri) return normalizeSnapshot(await mockApi.setGameDir(path));
+    return snapshotCall("set_game_dir", { path });
   },
 
   async clearGameDir(): Promise<Snapshot> {
-    if (!isTauri) return mockApi.clearGameDir();
-    return call<Snapshot>("clear_game_dir");
+    if (!isTauri) return normalizeSnapshot(await mockApi.clearGameDir());
+    return snapshotCall("clear_game_dir");
   },
 
   /** 解除游戏更新熔断：把当前 exe 版本记为已确认版本。 */
   async clearUpdateLock(): Promise<Snapshot> {
-    if (!isTauri) return mockApi.clearUpdateLock();
-    return call<Snapshot>("clear_update_lock");
+    if (!isTauri) return normalizeSnapshot(await mockApi.clearUpdateLock());
+    return snapshotCall("clear_update_lock");
   },
 
   /** 在资源管理器里定位文件或文件夹（后端会校验路径归属）。 */
@@ -433,7 +448,9 @@ export const api = {
 
   /** 用粘贴的 Nexus 模组链接补全单个模组信息。 */
   async attachModFromNexus(id: string, url: string): Promise<void> {
-    if (!isTauri) return;
+    // 演示模式必须真的写进 mock 库：以前这里 `return` 直接成功，界面 toast
+    // 「已保存」，刷新后数据回退——典型的假成功，试用者会以为功能坏了。
+    if (!isTauri) return mockApi.attachModFromNexus(id, url);
     return call<void>("attach_mod_from_nexus", { id, url });
   },
 
@@ -442,7 +459,7 @@ export const api = {
     id: string,
     fields: { name: string; author: string; version: string; category: string },
   ): Promise<void> {
-    if (!isTauri) return;
+    if (!isTauri) return mockApi.updateModMetadata(id, fields);
     return call<void>("update_mod_metadata", { id, ...fields });
   },
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, useIsPresent } from "framer-motion";
 import {
   AlertTriangle,
@@ -27,6 +27,7 @@ import { formatBytes, formatDate, relativeTime } from "../lib/format";
 import { CoverArt } from "./CoverArt";
 import { Badge, Modal, Spinner, Toggle } from "./ui";
 import { ModSettingsPanel } from "./ModSettingsPanel";
+import { useEscLayer } from "../lib/escLayer";
 import { useMotionFactor, useMotionSprings, makeBackdropVariants, makeDrawerVariants } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 import { categoryLabel, t } from "../i18n";
@@ -105,13 +106,9 @@ export function ModDetailDrawer({
   /** 打开配置文件所在目录（专属配置面板里的文件夹按钮）。 */
   onOpenPath?: (path: string) => void;
 }) {
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  // Esc 只关最上面那层：抽屉里开着「编辑信息」对话框时，一次 Esc 只收对话框，
+  // 不会把抽屉一起带走（见 lib/escLayer）。
+  useEscLayer(true, onClose);
 
   // 动效：抽屉整体从右侧滑入，遮罩淡入（毛玻璃随 opacity 一起浮现）。
   // 关闭「界面动效」时变体退化为时长 0 的瞬移，不做位移。
