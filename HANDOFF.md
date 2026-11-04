@@ -49,6 +49,15 @@
   - ⚠️ 踩坑 3：门禁「排版层级」在 3 路并发下偶发 `toggleStateColor` 假红（单独跑必过），根因是外观 tab 只 `waitForTimeout(600)` 就读开关计算样式，已改为等真实渲染条件。
   - **本次未升版、未构建**：1.1.0 留给品牌批次验收提交之后执行 `npm run release`。
 
+- **2026-11-04 23:10 前端缺陷审查 15 条修复完成（未升版、未构建）**：起点是一份前端只读审查报告（2 条 P1 + 13 条 P2/P3）加多分辨率实测问题。四个提交：
+  - `2b4694b` fix(rust)：`store.rs` 状态文件去掉「先删后改」的丢库窗口（改 `create/write_all/sync_all` + 原子 `rename`，`.bak` 缺失自动恢复，临时名带 pid+序号）；`installer.rs` 卸载删不掉的文件保留在 `deployed_files` 并逐个告警，重新部署先 `purge_links` 清残留、清不干净报 `DEPLOY_STALE_FILES`；新增 `share_mode(0)` 独占打开模拟占用的 Windows 单测。
+  - `5f16d5c` fix(ui)：新增 `lib/escLayer.ts`（模块级栈，一次 Esc 只关栈顶）与 `lib/focusTrap.ts`（Tab 循环 + 归还焦点），Modal/抽屉/协议弹层统一接入；`api.ts` 新增 `snapshotCall()` 让 5 个返回快照的命令都过归一化；`mock.ts` 的 `attachModFromNexus` 补真实实现；`dependencies.ts` 忽略表加缓存 + 订阅。
+  - `379a53d` fix(views)：存档确认框换共享 `ConfirmDialog`、`SnapshotCard` 消除嵌套交互元素；下载轮询失败就地展示；`runProfileAction` 返回布尔（失败保留输入）；下载队列设置串行合并落盘；背景图读不到 4 秒重试一次；`nxmPremium` ref→state；播放集差量按库内条目求交集；设置回滚基准只在队首取。
+  - `a453067` test(gate)：`check-saves` 选择器随新 DOM 同步、`check-ailoc-entry` 改连按两次 Esc 并断言抽屉真的关了、`check-typography` 固定 `waitForTimeout` 改 `waitForSelector`；CHANGELOG 记录整批。
+  - 验证：`node scripts/gate.mjs` **42/42 全绿**（工时 574s）；`cargo test` src-tauri 265 passed / core-tests 1 passed；`tsc` 0 错；`check-i18n --fail` 0 处、`--unused` 0 条（清掉 13 条死文案，1895 → 1882）。
+  - ⚠️ 待人工过一眼：依赖忽略面板没有任何门禁脚本覆盖（demo 数据里没有缺失前置），本轮只做了模块级逻辑验证 + 页面无 pageerror。
+  - **未升版、未构建 exe**——按交付顺序规则等 localhost 验收。
+
 - **2026-11-02 23:24 批次 6+7 构建并替换 release**：exe 11,181,568 B / md5 `a2f360de70f7968bb572fde0cfea9c56`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T15:24:21Z stage=frontend mods=186`、`integrity=0x2000`、`sync removed=0 repaired=0 deferred=72`。本轮含：动画速度滑块 / AI 空响应重试 / 兼容性体检重写（版本号显示 2.5）/ 收编禁用只断链接 / 环境体检降噪。便携版与网盘尚未重做（等确认）。
 - **2026-11-02 22:0x 批次 6 完成代码与门禁（动效速度滑块 / AI 空响应容错 / 兼容性体检重写）**：`cargo test` 182 通过 / 2 ignored，全量门禁 37/37 绿（新增 `check-compat-health.mjs`）。**尚未构建 exe**——按交付顺序规则先在 localhost 验收，用户确认后再构建、替换 release、重打便携版并同步网盘。构建后在此行补 exe 大小 / md5 / 冒烟结果。
 
