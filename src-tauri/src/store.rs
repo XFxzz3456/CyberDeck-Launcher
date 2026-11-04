@@ -1,6 +1,8 @@
 use crate::schema::{AppResult, AppStateData, CommandError};
 use std::fs;
+use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 pub struct Store {
@@ -80,6 +82,16 @@ impl Store {
         })?;
 
         let mut recovered_from: Option<String> = None;
+        // 万一上次保存在「写临时文件」和「rename」之间被打断，正式文件会不存在。
+        // 这时退到最近一次成功保存的 `.bak`，而不是把「空库」当成新装环境——
+        // 空库会让所有已部署模组失去 deployed_files，用户看到的是"模组全没了"。
+        let backup_file = state_file.with_extension("json.bak");
+        if !state_file.is_file() && backup_file.is_file() {
+            match fs::copy(&backup_file, &state_file) {
+                Ok(_) => eprintln!("State file missing; restored from {backup_file:?}"),
+                Err(err) => eprintln!("State file missing and .bak restore failed: {err}"),
+            }
+        }
         let data = if state_file.exists() {
             match fs::read_to_string(&state_file) {                Ok(raw) => match serde_json::from_str::<AppStateData>(&raw) {
                     Ok(mut parsed) => {
@@ -153,31 +165,60 @@ impl Store {
         self.recovered_from.as_deref()
     }
 
+    /// 原子落盘：写临时文件 → fsync → `rename` 覆盖目标。
+    ///
+    /// 2026-11-04 修（原实现是真丢库级的隐患）：旧版本先 `remove_file(state_file)`
+    /// 再 `rename(temp → state_file)`。这两步之间只要进程被杀、断电、或 rename 因
+    /// 杀软锁文件而失败，用户的 `launcher-state.json` 就**彻底没了**；而
+    /// `deployed_files` 是卸载的唯一依据，丢了等于整套模组再也卸不干净。
+    ///
+    /// Windows 上 `fs::rename` 走 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`，本身
+    /// 就是「替换」语义，所以「先删旧文件」既没有必要，也是唯一会造成不可恢复
+    /// 数据丢失的一步。另外每次保存前留一份 `launcher-state.json.bak`。
     pub fn save(&self, data: &AppStateData) -> AppResult<()> {
         if let Some(parent) = self.state_file.parent() {
             fs::create_dir_all(parent)?;
         }
         let raw = serde_json::to_string_pretty(data)
             .map_err(|e| CommandError::new("STATE_SERIALIZE", e.to_string()))?;
-        let temp = self.state_file.with_extension("json.tmp");
-        fs::write(&temp, raw).map_err(|e| {
+
+        // 并发保存（设置防抖 + 下载队列 + 部署线程可能同时落盘）时各线程必须用自己的
+        // 临时文件，否则一个线程 rename 成功会把另一个线程还没 rename 的临时文件搬走。
+        static SAVE_SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SAVE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let temp = self.state_file.with_extension(format!(
+            "json.tmp-{}-{seq}",
+            std::process::id()
+        ));
+
+        let write_error = |e: std::io::Error| {
             CommandError::new(
                 "STATE_WRITE",
                 format!("无法写临时状态文件 {}：{e}", temp.display()),
             )
-        })?;
-
-        if self.state_file.exists() {
-            fs::remove_file(&self.state_file).map_err(|e| {
-                CommandError::new(
-                    "STATE_WRITE",
-                    format!("无法替换旧状态文件 {}：{e}", self.state_file.display()),
-                )
-            })?;
+        };
+        let written = (|| -> std::io::Result<()> {
+            let mut file = fs::File::create(&temp)?;
+            file.write_all(raw.as_bytes())?;
+            // 只写进页缓存的话，断电后可能出现「文件在、内容空」——那比没有更糟。
+            file.sync_all()
+        })();
+        if let Err(err) = written {
+            // 半截临时文件不留在用户的 data 目录里。
+            let _ = fs::remove_file(&temp);
+            return Err(write_error(err));
         }
+
+        // 上一版留一份副本：万一下面 rename 被中断，还有一个「上一次成功保存」的库能救。
+        // 复制失败不阻断本次保存（备份是加分项，不是前置条件）。
+        let backup = self.state_file.with_extension("json.bak");
+        if self.state_file.is_file() {
+            let _ = fs::copy(&self.state_file, &backup);
+        }
+
         if let Err(rename_error) = fs::rename(&temp, &self.state_file) {
-            // Some antivirus / filesystem filters briefly lock the renamed file.
-            // A direct copy is less atomic but preserves the user's state.
+            // 杀软 / 文件筛选器会短暂锁住目标文件。此时退回复制，**仍然不删目标文件**：
+            // `fs::copy` 是原地截断覆盖，失败最多是这次没写成，绝不会把旧库清空。
             fs::copy(&temp, &self.state_file).map_err(|copy_error| {
                 CommandError::new(
                     "STATE_WRITE",
@@ -362,6 +403,76 @@ mod recovery_tests {
         // 再加载一次同一份文件（现在文件已存在）也必须没有恢复标记。
         let again = Store::load(dir.clone()).unwrap();
         assert!(again.recovered_from().is_none());
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 落盘必须是「替换」而不是「先删后建」：连续保存后正式文件是最新一版、
+    /// `.bak` 是上一版、且不留半截临时文件。
+    ///
+    /// 回归的是旧实现里的 `remove_file(state_file)` —— 那一步与 rename 之间
+    /// 失败就会把用户整个库清空（deployed_files 是卸载的唯一依据）。
+    #[test]
+    fn save_replaces_in_place_and_keeps_previous_version() {
+        let dir = temp_dir("atomic");
+        let store = Store::load(dir.clone()).unwrap();
+
+        let mut first = store.snapshot_data();
+        first.game_dir = Some("D:/Games/First".to_string());
+        store.save(&first).unwrap();
+
+        let mut second = first.clone();
+        second.game_dir = Some("D:/Games/Second".to_string());
+        store.save(&second).unwrap();
+
+        let primary = fs::read_to_string(dir.join("launcher-state.json")).unwrap();
+        let primary: AppStateData = serde_json::from_str(&primary).unwrap();
+        assert_eq!(
+            primary.game_dir.as_deref(),
+            Some("D:/Games/Second"),
+            "正式文件必须是本次写入的值"
+        );
+
+        let bak = fs::read_to_string(dir.join("launcher-state.json.bak")).unwrap();
+        let bak: AppStateData = serde_json::from_str(&bak).unwrap();
+        assert_eq!(
+            bak.game_dir.as_deref(),
+            Some("D:/Games/First"),
+            ".bak 必须保留上一版，供中断后手工恢复"
+        );
+
+        let leftovers: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.contains(".tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "临时文件不该留在数据目录：{leftovers:?}");
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 正式文件缺失（保存中断在 rename 之前）时必须退到 `.bak`，而不是从空库启动。
+    #[test]
+    fn missing_state_file_restores_from_backup() {
+        let dir = temp_dir("bakrestore");
+        let store = Store::load(dir.clone()).unwrap();
+
+        let mut data = store.snapshot_data();
+        data.game_dir = Some("D:/Games/Kept".to_string());
+        store.save(&data).unwrap(); // 第 1 次：正式文件 = Kept
+        data.game_dir = Some("D:/Games/Newer".to_string());
+        store.save(&data).unwrap(); // 第 2 次：.bak = Kept
+
+        fs::remove_file(dir.join("launcher-state.json")).unwrap();
+        let again = Store::load(dir.clone()).unwrap();
+
+        assert_eq!(
+            again.snapshot_data().game_dir.as_deref(),
+            Some("D:/Games/Kept"),
+            "正式文件丢了应从 .bak 恢复上一版的库，而不是当成新装环境"
+        );
+        assert!(dir.join("launcher-state.json").is_file());
 
         fs::remove_dir_all(&dir).ok();
     }

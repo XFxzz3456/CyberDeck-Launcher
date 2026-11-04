@@ -1405,6 +1405,22 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
     if entry.enabled && !entry.deployed_files.is_empty() {
         return Ok(report(entry, 0, 0, 0, 0, Vec::new()));
     }
+    // 走到这里说明「没启用」。如果清单还非空，那是上次禁用时有文件被占用没删掉
+    // （见 undeploy_mod）。先把残留清干净再部署，否则下面创建链接会撞上自己的
+    // 残留、报「目标在部署过程中被占用」，看起来像模组坏了，其实只要关掉游戏。
+    if !entry.deployed_files.is_empty() {
+        let stranded = purge_links(&entry, &game_root);
+        if !stranded.is_empty() {
+            return Err(CommandError::new(
+                "DEPLOY_STALE_FILES",
+                format!(
+                    "上次禁用时有 {} 个文件仍留在游戏目录里、这次也没能清掉（游戏可能正在运行）。请关闭游戏后再试。",
+                    stranded.len()
+                ),
+            ));
+        }
+        entry.deployed_files.clear();
+    }
 
     let plan = match plan_for(&entry) {
         Ok(plan) => plan,
@@ -1979,6 +1995,10 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
 
     // 收编 Mod 且暂存副本已消失：inode 无从比对，按清单直删（见 remove_deployed_file 说明）。
     let trust_manifest = adopted && staging_gone;
+    // 删不掉的项必须留在清单里。deployed_files 是「游戏目录里还有哪些属于它」的
+    // 唯一记录：旧实现不管成败一律 clear()，于是被游戏占用 / 无权限的那几个文件
+    // 从此没有任何人认得，用户只能自己进游戏目录里挖（2026-11-04 修）。
+    let mut leftover = Vec::new();
     for file in entry.deployed_files.iter().rev() {
         match remove_deployed_file(file, game_root, trust_manifest) {
             Ok(edited) => {
@@ -1986,11 +2006,17 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
                     edited_copies.push(file.relative_path.clone());
                 }
             }
-            Err(reason) => warnings.push(reason),
+            Err(reason) => {
+                leftover.push(file.clone());
+                warnings.push(reason);
+            }
         }
     }
+    // 上面是倒序删的，这里翻回部署顺序，下次重试的顺序才和第一次一致。
+    leftover.reverse();
 
-    entry.deployed_files.clear();
+    let stranded = leftover.len();
+    entry.deployed_files = leftover;
     entry.enabled = false;
     entry.updated_at = Some(now_iso());
     state.mods[index] = entry;
@@ -2004,6 +2030,11 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(" / ")
+        ));
+    }
+    if stranded > 0 {
+        warnings.push(format!(
+            "有 {stranded} 个文件没能从游戏目录删除（多半是游戏正在运行或被占用），已保留记录；关闭游戏后重新启用一次即可自动清掉。"
         ));
     }
     if state.settings.write_modlist {

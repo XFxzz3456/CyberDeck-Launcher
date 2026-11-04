@@ -462,3 +462,66 @@ fn unknown_layout_is_rejected_with_actionable_error() {
     assert!(error.message.contains("archive/"));
 }
 
+/// 禁用时删不掉的文件必须留在部署清单里。
+///
+/// `deployed_files` 是「游戏目录里还有哪些文件属于它」的唯一凭据：旧实现不管
+/// 成败一律 `clear()`，被游戏占用（游戏还在跑）的那几个文件从此无人认领，用户
+/// 只能自己去 `archive/pc/mod` 里翻——正是这次要修的数据丢失点。
+///
+/// 用 Windows 的「独占打开」（share_mode 0）模拟文件被占用：只读属性不行，
+/// `remove_link_or_copy` 会先主动清掉只读位再删。
+#[cfg(windows)]
+#[test]
+fn undeploy_keeps_manifest_for_files_it_could_not_remove() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "Locked.zip",
+        &[
+            ("Locked/keep.archive", b"keep".as_slice()),
+            ("Locked/stuck.archive", b"stuck".as_slice()),
+        ],
+    );
+    let mod_entry = install(&fixture, &zip);
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &mod_entry.id, &game).unwrap();
+
+    let stuck = fixture.game.join("archive/pc/mod/stuck.archive");
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&stuck)
+        .unwrap();
+
+    let warnings = undeploy_mod(&fixture.store, &mod_entry.id, &fixture.game).unwrap();
+    assert!(
+        !warnings.is_empty(),
+        "删不掉的文件必须提示用户，而不是静默吞掉"
+    );
+    assert!(
+        !fixture.game.join("archive/pc/mod/keep.archive").exists(),
+        "能删的仍然要删掉"
+    );
+
+    let state = fixture.store.snapshot_data();
+    assert!(!state.mods[0].enabled);
+    let remaining: Vec<&str> = state.mods[0]
+        .deployed_files
+        .iter()
+        .map(|file| file.relative_path.as_str())
+        .collect();
+    assert_eq!(
+        remaining,
+        vec!["archive/pc/mod/stuck.archive"],
+        "删不掉的文件必须留在清单里，否则永远没人认领"
+    );
+
+    // 解除占用后重新启用：部署前应先自动清掉残留，而不是撞上自己的旧文件报「被占用」。
+    drop(lock);
+    let report = deploy_mod(&fixture.store, &mod_entry.id, &game).unwrap();
+    assert_eq!(report.deployed, 2);
+    assert!(stuck.is_file());
+    assert_eq!(fixture.store.snapshot_data().mods[0].deployed_files.len(), 2);
+}
+
