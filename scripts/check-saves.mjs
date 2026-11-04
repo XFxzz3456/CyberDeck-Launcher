@@ -76,10 +76,10 @@ check("snapshot shield icon", (await page.locator(".snapshot-shield").count()) >
 await page.locator(".snapshot-card").first().click();
 await page.getByRole("button", { name: "应用此环境", exact: true }).click();
 await page.waitForTimeout(400);
-check("confirm modal appears", (await page.locator(".saves-confirm").count()) === 1);
+check("confirm modal appears", (await page.locator(".modal[role=dialog]").count()) === 1);
 check(
   "confirm warns deploy change",
-  (await page.locator(".saves-confirm .modal-body").innerText()).includes("这将改变当前 Mod 部署环境"),
+  (await page.locator(".modal[role=dialog] .confirm-detail").innerText()).includes("这将改变当前 Mod 部署环境"),
 );
 check(
   "auto-backup note present",

@@ -65,11 +65,22 @@ await aiBtn.click();
 await page.waitForTimeout(1500);
 const dialogText = await page.locator(".modal, [role=dialog]").first().innerText().catch(() => "");
 check("点击后打开汉化弹窗", /汉化|本地化|覆盖层/.test(dialogText), `modal=${dialogText.slice(0, 40)}`, "aiDialog");
+// 关闭 AI 弹窗与详情抽屉。Esc 是「只关最上面那层」（见 lib/escLayer），
+// 所以这里必须按两次：第一次关弹窗、第二次关抽屉。以前两层共用一个
+// window keydown，按一次会一起消失，脚本因此写成了「按一次再赌一次点关闭」。
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
-await page.locator(".drawer-close, .drawer button[aria-label]").first().click().catch(() => {});
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
+// 兜底：焦点可能在某个输入框里、Esc 被组件自己吃掉。此时点抽屉右上角真正的
+// 关闭按钮（.icon-btn.on-dark），直到 .drawer-portal 真的从 DOM 里消失。
+for (let attempt = 0; attempt < 3; attempt += 1) {
+  if ((await page.locator(".drawer-portal").count()) === 0) break;
+  await page.locator(".drawer .icon-btn.on-dark").first().click({ timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(300);
+}
+await page.locator(".drawer-portal").first().waitFor({ state: "detached", timeout: 4000 }).catch(() => {});
+check("抽屉已关闭", (await page.locator(".drawer-portal").count()) === 0);
 
 // ── 2. 工具栏下拉 ──────────────────────────────────────────────────
 // 2026-11-01 工具栏重构后，「AI 汉化 ▾」与「翻译名称」合并成了一个「AI 工具 ▾」，

@@ -134,13 +134,16 @@ try {
   const nav = page.locator(".sidebar .nav-item", { hasText: "设置" }).first();
   if (await nav.count()) {
     await nav.click();
-    await page.waitForTimeout(2200);
   }
+  // 等设置页真的挂出来再点页签。原来固定 sleep 2200ms：并发跑门禁（默认 3 路
+  // 浏览器）时不够，探针读到 null 就一次性报出 12 条「字重 undefined」的假红。
+  await page.waitForSelector("#settings-tab-appearance", { timeout: 20000 }).catch(() => {});
   const tab = page.locator("#settings-tab-appearance");
   if (await tab.count()) {
     await tab.click();
     await page.waitForTimeout(600);
   }
+  await page.waitForSelector(".switch-title", { timeout: 15000 }).catch(() => {});
 
   // 并发跑门禁时（默认 3~N 路浏览器）固定 sleep 会不够：外观页的开关由 React
   // 挂载后才带上 is-on 类，渲染慢半拍就可能探针读到 null，报出「开关态配色缺失」

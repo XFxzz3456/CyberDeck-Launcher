@@ -42,6 +42,65 @@
 
 ---
 
+## [未发布] - 2026-11-04（前端缺陷审查 15 条 · 数据安全与交互边界）
+
+> 一次纯「审查 → 修复」批次：起点是一份前端只读审查报告（2 条 P1 + 13 条 P2/P3）加上多分辨率实测问题。
+> **未升版本号、未打 tag、未出 exe**——等用户本地验收后再走 `npm run release`。
+
+### 修复（数据安全）
+
+- **状态文件写入不再有丢库窗口**（`store.rs`）：旧实现 `remove_file` 之后再 `rename`，两步之间进程被杀就既没旧文件也没新文件。改为 `File::create` + `write_all` + `sync_all` 后直接 `rename`（NTFS 上是原子的），并保留 `.bak`；主文件缺失时自动从 `.bak` 恢复，成功后才删备份。并发保存的临时名带 `pid + 序号`，避免两个实例互踩临时文件。
+- **卸载删不掉的文件不再从凭据里抹掉**（`installer.rs`）：`undeploy_mod` 原先无条件 `deployed_files.clear()`，只要有一个文件被占用（杀毒 / 游戏没退干净），这个文件就永久失去归属记录，以后既不记得它、也清理不掉。现在删失败的项留在清单里并逐个告警，末尾补一句「有 N 个文件没能删除」。
+- **重新部署会先清理上次残留**：`deploy_mod` 发现 `deployed_files` 非空时先 `purge_links`，清不干净就报 `DEPLOY_STALE_FILES` 并说明原因，不再笼统地报「文件被占用」。
+- 新增 `#[cfg(windows)]` 单测 `undeploy_keeps_manifest_for_files_it_could_not_remove`：用 `OpenOptions::share_mode(0)` 独占打开模拟占用（只读属性无效——`remove_link_or_copy` 会先取消只读再删），断言「告警存在 / 删不掉的仍在清单 / 解锁后重新部署成功」。
+
+### 修复（状态一致性）
+
+- **5 个返回快照的命令绕过了归一化**（`api.ts`）：`refreshGame` / `setGameDir` / `clearGameDir` / `clearUpdateLock` 与 demo 分支统一走新的 `snapshotCall()` 包装器，脏数据一律降级为安全快照，不再有「一次坏数据白屏」的旁路。
+- **demo 模式不再假成功**：`attachModFromNexus` / `updateModMetadata` 的演示分支改为真写 mock db（此前返回成功但什么都没发生）。
+- **设置保存的回滚基准只在队首取一次**（`App.tsx`）：防抖队列 250ms 合并期间若每笔都覆盖基准，连续改两次时第二次撤回会用错值。现在只有 `settingsSaving` 为 false 时才取基准；失败后先 `await api.bootstrap()` 拿后端权威值，bootstrap 也失败才退回本地记录。
+- **播放集差量按库里实际条目求交集**：`toRemove` / `toDeploy` 原先对「目标 ID 集合」计数，目标里含库里没有的 id 时会算出「要撤 12 个」这种假数字。
+- **父包开关失败时的忙碌态与子包失败**：`setBusyId` 提到级联最前；父级失败立刻清空并 return；子包失败聚合为一条 sticky 告警，不再逐个弹。
+- **依赖忽略表加进程内缓存 + 订阅**（`dependencies.ts`）：原先每次调用都 `localStorage.getItem` + `JSON.parse`，而 `missingDependencyNames()` 在虚拟网格里每个可见卡片都调一次。现在模块级缓存 + 版本号 + `subscribeDepIgnores`，所有写入口改为不可变替换（不再就地改缓存）；`LibraryView` / `DiagnosticsView` 用 `useSyncExternalStore` 订阅。顺带修掉「忽略后列表不重排」（`filtered` 的依赖缺这一项）与「详情抽屉里忽略、诊断页不更新」。
+
+### 修复（交互与边界）
+
+- **Esc 分层关闭**（新增 `lib/escLayer.ts`）：原先是每个浮层各挂一个 window keydown，一次 Esc 会把整叠全关掉。现在模块级栈后进先出，只关栈顶；`Modal` / `ModDetailDrawer` / `EulaDialog` 统一接入，回调引用变化不会把自己挪到栈顶，也不拦输入框自己的 Esc。
+- **弹窗焦点陷阱**（新增 `lib/focusTrap.ts`）：`ModalShell` 打开时抢焦点、Tab / Shift+Tab 在弹窗内循环、关闭时把焦点还给触发元素（触发元素已卸载则跳过）。
+- **存档页确认框改用共享 `ConfirmDialog`**：自绘遮罩没有 Esc、没有焦点陷阱、没有遮罩关闭。`SnapshotCard` 同时消除嵌套交互元素（外层 div + 内层两个兄弟按钮），`flash` 定时器统一在卸载时清理。
+- **下载页轮询异常不再变成 `[object Object]`**：`refresh` 整体包 try/catch，失败就地渲染「轮询失败：…」并可自愈，不再产生未处理拒绝；同类 `String(error)` 全部换成 `normalizeError(error).message`。
+- **导入对话框选文件失败不再静默**：`openDialog` 抛错时在拖拽区下方渲染 `role="alert"` 提示，重开对话框时清空。
+- **播放集创建/重命名失败保留输入**：`runProfileAction` 返回值由 `void` 改 `Promise<boolean>`，失败时不清空输入框、不关表单。
+- **下载队列设置改为串行合并落盘**（`SettingsView`）：`queueSettingsRef` + 串行链，避免连续拖动时后写覆盖前写。
+- **背景图读不到时重试一次**：坏图（`BACKGROUND_DECODE` / `BACKGROUND_TOO_LARGE`）不重试，读不到 4 秒后重试一次，换路径重置额度，`key` 带重试令牌强制重载。
+- **`nxmPremium` 由 ref 改 state**：`onNexusStatusChanged("app")` 订阅后需要驱动界面重渲染，ref 改了不触发；订阅在卸载时正确 `offStatus()`。
+- **游戏进程轮询 effect 依赖对象引用**：`snapshot.game` 每次 refresh 都是新对象，依赖它会反复重建轮询；改为依赖 `gameRoot` 原始值。
+- **更新动作后的 `refresh` 失败**不再吞掉：`handleApplyUpdates` / `handleRollbackUpdate` 包 try/catch 并提示 `err.refreshAfterAction`。
+- `LoadOrderView` 打开目录改用 `lastIndexOf("\\")` / `lastIndexOf("/")` 双分隔符，不再假设 Windows 路径。
+
+### 变更（测试与词表）
+
+- `check-saves.mjs` 选择器随 DOM 结构同步（`.saves-confirm .modal-body` → `.modal[role=dialog] .confirm-detail`）。
+- `check-ailoc-entry.mjs` 改为「连按两次 Esc 关闭弹窗与抽屉」+ 兜底点关闭按钮 + 等 `.drawer-portal` detached，并新增一条「抽屉已关闭」断言。
+- `check-typography.mjs` 导航后由固定 `waitForTimeout(2200)` 改为 `waitForSelector` 等真实渲染条件（并发 3 路时 CPU 占满会假红）。
+- `DiagnosticsView` 改为订阅忽略表版本号，删掉手工戳计数器的 `void ignoreTick` 写法。
+- 清理 13 条死文案（`appearance.backgroundPos`、`library.applyUpdate` 等），词表 1895 → 1882 条，`check-i18n --unused` 由 13 条降为 0。
+
+### 验证
+
+- `node scripts/gate.mjs` → **42/42 全绿**（4 项命令 + 38 项 UI，并发 3 路，工时 574s）
+- `cargo test`（src-tauri）265 passed / 0 failed / 2 ignored；`cargo test`（core-tests）1 passed
+- `npx tsc --noEmit` 0 错误；`vite build` 通过
+- `node scripts/check-i18n.mjs --fail` 0 处缺失、`--unused` 0 条死条目
+- 忽略表逻辑用 vite SSR 打成 node 可执行体跑过一遍：忽略幂等、恢复后空键彻底删除、取消订阅后不再回调
+
+### 已知边界
+
+- 依赖忽略面板没有任何门禁脚本覆盖（demo 数据里没有缺失前置），本轮只做了模块级验证 + 页面无 pageerror，界面行为需人工过一眼。
+- 本轮改动 Rust 与前端交互，`shots/` 里的历史截图未重拍。
+
+---
+
 ## [1.1.0] - 2026-11-03/04（品牌统一 · 发版链路 · 门禁加速）
 
 ### 新增
