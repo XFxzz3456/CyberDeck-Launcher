@@ -6,7 +6,7 @@
  * - 绝不读写 .dat 二进制；存档信息只来自后端只读扫描。
  * - 「应用此环境」必须经确认弹窗，且后端会在应用前自动存一份 PreApplySnapshot。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -26,7 +26,7 @@ import {
 import type { EnvSnapshot, SaveGameEntry, SaveScanReport } from "../types";
 import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
-import { Spinner } from "./ui";
+import { ConfirmDialog, Spinner } from "./ui";
 import { formatBytes } from "../lib/format";
 
 /**
@@ -90,12 +90,26 @@ export function SavesView({
   const [scanError, setScanError] = useState<string | null>(null);
   const [openingEditor, setOpeningEditor] = useState(false);
 
+  // 提示条定时器：新的盖掉旧的，卸载时一并清掉。不清理的话用户切走页面后
+  // 定时器仍会在已卸载的组件上 setState（React 19 不报错，但状态更新会被丢弃、
+  // 定时器本身也留在事件循环里）。
+  const noticeTimer = useRef<number | null>(null);
   const flash = (message: string) => {
     setNotice(message);
-    window.setTimeout(() => {
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => {
+      noticeTimer.current = null;
       setNotice((current) => (current === message ? null : current));
     }, 3200);
   };
+
+  useEffect(
+    () => () => {
+      if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+      noticeTimer.current = null;
+    },
+    [],
+  );
 
   const loadSnapshots = useCallback(async () => {
     try {
@@ -362,32 +376,29 @@ export function SavesView({
         </p>
       </section>
 
-      {/* ── 应用快照确认（强制：先警告再执行，后端自动备份旧环境）────── */}
-      {confirmApply ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal saves-confirm">
-            <div className="modal-head">
-              <AlertTriangle size={18} className="saves-confirm-icon" />
-              <h3>{t("saves.confirmTitle")}</h3>
-            </div>
-            <p className="modal-body">{t("saves.confirmBody")}</p>
+      {/* ── 应用快照确认（强制：先警告再执行，后端自动备份旧环境）──────
+          用共享 ConfirmDialog 而不是自绘遮罩：Esc 分层关闭、焦点陷阱、
+          遮罩点击关闭这三件事都由 Modal 统一处理，不用在每个页面重写一遍。 */}
+      <ConfirmDialog
+        open={confirmApply !== null}
+        title={t("saves.confirmTitle")}
+        detail={
+          <>
+            <p>{t("saves.confirmBody")}</p>
             <p className="saves-confirm-note">{t("saves.confirmBackup")}</p>
-            <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => setConfirmApply(null)} disabled={applying}>
-                {t("common.cancel")}
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => void applySnapshot(confirmApply)}
-                disabled={applying}
-              >
-                {applying ? <Spinner size={14} /> : <RotateCcw size={14} />}
-                {t("saves.confirmApply")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        }
+        confirmLabel={t("saves.confirmApply")}
+        busy={applying}
+        onConfirm={() => {
+          if (confirmApply) void applySnapshot(confirmApply);
+        }}
+        // 执行中不允许关：请求已经发出去了，关掉弹窗并不会中止它，
+        // 只会让用户以为没生效然后重复点。
+        onClose={() => {
+          if (!applying) setConfirmApply(null);
+        }}
+      />
     </div>
   );
 }
@@ -404,49 +415,41 @@ function SnapshotCard({
   onDelete: () => void;
 }) {
   return (
-    <div
-      className={`snapshot-card ${selected ? "is-selected" : ""}`}
-      onClick={onSelect}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-    >
-      <div className="snapshot-card-top">
-        <ShieldCheck size={15} className="snapshot-shield" />
-        <span className="snapshot-time">{timeLabel(snapshot.createdAt)}</span>
-        <button
-          className="snapshot-delete"
-          title={t("saves.deleteSnapshot")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-      <div className="snapshot-meta">
-        <span className="snapshot-trigger">{t(TRIGGER_KEYS[snapshot.trigger])}</span>
-        <span>
-          {t("saves.snapshotMods", { enabled: snapshot.enabledCount, total: snapshot.modCount })}
-        </span>
-      </div>
-      {snapshot.frameworks.length > 0 ? (
-        <div className="snapshot-frameworks">
-          {snapshot.frameworks.slice(0, 3).map((fw) => (
-            <span key={fw.id} className="snapshot-fw">
-              {fw.name}
-              {fw.version ? ` ${fw.version}` : ""}
-            </span>
-          ))}
+    <div className={`snapshot-card ${selected ? "is-selected" : ""}`}>
+      {/* 卡片主体做成真按钮：键盘 Tab 得到、Enter / 空格能选。
+          删除按钮必须是它的**兄弟**而不是子节点——交互元素嵌套会让读屏器
+          在同一个位置上读到两个按钮，Tab 顺序也会变得不可预测。 */}
+      <button type="button" className="snapshot-select" aria-pressed={selected} onClick={onSelect}>
+        <div className="snapshot-card-top">
+          <ShieldCheck size={15} className="snapshot-shield" />
+          <span className="snapshot-time">{timeLabel(snapshot.createdAt)}</span>
         </div>
-      ) : null}
-      {snapshot.label ? <p className="snapshot-label">{snapshot.label}</p> : null}
+        <div className="snapshot-meta">
+          <span className="snapshot-trigger">{t(TRIGGER_KEYS[snapshot.trigger])}</span>
+          <span>
+            {t("saves.snapshotMods", { enabled: snapshot.enabledCount, total: snapshot.modCount })}
+          </span>
+        </div>
+        {snapshot.frameworks.length > 0 ? (
+          <div className="snapshot-frameworks">
+            {snapshot.frameworks.slice(0, 3).map((fw) => (
+              <span key={fw.id} className="snapshot-fw">
+                {fw.name}
+                {fw.version ? ` ${fw.version}` : ""}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {snapshot.label ? <p className="snapshot-label">{snapshot.label}</p> : null}
+      </button>
+      <button
+        className="snapshot-delete"
+        title={t("saves.deleteSnapshot")}
+        aria-label={t("saves.deleteSnapshot")}
+        onClick={onDelete}
+      >
+        <Trash2 size={12} />
+      </button>
     </div>
   );
 }

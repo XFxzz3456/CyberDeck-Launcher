@@ -373,8 +373,10 @@ export function LoadOrderView({
                 onClick={() => {
                   const path = view.modlistPath;
                   if (!path) return;
-                  const dir = path.slice(0, Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")));
-                  void api.openPath(dir);
+                  // 没有分隔符时 lastIndexOf 返回 -1，`slice(0, -1)` 会把最后一个
+                  // 字符切掉，于是一个不存在的路径被交给 openPath，还没有任何提示。
+                  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+                  void api.openPath(cut < 0 ? "." : path.slice(0, cut));
                 }}
               >
                 <FolderOpen size={13} />

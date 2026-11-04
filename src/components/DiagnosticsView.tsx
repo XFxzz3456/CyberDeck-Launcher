@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
   Archive,
@@ -25,9 +25,11 @@ import type { DiagnosticIssue, DiagnosticsReport, EnvDiagnosis, Settings } from 
 import type { View } from "./Sidebar";
 import {
   clearAllDependencyIgnores,
+  depIgnoresVersion,
   ignoreDependency,
   nexusSearchUrl,
   readDepIgnores,
+  subscribeDepIgnores,
 } from "../lib/dependencies";
 import { compactPath, relativeTime } from "../lib/format";
 import { api } from "../lib/api";
@@ -139,9 +141,10 @@ export function DiagnosticsView({
   const [issuesOpen, setIssuesOpen] = useState(true);
   const [frameworksOpen, setFrameworksOpen] = useState(true);
   const [depsOpen, setDepsOpen] = useState(true);
-  // 忽略列表存在 localStorage，改完要靠这个计数器触发重渲染
-  // （它不在 React 状态树里，不主动戳一下界面不会更新）。
-  const [ignoreTick, setIgnoreTick] = useState(0);
+  // 忽略表存在 localStorage，不在 React 状态树里。这里订阅它的版本号：
+  // 不管改动来自本页按钮还是详情抽屉，都会触发本页重算（以前靠手动戳计数器，
+  // 只能覆盖「自己点的」这一种来源）。返回值故意不取，订阅本身就是目的。
+  useSyncExternalStore(subscribeDepIgnores, depIgnoresVersion);
 
   useEffect(() => {
     if (openLogsRequest > 0) setLogViewerOpen(true);
@@ -164,11 +167,9 @@ export function DiagnosticsView({
   const issueCount = report.issues.filter((issue) => issue.severity !== "info").length;
 
   // ── 依赖检查（deps.rs 的产出）──────────────────────────────
-  const ignoreMap = (() => {
-    // ignoreTick 只用于让读取结果跟着变化重跑；这里显式引用它避免被 lint 判成未使用。
-    void ignoreTick;
-    return readDepIgnores();
-  })();
+  // 每次渲染都读一遍：readDepIgnores 走进程内缓存，返回的是写时替换的共享快照，
+  // 成本只有一次函数调用，不值得再套 useMemo（还会破坏上面的提前 return）。
+  const ignoreMap = readDepIgnores();
   const isIgnored = (modId: string, frameworkId: string) =>
     (ignoreMap[modId] ?? []).includes(frameworkId);
   const depMods = (report.dependencies?.mods ?? []).filter(
@@ -590,7 +591,6 @@ export function DiagnosticsView({
                         title={t("diagnostics.depsIgnoreHint")}
                         onClick={() => {
                           item.visible.forEach((req) => ignoreDependency(item.modId, req.id));
-                          setIgnoreTick((value) => value + 1);
                         }}
                       >
                         {t("diagnostics.depsIgnore")}
@@ -603,7 +603,6 @@ export function DiagnosticsView({
                     className="deps-restore"
                     onClick={() => {
                       clearAllDependencyIgnores();
-                      setIgnoreTick((value) => value + 1);
                     }}
                   >
                     <RotateCcw size={11} /> {t("diagnostics.depsRestoreAll", { count: depIgnoredCount })}

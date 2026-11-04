@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CATEGORIES, LAYOUT_LABEL_KEY, type InstallOutcome, type ModEntry } from "../types";
-import { isTauri } from "../lib/api";
+import { isTauri, normalizeError } from "../lib/api";
 import { compactPath } from "../lib/format";
 import { categoryLabel, t } from "../i18n";
 import { Modal, Spinner } from "./ui";
@@ -94,12 +94,15 @@ export function ImportDialog({
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [categories, setCategories] = useState<Record<string, string>>({});
+  /** 文件选择窗口本身失败（权限/被占用/系统对话框异常）时的就地提示。 */
+  const [pickError, setPickError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) {
       setSelected([]);
       setCategories({});
+      setPickError(null);
     }
   }, [open]);
 
@@ -141,13 +144,20 @@ export function ImportDialog({
       fileInput.current?.click();
       return;
     }
-    const picked = await openDialog({
-      multiple: true,
-      directory: false,
-      filters: [{ name: t("importDialog.filterName"), extensions: ["zip", "7z", "rar"] }],
-    });
-    if (!picked) return;
-    setSelected(Array.isArray(picked) ? picked : [picked]);
+    setPickError(null);
+    try {
+      const picked = await openDialog({
+        multiple: true,
+        directory: false,
+        filters: [{ name: t("importDialog.filterName"), extensions: ["zip", "7z", "rar"] }],
+      });
+      if (!picked) return;
+      setSelected(Array.isArray(picked) ? picked : [picked]);
+    } catch (error) {
+      // 系统对话框打不开（权限、被占用、对话框插件异常）——不能让它变成
+      // 未处理拒绝，否则用户只看到「点了没反应」。就地提示并给出拖拽兜底。
+      setPickError(t("importDialog.pickFailed", { reason: normalizeError(error).message }));
+    }
   };
 
   const handleBrowserFiles = (files: FileList | null) => {
@@ -221,6 +231,12 @@ export function ImportDialog({
             <span>{t("importDialog.dropHint")}</span>
             <small>{t("importDialog.dropNote")}</small>
           </button>
+
+          {pickError ? (
+            <p className="drop-error" role="alert">
+              {pickError}
+            </p>
+          ) : null}
 
           <input
             ref={fileInput}

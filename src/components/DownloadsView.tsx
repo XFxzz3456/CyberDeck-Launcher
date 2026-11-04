@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FolderOpen, FolderSearch, Gauge, Pause, Play, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import type { DownloadTask, DownloadTaskStatus } from "../types";
-import { api } from "../lib/api";
+import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { Badge } from "./ui";
@@ -98,33 +98,45 @@ export function DownloadsView({
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
   const [dropHot, setDropHot] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** 轮询自身的失败原因（后端没起来 / 命令报错）。只显示不弹 toast，
+   *  恢复后自动消失——1.2 秒一次的错误弹窗会把界面刷满。 */
+  const [pollError, setPollError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [list, queueSettings] = await Promise.all([
-      api.downloadQueueList(),
-      dirLoaded ? Promise.resolve(dir) : api.downloadQueueGetSettings().then((s) => s.dir),
-    ]);
-    setTasks(list);
-    if (!dirLoaded) {
-      setDir(queueSettings);
-      setDirLoaded(true);
-    }
-    // 速度估算
-    const now = Date.now();
-    const next = new Map<string, number>();
-    for (const task of list) {
-      if (task.status !== "downloading") continue;
-      const prev = prevRef.current.get(task.id);
-      if (prev && now > prev.at) {
-        const speed = Math.max(0, Math.round(((task.received - prev.received) * 1000) / (now - prev.at)));
-        next.set(task.id, speed);
+    try {
+      const [list, queueSettings] = await Promise.all([
+        api.downloadQueueList(),
+        dirLoaded ? Promise.resolve(dir) : api.downloadQueueGetSettings().then((s) => s.dir),
+      ]);
+      setTasks(list);
+      if (!dirLoaded) {
+        setDir(queueSettings);
+        setDirLoaded(true);
       }
+      // 速度估算
+      const now = Date.now();
+      const next = new Map<string, number>();
+      for (const task of list) {
+        if (task.status !== "downloading") continue;
+        const prev = prevRef.current.get(task.id);
+        if (prev && now > prev.at) {
+          const speed = Math.max(0, Math.round(((task.received - prev.received) * 1000) / (now - prev.at)));
+          next.set(task.id, speed);
+        }
+      }
+      prevRef.current = new Map(list.map((task) => [task.id, { received: task.received, at: now }]));
+      setSpeeds(next);
+      // 总速率采样进折线历史。
+      const total = [...next.values()].reduce((sum, value) => sum + value, 0);
+      setSpeedHistory((current) => [...current.slice(-(SPEED_WINDOW - 1)), total]);
+      setPollError(null);
+      return true;
+    } catch (error) {
+      // 不往外抛：轮询调用点都在定时器/void 里，抛出去只会变成未处理拒绝，
+      // 错误文案还可能退化成 "[object Object]"。就地记下来显示。
+      setPollError(normalizeError(error).message);
+      return false;
     }
-    prevRef.current = new Map(list.map((task) => [task.id, { received: task.received, at: now }]));
-    setSpeeds(next);
-    // 总速率采样进折线历史。
-    const total = [...next.values()].reduce((sum, value) => sum + value, 0);
-    setSpeedHistory((current) => [...current.slice(-(SPEED_WINDOW - 1)), total]);
   }, [dir, dirLoaded]);
 
   useEffect(() => {
@@ -133,10 +145,25 @@ export function DownloadsView({
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  // 提示条定时器：后一条覆盖前一条，组件卸载时清掉（切页面后不该再往已卸载的
+  // 组件上 setNote）。
+  const noteTimer = useRef<number | null>(null);
   const flash = useCallback((message: string) => {
     setNote(message);
-    window.setTimeout(() => setNote((current) => (current === message ? null : current)), 2600);
+    if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => {
+      noteTimer.current = null;
+      setNote((current) => (current === message ? null : current));
+    }, 2600);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    },
+    [],
+  );
 
   const act = useCallback(
     async (action: () => Promise<unknown>, doneMessage = "") => {
@@ -145,7 +172,7 @@ export function DownloadsView({
         await refresh();
         if (doneMessage) flash(doneMessage);
       } catch (error) {
-        flash(error instanceof Error ? error.message : String(error));
+        flash(normalizeError(error).message);
       }
     },
     [refresh, flash],
@@ -197,7 +224,7 @@ export function DownloadsView({
             await api.nxmIntake(line);
             links += 1;
           } catch (error) {
-            flash(error instanceof Error ? error.message : String(error));
+            flash(normalizeError(error).message);
           }
         }
       }
@@ -212,7 +239,7 @@ export function DownloadsView({
             links += 1;
           }
         } catch (error) {
-          flash(error instanceof Error ? error.message : String(error));
+          flash(normalizeError(error).message);
         }
       }
       if (links > 0) flash(t("downloads.droppedOk", { count: links }));
@@ -268,6 +295,12 @@ export function DownloadsView({
         </button>
         {note ? <span className="downloads-note">{note}</span> : null}
       </div>
+
+      {pollError ? (
+        <p className="downloads-poll-error" role="alert">
+          {t("downloads.pollFailed", { reason: pollError })}
+        </p>
+      ) : null}
 
       {/* 速度折线 + 拖拽接收区（deepseek 任务·模块二）。真实文件拖落在
           Tauri 里由 App 层的 onDragDropEvent 统一接管（.nxm 进收件箱、

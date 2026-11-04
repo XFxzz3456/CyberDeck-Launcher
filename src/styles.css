@@ -4740,6 +4740,18 @@ pre {
   margin-top: 5px;
 }
 
+/* 系统文件对话框打不开时的就地提示（ImportDialog / 其它选路径入口共用）。 */
+.drop-error {
+  margin: 8px 0 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 94, 94, 0.32);
+  border-left: 2px solid var(--red);
+  background: rgba(255, 94, 94, 0.06);
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
 .selected-files {
   border: 1px solid var(--line-soft);
   margin-top: 10px;
@@ -14174,6 +14186,18 @@ body::before {
   color: var(--accent-text);
 }
 
+/* 轮询失败：常驻一条，不当 toast 刷屏（每 1.2 秒一次会盖住界面）。 */
+.downloads-poll-error {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 94, 94, 0.3);
+  border-left: 2px solid var(--red);
+  background: rgba(255, 94, 94, 0.06);
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 /* 全局操作条（r20）：对整个队列的操作集中在列表上方。 */
 .downloads-actions {
   display: flex;
@@ -16114,7 +16138,10 @@ body::before {
 .snapshot-card {
   border: 1px solid var(--line-soft);
   background: var(--panel);
-  padding: 12px 14px;
+  /* 内边距交给里面的 .snapshot-select（卡片主体按钮），
+     这样整块可点区域的命中范围与视觉边界一致；删除按钮绝对定位在右上角。 */
+  padding: 0;
+  position: relative;
   cursor: pointer;
   transition: border-color 0.14s ease, background 0.14s ease;
   min-width: 0;
@@ -16124,9 +16151,28 @@ body::before {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 
-.snapshot-card:focus-visible {
+.snapshot-select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.snapshot-select:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
+}
+
+/* 右上角留出删除按钮的位置，时间戳不会被压到它下面。 */
+.snapshot-select .snapshot-card-top {
+  padding-right: 26px;
 }
 
 .snapshot-card.is-selected {
@@ -16157,6 +16203,10 @@ body::before {
 }
 
 .snapshot-delete {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  z-index: 1;
   flex: 0 0 auto;
   width: 22px;
   height: 22px;

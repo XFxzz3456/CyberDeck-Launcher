@@ -200,6 +200,9 @@ export default function App() {
     [motionEnabled, motionFactor],
   );
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  // 游戏根目录单独提出来：它才是「环境变了」的真正判据。直接依赖 `snapshot.game`
+  // 会拿到每次 refresh() 都新建的对象引用，把所有以它为依赖的 effect 全部重建。
+  const gameRoot = snapshot?.game?.root ?? null;
   const [bootError, setBootError] = useState<string | null>(null);
   // 首启必须过使用协议。注意：**不短路渲染**——主界面照常渲染在底层，
   // 未同意时只是盖一层毛玻璃遮罩（见下方 eulaGate），这样用户不会看到白屏/黑屏。
@@ -564,10 +567,21 @@ export default function App() {
   // 大图要好几秒，不给个状态用户会以为点了没反应，再点一次。
   const [bgLoading, setBgLoading] = useState(false);
   const bgLoadedPathRef = useRef<string | null>(null);
+  // 同一路径的自动重试次数 + 触发令牌：失败大多来自「图在移动盘上、盘没插」，
+  // 插回来应该自己恢复，而不是等用户去改路径或重启。
+  const bgRetryCountRef = useRef(0);
+  const [bgRetryToken, setBgRetryToken] = useState(0);
   const bgImagePath = snapshot?.state.settings.backgroundImage ?? "";
+  // 换图时重置重试额度，否则输错一次路径之后整场会话都不再自动重试。
+  const bgPathSeenRef = useRef<string | null>(null);
   useEffect(() => {
-    if (bgLoadedPathRef.current === bgImagePath) return;
-    bgLoadedPathRef.current = bgImagePath;
+    if (bgPathSeenRef.current !== null && bgPathSeenRef.current !== bgImagePath) {
+      bgRetryCountRef.current = 0;
+    }
+    bgPathSeenRef.current = bgImagePath;
+    const key = `${bgImagePath}#${bgRetryToken}`;
+    if (bgLoadedPathRef.current === key) return;
+    bgLoadedPathRef.current = key;
     if (!bgImagePath) {
       setBackgroundData({ path: "", dataUrl: null });
       setBgLoading(false);
@@ -575,6 +589,7 @@ export default function App() {
     }
     setBgLoading(true);
     let cancelled = false;
+    let retryTimer: number | undefined;
     void api
       .readBackgroundImage(bgImagePath)
       .then((image) => {
@@ -587,8 +602,16 @@ export default function App() {
         // 图本身有问题（解码不了 / 大得离谱）：说清楚原因，别糊一层通用的
         // 「加载失败」——用户需要知道是文件坏了还是路径丢了。
         if (parsed.code === "BACKGROUND_DECODE" || parsed.code === "BACKGROUND_TOO_LARGE") {
+          // 坏图不重试：重试多少次都是同一个结果，只会刷屏。
           toast("warn", t("toast.background.badImageTitle"), parsed.message, "system");
           return;
+        }
+        // 读不到（盘没插 / 路径暂时失效）：给一次延迟重试。旧实现先写 ref 再加载，
+        // 失败后 ref 已等于该路径，同一路径永远不会再读——与注释承诺的
+        // 「U 盘插回来还能恢复」正好相反。
+        if (bgRetryCountRef.current < 1) {
+          bgRetryCountRef.current += 1;
+          retryTimer = window.setTimeout(() => setBgRetryToken((n) => n + 1), 4000);
         }
         showError(error, t("err.backgroundLoad"));
       })
@@ -597,8 +620,9 @@ export default function App() {
       });
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
-  }, [bgImagePath, showError, toast]);
+  }, [bgImagePath, bgRetryToken, showError, toast]);
 
   const refresh = useCallback(async () => {
     const next = await api.bootstrap();
@@ -682,7 +706,9 @@ export default function App() {
   const [nxmItems, setNxmItems] = useState<NxmItem[]>([]);
   // 下载中心：侧栏角标只关心「还没跑完的任务数」，轻量轮询即可。
   const [downloadActive, setDownloadActive] = useState(0);
-  const nxmPremium = useRef(false);
+  // Premium 决定「能不能直链下载」，必须是 state：以前是 ref，只在挂载时查一次，
+  // 用户在设置页当场授权后本会话的自动下载依然不生效，要重启才「突然变好」。
+  const [nxmPremium, setNxmPremium] = useState(false);
   const nxmBusy = useRef(false);
 
   const patchNxm = useCallback((uri: string, patch: Partial<NxmItem>) => {
@@ -749,12 +775,18 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     // Premium 才能直链下载；免费账号只能在接受条里点「打开页面」。
-    void api
-      .nexusStatus()
-      .then((status) => {
-        nxmPremium.current = Boolean(status.connected && status.user?.isPremium);
-      })
-      .catch(() => {});
+    const pullPremium = () => {
+      void api
+        .nexusStatus()
+        .then((status) => {
+          if (alive) setNxmPremium(Boolean(status.connected && status.user?.isPremium));
+        })
+        .catch(() => {});
+    };
+    pullPremium();
+    // 设置页 / Nexus 页连接或断开账号后会广播，这里跟着重查一次——
+    // 否则「当场授权」要等重启才生效。
+    const offStatus = onNexusStatusChanged("app", pullPremium);
     void api
       .nxmPending()
       .then((links) => {
@@ -787,6 +819,7 @@ export default function App() {
     })();
     return () => {
       alive = false;
+      offStatus();
       unlistenLink?.();
       unlistenProgress?.();
     };
@@ -843,11 +876,11 @@ export default function App() {
 
   // 自动下载：设置开着 + 有 Premium + 还没人在下 → 按到达顺序一个个来（不并发抢盘）。
   useEffect(() => {
-    if (!snapshot?.state.settings.nxmAutoDownload || !nxmPremium.current) return;
+    if (!snapshot?.state.settings.nxmAutoDownload || !nxmPremium) return;
     if (nxmBusy.current) return;
     const next = nxmItems.find((item) => item.status === "pending" && item.link.fileId);
     if (next) void runNxm(next);
-  }, [nxmItems, snapshot?.state.settings.nxmAutoDownload, runNxm]);
+  }, [nxmItems, nxmPremium, snapshot?.state.settings.nxmAutoDownload, runNxm]);
 
   /**
    * 切换播放集。会先撤销当前部署、再按目标集合重新部署，
@@ -862,11 +895,14 @@ export default function App() {
       if (snapshot?.state.activeProfileId === profileId) return;
 
       // B4 差量预览：切换会真实改动的只有「新启用」和「将撤除」两块。
+      // 一律对库里的实际条目求交集，不要拿 enabledModIds.length 减：那个数组
+      // 可能含重复 id 或已被删除的 id，减出来的 toDeploy 会是负数（确认卡上
+      // 显示「将部署 -3 个」）。
       const mods = snapshot?.state.mods ?? [];
       const targetIds = new Set(target.enabledModIds);
       const keep = mods.filter((mod) => mod.enabled && targetIds.has(mod.id)).length;
-      const toRemove = mods.filter((mod) => mod.enabled).length - keep;
-      const toDeploy = target.enabledModIds.length - keep;
+      const toRemove = mods.filter((mod) => mod.enabled && !targetIds.has(mod.id)).length;
+      const toDeploy = mods.filter((mod) => targetIds.has(mod.id) && !mod.enabled).length;
 
       setConfirm({
         title: t("confirm.profileSwitch.title", { name: target.name }),
@@ -1005,7 +1041,7 @@ export default function App() {
    * 未绑定游戏目录时直接跳过——没有游戏可跑，问也是白问。
    */
   useEffect(() => {
-    if (!snapshot?.game) {
+    if (!gameRoot) {
       setGameRunning(false);
       return;
     }
@@ -1025,7 +1061,10 @@ export default function App() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [snapshot?.game?.root, snapshot?.game]);
+    // 只依赖 root：以前把整个 `game` 对象放进依赖数组，而每次 refresh() 后端都会
+    // 返回一个新的 game 对象（引用必变），于是每启停一个模组就重建定时器并立刻
+    // 多跑一次 tasklist——批量启用 20 个就是 20+ 次无谓的进程枚举。
+  }, [gameRoot]);
 
   /** 顶栏「关闭游戏」：先礼后兵交给后端，返回 forced 时提示玩家。 */
   const handleStopGame = useCallback(async () => {
@@ -1419,6 +1458,12 @@ export default function App() {
       // 级联：汉化子包不能脱离父级单独存在。
       // - 启用子包前先确保父级已启用，否则会出现「汉化生效了、原版没装」；
       // - 禁用父级时连带禁用所有子包，否则留下往游戏目录写文件的孤儿。
+      //
+      // busy 必须从现在起就上锁：级联要先启父级 / 先停子包，那段 await 期间卡片
+      // 既没有 spinner 也点不禁用，用户很容易连点，叠加出并发的 set_mod_enabled
+      // 同时往游戏目录写文件（旧代码把 setBusyId 放在级联之后）。
+      setBusyId(mod.id);
+      const childFailures: string[] = [];
       const children = translationChildren(mod.id, snapshot?.state.mods ?? []);
       if (enabled && mod.parentModId) {
         const parent = snapshot?.state.mods.find((item) => item.id === mod.parentModId);
@@ -1427,6 +1472,7 @@ export default function App() {
             await api.setModEnabled(parent.id, true);
           } catch (error) {
             showError(error, t("err.deploy"));
+            setBusyId(null);
             return;
           }
         }
@@ -1438,10 +1484,11 @@ export default function App() {
           } catch {
             // 子包撤销失败不该阻断父级撤销：父级撤销后子包即便仍启用，
             // 目标文件也已不存在父级提供的资源，冲突检测会把它标出来。
+            // 但**必须记下来**并告知用户，否则磁盘上会留下半套孤儿子包。
+            childFailures.push(child.name);
           }
         }
       }
-      setBusyId(mod.id);
       try {
         const report = await api.setModEnabled(mod.id, enabled);
         // 暂存文件在外部被删了：后端已清掉残留链接和失效记录，这不是错误，
@@ -1485,6 +1532,19 @@ export default function App() {
         // 降级 / 降级原因（跨盘、目标被占）仍需用户知晓并处理：保留 toast，且常驻。
         for (const warning of report.warnings.slice(0, 2)) {
           toast("warn", t("toast.deploy.warningTitle"), warning, "deploy", { sticky: true });
+        }
+        if (childFailures.length > 0) {
+          // 常驻：子包还挂在游戏目录里，用户必须知道为什么它没跟着父级一起停。
+          toast(
+            "warn",
+            t("toast.deploy.childFailedTitle"),
+            t("toast.deploy.childFailedDetail", {
+              count: childFailures.length,
+              names: childFailures.slice(0, 3).join(" / "),
+            }),
+            "deploy",
+            { sticky: true },
+          );
         }
         recordActivity(
           enabled ? "deploy" : "disable",
@@ -1953,7 +2013,14 @@ export default function App() {
                 };
               })()
             : await api.nexusApplyUpdates(entryIds);
-        refresh();
+        // 必须 await + catch：更新已经成功但随后的 bootstrap 可能失败（状态文件
+        // 写入竞争 / 权限），浮空 Promise 会变成未处理拒绝，且下面的 setUpdateReport
+        // 先于快照刷新执行，会出现「更新列表已清空、库列表还是旧的」。
+        try {
+          await refresh();
+        } catch (error) {
+          showError(error, t("err.refreshAfterAction"));
+        }
         setUpdateReport((current) =>
           current
             ? {
@@ -1994,7 +2061,11 @@ export default function App() {
       setApplyingUpdates(true);
       try {
         const item = await api.nexusRollbackUpdate(entryId);
-        refresh();
+        try {
+          await refresh();
+        } catch (error) {
+          showError(error, t("err.refreshAfterAction"));
+        }
         toast("ok", t("toast.update.rollbackTitle"), t("toast.update.rollbackDetail", { version: item.toVersion ?? "?" }), "update");
         recordActivity("deploy", t("activity.updateRolledBack"), item.name);
       } catch (error) {
@@ -2195,7 +2266,6 @@ export default function App() {
 
   const handleSettings = useCallback(
     (nextSettings: Settings) => {
-      const previous = snapshot?.state.settings;
       setSnapshot((current) =>
         current
           ? { ...current, state: { ...current.state, settings: nextSettings } }
@@ -2205,10 +2275,14 @@ export default function App() {
       // 既浪费也乱序。这里只保留「最新值」，写盘串行 + 250ms 合并窗口——乐观更新
       // 已经让 UI 实时到位，落盘慢半拍无感。
       settingsSaveTarget.current = nextSettings;
-      settingsRollback.current = previous ?? null;
       if (settingsSaving.current) return;
+      // 回滚基准只在「队列开始」时取一次。以前每次调用都覆盖，基准于是变成
+      // 「上一次渲染时的 settings」——那可能正是这次还没落盘的值，一旦写失败
+      // 就回滚到一个既不是磁盘值、也不是用户选择的中间态。
+      settingsRollback.current = snapshot?.state.settings ?? null;
       settingsSaving.current = true;
       void (async () => {
+        let failure: unknown = null;
         while (settingsSaveTarget.current) {
           const target = settingsSaveTarget.current;
           settingsSaveTarget.current = null;
@@ -2216,21 +2290,33 @@ export default function App() {
           try {
             await api.setSettings(target);
           } catch (error) {
-            // 回滚到这次队列开始前的快照，避免界面显示一个没存上的值。
-            const rollback = settingsRollback.current;
-            if (rollback) {
-              setSnapshot((current) =>
-                current
-                  ? { ...current, state: { ...current.state, settings: rollback } }
-                  : current,
-              );
-            }
-            settingsSaveTarget.current = null;
-            showError(error, t("err.saveSettings"));
+            failure = error;
             break;
           }
         }
         settingsSaving.current = false;
+        if (!failure) return;
+        // 失败后以磁盘为准：bootstrap 才是权威值。只回滚内存里的「上一次前值」
+        // 会让界面显示一个从未落盘的设置，而磁盘上是另一套，两边长期不一致。
+        try {
+          const fresh = await api.bootstrap();
+          setSnapshot((current) =>
+            current
+              ? { ...current, state: { ...current.state, settings: fresh.state.settings } }
+              : fresh,
+          );
+        } catch {
+          const rollback = settingsRollback.current;
+          if (rollback) {
+            setSnapshot((current) =>
+              current
+                ? { ...current, state: { ...current.state, settings: rollback } }
+                : current,
+            );
+          }
+        }
+        settingsSaveTarget.current = null;
+        showError(failure, t("err.saveSettings"));
       })();
     },
     [showError, snapshot?.state.settings],

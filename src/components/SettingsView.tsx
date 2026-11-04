@@ -28,7 +28,7 @@ import {
 import type { DownloadQueueSettings, DriveSuggestion, LaunchCheck, NxmStatus, Settings, Snapshot } from "../types";
 import { compactPath, formatBytes, relativeTime } from "../lib/format";
 import { useAppVersion } from "../lib/appVersion";
-import { api } from "../lib/api";
+import { api, normalizeError } from "../lib/api";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Badge, Spinner, SwitchRow } from "./ui";
 import { ExternalToolsCard } from "./ExternalToolsCard";
@@ -312,6 +312,49 @@ export function SettingsView({
     setQueueNote(message);
     window.setTimeout(() => setQueueNote((current) => (current === message ? null : current)), 2600);
   };
+  // 下载设置是「全量参数」接口（concurrency/autoImport/dir/proxy/speedLimit 一起传），
+  // 以前每次都从闭包里取旧值拼参：刚改完并发数、请求还没回来时再切一次自动导入，
+  // 就用旧的并发数把新值覆盖回去。这里改成「ref 立即合并 + 请求串行」：
+  //   - ref 拿到的是最新一次 patch 之后的值，不会再回退；
+  //   - 串行链保证落盘顺序与点击顺序一致，也不再有响应乱序。
+  const queueSettingsRef = useRef<DownloadQueueSettings | null>(null);
+  const queueChainRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    queueSettingsRef.current = queueSettings;
+  }, [queueSettings]);
+  const commitQueueSettings = (patch: Partial<DownloadQueueSettings>): Promise<void> => {
+    const base = queueSettingsRef.current;
+    if (!base) return Promise.resolve();
+    const merged: DownloadQueueSettings = { ...base, ...patch };
+    queueSettingsRef.current = merged;
+    setQueueSettings(merged);
+    queueChainRef.current = queueChainRef.current.then(async () => {
+      try {
+        const next = await api.downloadQueueSetSettings(
+          merged.concurrency,
+          merged.autoImport,
+          merged.dir,
+          merged.proxy,
+          merged.speedLimitMbps,
+        );
+        // 只有这次仍是"最后一笔"时才用后端返回值覆盖，否则会把用户刚改的
+        // 下一项拉回旧值（后端返回的是它落盘那一刻的整份设置）。
+        if (queueSettingsRef.current === merged) {
+          queueSettingsRef.current = next;
+          setQueueSettings(next);
+        }
+        flashQueue(t("downloads.savedNote"));
+      } catch (error) {
+        // 失败就把 UI 拉回这次合并之前的值，不要留一个没落盘的假象。
+        if (queueSettingsRef.current === merged) {
+          queueSettingsRef.current = base;
+          setQueueSettings(base);
+        }
+        flashQueue(normalizeError(error).message);
+      }
+    });
+    return queueChainRef.current;
+  };
   // NXM 协议归属（deepseek 任务·模块二）：下载设置里显示归属 + 一键修复（接管协议）。
   const [nxmState, setNxmState] = useState<NxmStatus | null>(null);
   useEffect(() => {
@@ -335,38 +378,19 @@ export function SettingsView({
     }
   };
   const pickDownloadDir = async () => {
-    if (!queueSettings) return;
+    if (!queueSettingsRef.current) return;
     try {
       const picked = await openDialog({ directory: true, multiple: false });
       if (typeof picked !== "string" || !picked) return;
-      const next = await api.downloadQueueSetSettings(
-        queueSettings.concurrency,
-        queueSettings.autoImport,
-        picked,
-        queueSettings.proxy,
-        queueSettings.speedLimitMbps,
-      );
-      setQueueSettings(next);
+      await commitQueueSettings({ dir: picked });
       flashQueue(t("downloads.dirSaved", { path: picked }));
     } catch {
       flashQueue(t("downloads.dirPickFailed"));
     }
   };
-  const updateQueueSettings = async (patch: Partial<DownloadQueueSettings>) => {
-    if (!queueSettings) return;
-    try {
-      const next = await api.downloadQueueSetSettings(
-        patch.concurrency ?? queueSettings.concurrency,
-        patch.autoImport ?? queueSettings.autoImport,
-        patch.dir !== undefined ? patch.dir : queueSettings.dir,
-        patch.proxy !== undefined ? patch.proxy : queueSettings.proxy,
-        patch.speedLimitMbps !== undefined ? patch.speedLimitMbps : queueSettings.speedLimitMbps,
-      );
-      setQueueSettings(next);
-      flashQueue(t("downloads.savedNote"));
-    } catch (error) {
-      flashQueue(error instanceof Error ? error.message : String(error));
-    }
+  // 名字沿用原调用点：内部已经改成 ref 合并 + 串行落盘（见 commitQueueSettings）。
+  const updateQueueSettings = (patch: Partial<DownloadQueueSettings>) => {
+    void commitQueueSettings(patch);
   };
 
   // 分区切换只改 state，不给内容区加 key —— 六个面板常驻 DOM，
@@ -430,8 +454,8 @@ export function SettingsView({
     posY: settings.backgroundPosY ?? 50,
     loading: backgroundLoading,
     onPick: () => void pickBackgroundImage(),
-    // 恢复默认连填充方式/焦点/遮罩一起复位，否则「清掉图再选一张」会带着上一张的
-    // 焦点位置，用户以为是新图自己偏了。
+    // 恢复默认连填充方式/焦点/缩放/遮罩一起复位，否则「清掉图再选一张」会带着
+    // 上一张的焦点位置和缩放倍率，用户以为是新图自己偏了。
     onClear: () =>
       update({
         backgroundImage: "",
@@ -441,6 +465,7 @@ export function SettingsView({
         backgroundFit: "cover",
         backgroundPosX: 50,
         backgroundPosY: 50,
+        backgroundZoom: 1,
       }),
     onOpacity: (value: number) => update({ backgroundOpacity: value }),
     onBlur: (value: number) => update({ backgroundBlur: value }),
@@ -587,35 +612,44 @@ export function SettingsView({
   // modlist 导入/导出的结果回显（路径、对上/没对上几条）。
   const [profileNote, setProfileNote] = useState<string | null>(null);
 
-  /** 统一处理播放集操作：出错走 onError，成功后刷新快照。 */
-  const runProfileAction = async (label: string, run: () => Promise<unknown>) => {
+  /**
+   * 统一处理播放集操作：出错走 onError，成功后刷新快照。
+   * 返回是否成功——需要「成功后才知道要不要收表单」的调用点靠它判断，
+   * 免得名称冲突/写盘失败时把用户刚敲的名字一起清掉。
+   */
+  const runProfileAction = async (label: string, run: () => Promise<unknown>): Promise<boolean> => {
     setProfileBusy(label);
     try {
       await run();
       onRefreshMods();
+      return true;
     } catch (error) {
       onError(error, t("settings.profileActionFailed"));
+      return false;
     } finally {
       setProfileBusy(null);
     }
   };
 
-  const submitCreateProfile = () => {
+  const submitCreateProfile = async () => {
     const name = newProfileName.trim();
     if (!name) return;
-    void runProfileAction("create", () => api.createProfile(name, true));
+    const ok = await runProfileAction("create", () => api.createProfile(name, true));
+    // 失败时保留输入框内容与表单，用户改个名字直接回车重试即可。
+    if (!ok) return;
     setNewProfileName("");
     setCreatingProfile(false);
   };
 
-  const submitRename = () => {
+  const submitRename = async () => {
     if (!renaming) return;
     const name = renaming.name.trim();
     if (!name) {
       setRenaming(null);
       return;
     }
-    void runProfileAction("rename", () => api.renameProfile(renaming.id, name));
+    const ok = await runProfileAction("rename", () => api.renameProfile(renaming.id, name));
+    if (!ok) return;
     setRenaming(null);
   };
 
@@ -1193,14 +1227,19 @@ export function SettingsView({
                   value={newProfileName}
                   onChange={(event) => setNewProfileName(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") submitCreateProfile();
+                    if (event.key === "Enter") void submitCreateProfile();
                     if (event.key === "Escape") setCreatingProfile(false);
                   }}
                   placeholder={t("settings.profileNewPlaceholder")}
                   spellCheck={false}
                   autoFocus
                 />
-                <button className="btn btn-primary btn-sm" onClick={submitCreateProfile} disabled={!newProfileName.trim()}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void submitCreateProfile()}
+                  disabled={!newProfileName.trim() || profileBusy !== null}
+                >
+                  {profileBusy === "create" ? <Spinner size={13} /> : null}
                   {t("settings.profileCreate")}
                 </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setCreatingProfile(false)}>
@@ -1222,10 +1261,10 @@ export function SettingsView({
                           value={renaming?.name ?? ""}
                           onChange={(event) => setRenaming({ id: item.id, name: event.target.value })}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter") submitRename();
+                            if (event.key === "Enter") void submitRename();
                             if (event.key === "Escape") setRenaming(null);
                           }}
-                          onBlur={submitRename}
+                          onBlur={() => void submitRename()}
                           autoFocus
                         />
                       ) : (

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
   ArrowDownUp,
@@ -36,12 +36,12 @@ import type {
 } from "../types";
 import { CATEGORIES } from "../types";
 import { categoryIcon, formatBytes } from "../lib/format";
-import { api, isTauri } from "../lib/api";
+import { api, isTauri, normalizeError } from "../lib/api";
 import { isCollectionManifestPath } from "../lib/collection";
 import type { LibraryView as LibraryViewMode } from "../lib/preferences";
 import { VirtualModGrid } from "./VirtualModGrid";
 import { buildLibraryList } from "../lib/libraryList";
-import { missingDependencyNames } from "../lib/dependencies";
+import { depIgnoresVersion, missingDependencyNames, subscribeDepIgnores } from "../lib/dependencies";
 import { ModContextMenu, type ModContextMenuState } from "./ModContextMenu";
 import { AiToolsDialog } from "./AiToolsDialog";
 import { CollectionWizard } from "./CollectionWizard";
@@ -249,6 +249,10 @@ export function LibraryView({
     return counts;
   }, [mods]);
 
+  // 前置忽略表变了要重算：`missing` 筛选与卡片上的缺前置徽标都读它。
+  // 不订阅的话，在详情页点「忽略此提示」后列表仍是旧结果，用户以为没生效。
+  const depIgnoresRev = useSyncExternalStore(subscribeDepIgnores, depIgnoresVersion);
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     let result = mods.filter((mod) => {
@@ -289,7 +293,7 @@ export function LibraryView({
       );
     });
     return result;
-  }, [mods, category, search, sort, statusFilter, dependencyReport, frameworks]);
+  }, [mods, category, search, sort, statusFilter, dependencyReport, frameworks, depIgnoresRev]);
 
   const toggleGroup = (categoryKey: string) => {
     setCollapsedGroups((prev) => {
@@ -609,7 +613,10 @@ export function LibraryView({
       setMenuNote(t("library.repairDone", { name: mod.name, count: report.deployed }));
       onRefresh();
     } catch (error) {
-      setMenuNote(error instanceof Error ? error.message : t("library.repairFailed"));
+      // 结构化错误（Rust 回传的 code/message 对象）不是 Error 实例，
+      // 直接取 message 会丢掉真实原因，这里统一归一化后再拼。
+      const reason = normalizeError(error).message;
+      setMenuNote(reason ? t("library.repairFailedDetail", { reason }) : t("library.repairFailed"));
     }
   };
 
@@ -617,7 +624,8 @@ export function LibraryView({
     try {
       await api.openInExplorer(mod.stagingPath);
     } catch (error) {
-      setMenuNote(error instanceof Error ? error.message : t("library.openFolderFailed"));
+      const reason = normalizeError(error).message;
+      setMenuNote(reason ? t("library.openFolderFailedDetail", { reason }) : t("library.openFolderFailed"));
     }
   };
 
