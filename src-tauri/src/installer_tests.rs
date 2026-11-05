@@ -525,3 +525,139 @@ fn undeploy_keeps_manifest_for_files_it_could_not_remove() {
     assert_eq!(fixture.store.snapshot_data().mods[0].deployed_files.len(), 2);
 }
 
+
+// ---- ASI / RED4ext 原生插件：布局判定与落位（对齐 Vortex 对应安装器） ----
+
+fn sorted_plan(entry: &ModEntry) -> Vec<String> {
+    let mut plan = entry.planned_files.clone();
+    plan.sort();
+    plan
+}
+
+#[test]
+fn bare_asi_plugin_lands_in_bin_x64_plugins() {
+    let fixture = Fixture::new();
+    // ASI 包基本都多套一层壳目录：`MyAsi/xxx.asi`，壳不能带到游戏里。
+    let zip = fixture.zip(
+        "BareAsi.zip",
+        &[("MyAsi/TeleportEverywhere.asi", b"asi".as_slice())],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Asi);
+    assert_eq!(
+        sorted_plan(&entry),
+        vec!["bin/x64/plugins/TeleportEverywhere.asi"]
+    );
+
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &entry.id, &game).unwrap();
+    assert!(fixture
+        .game
+        .join("bin/x64/plugins/TeleportEverywhere.asi")
+        .is_file());
+}
+
+#[test]
+fn asi_loader_proxy_dll_lands_beside_the_executable() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip("AsiLoader.zip", &[("dinput8.dll", b"dll".as_slice())]);
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Asi);
+    // 加载器 dll 必须和 exe 同目录，进 plugins/ 就永远不会被 Windows 加载。
+    assert_eq!(sorted_plan(&entry), vec!["bin/x64/dinput8.dll"]);
+}
+
+#[test]
+fn asi_loader_with_plugins_folder_does_not_double_the_plugins_layer() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "AsiBundle.zip",
+        &[
+            ("dinput8.dll", b"dll".as_slice()),
+            ("plugins/Extra.asi", b"asi".as_slice()),
+        ],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Asi);
+    assert_eq!(
+        sorted_plan(&entry),
+        vec!["bin/x64/dinput8.dll", "bin/x64/plugins/Extra.asi"]
+    );
+}
+
+#[test]
+fn red4ext_plugin_with_toplevel_dll_is_nested_under_its_own_folder() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "NakedPlugin.zip",
+        &[
+            ("NakedPlugin.dll", b"dll".as_slice()),
+            ("NakedPlugin/config.json", b"{}".as_slice()),
+        ],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Red4ext);
+    let folder = entry.mod_folder.clone().expect("RED4ext 必须留一层自己的目录名");
+    assert_eq!(
+        sorted_plan(&entry),
+        vec![
+            format!("red4ext/plugins/{folder}/NakedPlugin.dll"),
+            format!("red4ext/plugins/{folder}/NakedPlugin/config.json"),
+        ]
+    );
+}
+
+#[test]
+fn red4ext_plugin_in_a_single_folder_is_unwrapped() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "WrappedPlugin.zip",
+        &[("PluginSrc/CyberarmsCore.dll", b"dll".as_slice())],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Red4ext);
+    let folder = entry.mod_folder.clone().unwrap();
+    // 壳目录 `PluginSrc` 要剥掉，但自己的 `<folder>` 那层要留着防同名覆盖。
+    assert_eq!(
+        sorted_plan(&entry),
+        vec![format!("red4ext/plugins/{folder}/CyberarmsCore.dll")]
+    );
+}
+
+#[test]
+fn tweakxl_and_audioware_packages_keep_their_game_root_paths() {
+    let fixture = Fixture::new();
+    // 这两种类型在 Vortex 里是「同源同目标」，本启动器的「完整游戏目录结构」
+    // 分支本来就是同样落位——这条测试把它钉住，避免以后改 GameRoot 时悄悄改坏。
+    let zip = fixture.zip(
+        "TweakAndAudio.zip",
+        &[
+            ("r6/tweaks/BetterLoot.yaml", b"yaml".as_slice()),
+            ("r6/audioware/impact.audioware", b"audio".as_slice()),
+        ],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::GameRoot);
+    assert_eq!(
+        sorted_plan(&entry),
+        vec!["r6/audioware/impact.audioware", "r6/tweaks/BetterLoot.yaml"]
+    );
+}
+
+#[test]
+fn archive_and_archivexl_pair_both_go_to_archive_pc_mod() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "ArchiveXlPair.zip",
+        &[
+            ("MyMod/MyMod.archive", b"archive".as_slice()),
+            ("MyMod/MyMod.xl", b"xl".as_slice()),
+        ],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::Archive);
+    assert_eq!(
+        sorted_plan(&entry),
+        vec!["archive/pc/mod/MyMod.archive", "archive/pc/mod/MyMod.xl"]
+    );
+}

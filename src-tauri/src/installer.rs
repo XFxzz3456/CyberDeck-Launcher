@@ -653,9 +653,15 @@ fn finalize_install(
         .unwrap_or_default();
 
     let mod_folder = match layout {
-        InstallLayout::Redmod | InstallLayout::Cet | InstallLayout::Redscript => Some(
-            sanitize_folder(&name, &format!("mod-{}", &id[id.len().saturating_sub(6)..])),
-        ),
+        // RED4ext 插件要落在 `red4ext/plugins/<folder>/`——留一层自己的目录名，
+        // 否则两个插件都叫 `main.dll` 时会互相覆盖。
+        InstallLayout::Redmod
+        | InstallLayout::Cet
+        | InstallLayout::Redscript
+        | InstallLayout::Red4ext => Some(sanitize_folder(
+            &name,
+            &format!("mod-{}", &id[id.len().saturating_sub(6)..]),
+        )),
         _ => None,
     };
 
@@ -866,6 +872,65 @@ fn is_doc_only(relative: &str) -> bool {
         || name.starts_with('.')
 }
 
+/// ASI 加载器代理 dll：必须**和 `Cyberpunk2077.exe` 同目录**（`bin/x64/`）才会被
+/// Windows 加载，塞进 `plugins/` 子目录等于没装。名字来自 ASI Loader 的常见清单。
+const ASI_PROXY_DLLS: [&str; 8] = [
+    "dinput8.dll",
+    "version.dll",
+    "winmm.dll",
+    "dsound.dll",
+    "d3d11.dll",
+    "dxgi.dll",
+    "xinput1_3.dll",
+    "xinput9_1_0.dll",
+];
+
+fn is_asi_proxy_dll(relative: &str) -> bool {
+    let name = relative
+        .rsplit('/')
+        .next()
+        .unwrap_or(relative)
+        .to_ascii_lowercase();
+    ASI_PROXY_DLLS.contains(&name.as_str())
+}
+
+/// 所有路径共有的第一段目录名；有任何一条没有下一段（或在根上就是文件）就返回 None。
+fn common_first_segment(paths: &[String]) -> Option<String> {
+    let mut head: Option<String> = None;
+    for path in paths {
+        let (first, rest) = path.split_once('/')?;
+        if rest.is_empty() {
+            return None;
+        }
+        match &head {
+            Some(value) if value.eq_ignore_ascii_case(first) => {}
+            Some(_) => return None,
+            None => head = Some(first.to_string()),
+        }
+    }
+    head
+}
+
+/// 剥掉「整包共有的那层壳目录」，能剥几层剥几层。
+///
+/// 打包习惯普遍多套一层：`MyAsiMod/plugins/foo.asi`、`FooPlugin/FooPlugin.dll`。
+/// 那层壳不是游戏里的真实路径——不剥就会落到
+/// `bin/x64/plugins/MyAsiMod/plugins/foo.asi`，而 ASI 加载器只扫
+/// `bin/x64/plugins` 这一层，等于装了个看不见的文件。
+///
+/// 只在「所有路径都还有下一段、且下一段完全相同」时才剥：`a/x.asi` 配 `b/y.dll`
+/// 不剥，免得把本该分目录的文件拍平后互相覆盖。
+fn strip_shell_dirs(paths: &[String]) -> Vec<String> {
+    let mut current: Vec<String> = paths.to_vec();
+    while common_first_segment(&current).is_some() {
+        current = current
+            .iter()
+            .filter_map(|path| path.split_once('/').map(|(_, rest)| rest.to_string()))
+            .collect();
+    }
+    current
+}
+
 pub(crate) fn detect_layout(payload: &Path) -> AppResult<InstallLayout> {
     if !payload.is_dir() {
         return Err(CommandError::new("STAGING_MISSING", "暂存区不存在。"));
@@ -928,6 +993,21 @@ pub(crate) fn detect_layout(payload: &Path) -> AppResult<InstallLayout> {
         return Ok(InstallLayout::GameRoot);
     }
 
+    // ⑤ ASI / RED4ext 原生插件：包作者没带 `bin/` 或 `red4ext/` 前缀的常见形态。
+    //
+    // 必须排在 archive / .reds / .lua 之后：那些后缀比「包里有 dll」更能说明这是什么包，
+    // 抢在前面会把「附带一个 dll 助手」的 archive 包误判成原生插件。
+    // 加载器代理 dll 优先于 `.asi`：一个包里两者都有的写法很常见，装到 `bin/x64/` 才生效。
+    if lower.iter().any(|path| is_asi_proxy_dll(path)) {
+        return Ok(InstallLayout::Asi);
+    }
+    if lower.iter().any(|path| path.ends_with(".asi")) {
+        return Ok(InstallLayout::Asi);
+    }
+    if lower.iter().any(|path| path.ends_with(".dll")) {
+        return Ok(InstallLayout::Red4ext);
+    }
+
     Err(CommandError::new(
         "LAYOUT_UNKNOWN",
         "无法判断这个模组要装到哪里。支持的布局：\n\
@@ -935,6 +1015,8 @@ pub(crate) fn detect_layout(payload: &Path) -> AppResult<InstallLayout> {
          • 独立 .archive / .xl 文件\n\
          • 带 info.json 的 REDmod\n\
          • CET（init.lua）或 redscript（.reds）\n\
+         • ASI 插件（.asi 或 dinput8.dll 一类加载器 dll）\n\
+         • RED4ext 插件（单独一个 .dll）\n\
          请查看压缩包结构后重试；启动器不会把未知文件硬塞进游戏目录。",
     ))
 }
@@ -1041,11 +1123,9 @@ pub(crate) fn plan_for(entry: &ModEntry) -> AppResult<Vec<PlanFile>> {
             "这个模组的暂存文件不见了，请重新导入 ZIP。",
         ));
     }
-    let mut plan = Vec::new();
-    let folder = entry.mod_folder.clone().unwrap_or_else(|| {
-        sanitize_folder(&entry.name, &entry.id[..entry.id.len().min(12)])
-    });
-
+    // 先把非文档文件收齐再算落位：ASI / RED4ext 要按「整包共有的壳目录」统一剥一层，
+    // 逐文件边走边算看不到全局。其它布局的落位与文件顺序无关，预先收集不影响结果。
+    let mut sources: Vec<(PathBuf, String)> = Vec::new();
     for item in WalkDir::new(&payload)
         .into_iter()
         .filter_map(Result::ok)
@@ -1060,6 +1140,22 @@ pub(crate) fn plan_for(entry: &ModEntry) -> AppResult<Vec<PlanFile>> {
         if is_doc_only(&relative) {
             continue;
         }
+        sources.push((item.path().to_path_buf(), relative));
+    }
+    let stripped: Vec<String> = match entry.layout {
+        InstallLayout::Asi | InstallLayout::Red4ext => {
+            let paths: Vec<String> = sources.iter().map(|(_, relative)| relative.clone()).collect();
+            strip_shell_dirs(&paths)
+        }
+        _ => Vec::new(),
+    };
+
+    let mut plan = Vec::new();
+    let folder = entry.mod_folder.clone().unwrap_or_else(|| {
+        sanitize_folder(&entry.name, &entry.id[..entry.id.len().min(12)])
+    });
+
+    for (index, (source, relative)) in sources.iter().enumerate() {
         let lower = relative.to_ascii_lowercase();
         let target_rel = match entry.layout {
             InstallLayout::GameRoot => {
@@ -1084,9 +1180,29 @@ pub(crate) fn plan_for(entry: &ModEntry) -> AppResult<Vec<PlanFile>> {
                 "bin/x64/plugins/cyber_engine_tweaks/mods/{folder}/{relative}"
             ),
             InstallLayout::Redscript => format!("r6/scripts/{folder}/{relative}"),
+            InstallLayout::Asi => {
+                let inner = &stripped[index];
+                if is_asi_proxy_dll(inner) {
+                    // 加载器 dll 必须贴着 exe，任何子目录都不行。
+                    let filename = inner.rsplit('/').next().unwrap_or(inner);
+                    format!("bin/x64/{filename}")
+                } else {
+                    // 包里本来就写了 `plugins/` 的别叠第二层。
+                    const SHELL: &str = "plugins/";
+                    let tail = if inner.len() > SHELL.len()
+                        && inner[..SHELL.len()].eq_ignore_ascii_case(SHELL)
+                    {
+                        &inner[SHELL.len()..]
+                    } else {
+                        inner.as_str()
+                    };
+                    format!("bin/x64/plugins/{tail}")
+                }
+            }
+            InstallLayout::Red4ext => format!("red4ext/plugins/{folder}/{}", stripped[index]),
         };
         plan.push(PlanFile {
-            source: item.path().to_path_buf(),
+            source: source.clone(),
             relative: target_rel,
         });
     }
@@ -1108,6 +1224,8 @@ fn layout_label(layout: &InstallLayout) -> &'static str {
         InstallLayout::Redmod => "REDmod",
         InstallLayout::Cet => "CET",
         InstallLayout::Redscript => "redscript",
+        InstallLayout::Asi => "ASI 插件",
+        InstallLayout::Red4ext => "RED4ext 插件",
     }
 }
 
@@ -1121,10 +1239,15 @@ fn layout_label(layout: &InstallLayout) -> &'static str {
 /// 返回 `(总数, 前 sample_limit 个文件名, 布局标签)`。
 fn layout_skipped(payload: &Path, layout: &InstallLayout, sample_limit: usize) -> (usize, Vec<String>, &'static str) {
     let label = layout_label(layout);
-    // REDmod / CET / redscript 三种布局 plan_for 收下全部非文档文件，不存在跳过。
+    // REDmod / CET / redscript / ASI / RED4ext 这几种布局 plan_for 收下全部非文档文件，
+    // 不存在跳过。
     if matches!(
         layout,
-        InstallLayout::Redmod | InstallLayout::Cet | InstallLayout::Redscript
+        InstallLayout::Redmod
+            | InstallLayout::Cet
+            | InstallLayout::Redscript
+            | InstallLayout::Asi
+            | InstallLayout::Red4ext
     ) {
         return (0, Vec::new(), label);
     }
@@ -1154,7 +1277,11 @@ fn layout_skipped(payload: &Path, layout: &InstallLayout, sample_limit: usize) -
                 lower.ends_with(".archive") || lower.ends_with(".xl") || lower.ends_with(".xlp")
             }
             // 上面已提前返回。
-            InstallLayout::Redmod | InstallLayout::Cet | InstallLayout::Redscript => true,
+            InstallLayout::Redmod
+            | InstallLayout::Cet
+            | InstallLayout::Redscript
+            | InstallLayout::Asi
+            | InstallLayout::Red4ext => true,
         };
         if !kept {
             total += 1;

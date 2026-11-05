@@ -5,7 +5,14 @@ export type LinkType = "hardLink" | "symlink" | "copy";
 /** 外观风格与明暗模式的类型定义见 lib/theme.ts，这里转出去方便统一引用。 */
 export type { ColorMode, StyleTheme } from "./lib/theme";
 
-export type InstallLayout = "gameRoot" | "archive" | "redmod" | "cet" | "redscript";
+export type InstallLayout =
+  | "gameRoot"
+  | "archive"
+  | "redmod"
+  | "cet"
+  | "redscript"
+  | "asi"
+  | "red4ext";
 
 export interface DeployedFile {
   source: string;
@@ -680,6 +687,8 @@ export const LAYOUT_LABEL_KEY: Record<InstallLayout, MessageKey> = {
   redmod: "layout.redmod",
   cet: "layout.cet",
   redscript: "layout.redscript",
+  asi: "layout.asi",
+  red4ext: "layout.red4ext",
 };
 
 export interface NexusUser {

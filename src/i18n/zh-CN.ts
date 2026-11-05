@@ -978,8 +978,10 @@ export const zhCN = {
   },
   layout: {
     archive: "Archive 模组",
+    asi: "ASI 插件",
     cet: "CET Lua 模组",
     gameRoot: "游戏目录结构",
+    red4ext: "RED4ext 插件",
     redmod: "REDmod 模组",
     redscript: "redscript 模组",
   },

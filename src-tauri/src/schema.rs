@@ -68,6 +68,10 @@ pub enum InstallLayout {
     Cet,
     /// Loose .reds scripts.
     Redscript,
+    /// An ASI plugin (or an ASI proxy loader dll) shipped without the bin/ prefix.
+    Asi,
+    /// A RED4ext native plugin shipped without the red4ext/ prefix.
+    Red4ext,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
