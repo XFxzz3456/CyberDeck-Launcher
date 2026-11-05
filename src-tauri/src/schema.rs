@@ -774,6 +774,14 @@ pub struct AppStateData {
     pub mods: Vec<ModEntry>,
     #[serde(default)]
     pub load_order: Vec<String>,
+    /// REDmod 的加载顺序（存 mod id，先加载的先赢）。
+    ///
+    /// 为什么不复用 `load_order`：那个列表的元素是 archive 的相对路径，REDmod 进去
+    /// 会污染 archive 的排序归一化（`loadorder::normalized_order` 会把它当无效项丢掉）。
+    /// 两者是两套独立的加载顺序，游戏也是分开读的（`archive/pc/mod/modlist.txt`
+    /// vs `V2077/modlist.txt`）。
+    #[serde(default)]
+    pub redmod_order: Vec<String>,
     /// 已导入的整合包登记表。
     ///
     /// 2026-10-26 产品决定：旧的「本地大 ZIP 整合包」已废弃（生态改用
@@ -813,6 +821,7 @@ impl AppStateData {
             staging_dir,
             mods: Vec::new(),
             load_order: Vec::new(),
+            redmod_order: Vec::new(),
             modpacks: Vec::new(),
             profiles: vec![ProfileEntry::default_profile()],
             active_profile_id: Some("profile-default".to_string()),

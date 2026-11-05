@@ -432,6 +432,12 @@ export interface AppStateData {
   stagingDir: string;
   mods: ModEntry[];
   loadOrder: string[];
+  /**
+   * REDmod 的加载顺序（存 mod id，先加载的先赢）。
+   *
+   * 与 `loadOrder` 分开：后者元素是 archive 相对路径，混在一起会被归一化当成脏数据剔除。
+   */
+  redmodOrder: string[];
   /** 已导入的整合包登记表。子 Mod 仍在 mods 里。 */
   modpacks: ModpackEntry[];
   /** 播放集：每套「启用哪些模组 + 加载顺序」的存档。 */

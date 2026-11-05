@@ -172,6 +172,8 @@ function normalizeState(raw: unknown, fallbackSettings: Settings): AppStateData 
     stagingDir: text(state.stagingDir),
     mods,
     loadOrder: list<string>(state.loadOrder).map((item) => text(item)),
+    // 老状态文件没有这个字段；缺省成空数组，由后端 normalize_order 补齐未登记的 mod。
+    redmodOrder: list<string>(state.redmodOrder).map((item) => text(item)),
     modpacks: list(state.modpacks),
     profiles: list(state.profiles),
     activeProfileId: optionalText(state.activeProfileId),

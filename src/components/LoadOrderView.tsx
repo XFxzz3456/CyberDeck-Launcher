@@ -22,6 +22,7 @@ export function LoadOrderView({
   conflicts,
   saving,
   onSave,
+  onSaveRedmodOrder,
   onToggleWrite,
   onExport,
   onRemoveModlist,
@@ -31,6 +32,8 @@ export function LoadOrderView({
   conflicts: ConflictInfo[];
   saving: boolean;
   onSave: (order: string[]) => Promise<void>;
+  /** 保存 REDmod 顺序（元素是 mod id）。后端会顺手重跑一次 redMod 部署。 */
+  onSaveRedmodOrder: (order: string[]) => Promise<void>;
   onToggleWrite: (enabled: boolean) => void;
   onExport: () => void;
   onRemoveModlist: () => void;
@@ -38,6 +41,9 @@ export function LoadOrderView({
 }) {
   const view = snapshot.loadOrder;
   const [items, setItems] = useState<LoadOrderItem[]>(view.archives);
+  // REDmod 面板用上下箭头调序：REDmod 数量通常只有个位数，按钮比拖拽更省事，
+  // 也顺带支持键盘用户。
+  const [redmods, setRedmods] = useState<LoadOrderItem[]>(view.redmods);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
@@ -53,6 +59,10 @@ export function LoadOrderView({
   useEffect(() => {
     setItems(view.archives);
   }, [view.archives]);
+
+  useEffect(() => {
+    setRedmods(view.redmods);
+  }, [view.redmods]);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -88,8 +98,17 @@ export function LoadOrderView({
     await commit(next);
   };
 
-  const startDrag = (event: ReactPointerEvent<HTMLSpanElement>, item: LoadOrderItem, index: number) => {
-    if (event.button !== 0 || saving) return;
+  const moveRedmod = async (from: number, to: number) => {
+    if (saving || to < 0 || to >= redmods.length || from === to) return;
+    const next = [...redmods];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    // 先动界面再发请求：redMod 部署要几秒，等回来才动会让人觉得按钮没反应。
+    setRedmods(next.map((item, index) => ({ ...item, order: index })));
+    await onSaveRedmodOrder(next.map((item) => item.modId));
+  };
+
+  const startDrag = (event: ReactPointerEvent<HTMLSpanElement>, item: LoadOrderItem, index: number) => {    if (event.button !== 0 || saving) return;
     const row = (event.currentTarget as HTMLElement).closest(".order-row") as HTMLDivElement | null;
     if (!row) return;
     event.preventDefault();
@@ -406,21 +425,41 @@ export function LoadOrderView({
                 <div className="panel-eyebrow">// REDMOD ORDER</div>
                 <h2>{t("loadOrder.redmodTitle")}</h2>
               </div>
-              <span className="panel-meta">{view.redmods.length}</span>
+              <span className="panel-meta">{redmods.length}</span>
             </div>
             <p className="panel-copy">
               {t("loadOrder.redmodCopy")}
             </p>
             <div className="redmod-list">
-              {view.redmods.length === 0 ? (
+              {redmods.length === 0 ? (
                 <div className="muted-line">{t("loadOrder.noRedmods")}</div>
               ) : (
-                view.redmods.map((item) => (
+                redmods.map((item, index) => (
                   <div key={item.id} className="redmod-row">
-                    <span className="redmod-rank">{String(item.order + 1).padStart(2, "0")}</span>
+                    <span className="redmod-rank">{String(index + 1).padStart(2, "0")}</span>
                     <div>
                       <strong>{item.filename}</strong>
                       <span>{item.modName}</span>
+                    </div>
+                    <div className="redmod-actions">
+                      <button
+                        className="icon-btn"
+                        title={t("loadOrder.moveUp")}
+                        aria-label={t("loadOrder.moveUp")}
+                        disabled={saving || index === 0}
+                        onClick={() => void moveRedmod(index, index - 1)}
+                      >
+                        <ArrowUp size={12} />
+                      </button>
+                      <button
+                        className="icon-btn"
+                        title={t("loadOrder.moveDown")}
+                        aria-label={t("loadOrder.moveDown")}
+                        disabled={saving || index === redmods.length - 1}
+                        onClick={() => void moveRedmod(index, index + 1)}
+                      >
+                        <ArrowDown size={12} />
+                      </button>
                     </div>
                   </div>
                 ))

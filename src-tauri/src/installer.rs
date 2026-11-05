@@ -1587,6 +1587,12 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
     entry.updated_at = Some(now_iso());
     state.mods[index] = entry.clone();
     append_to_load_order(&mut state, &entry);
+    // REDmod 类模组光把文件放进 mods/ 不算数：游戏读的是 redMod 生成的
+    // r6/cache/modded。这里只打脏标记，真正的 redMod 调用由命令层在**释放锁之后**
+    // flush 一次——批量装几十个 mod 时不能每个都起一次进程。
+    if entry.layout == InstallLayout::Redmod {
+        crate::redmod::mark_dirty();
+    }
     if state.settings.write_modlist {
         if let Err(err) = crate::loadorder::write_modlist(&state, &game_root) {
             warnings.push(format!("模组已部署，但写入 modlist.txt 失败：{err}"));
@@ -2016,10 +2022,16 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
     leftover.reverse();
 
     let stranded = leftover.len();
+    let was_redmod = entry.layout == InstallLayout::Redmod;
     entry.deployed_files = leftover;
     entry.enabled = false;
     entry.updated_at = Some(now_iso());
     state.mods[index] = entry;
+    // 禁用一个 REDmod 同样要重跑 redMod：否则它的产物还留在 r6/cache/modded 里，
+    // 界面上显示「已禁用」，游戏里却照旧加载。
+    if was_redmod {
+        crate::redmod::mark_dirty();
+    }
     if !edited_copies.is_empty() {
         warnings.push(format!(
             "有 {} 个文件在部署后被手动改过，已按清单一并删除：{}（暂存区里仍是原始版本）",
@@ -2269,6 +2281,11 @@ pub fn uninstall_mod(store: &Store, mod_id: &str, game_root: Option<&Path>) -> A
         .position(|item| item.id == mod_id)
         .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
     let entry = state.mods.remove(index);
+    // 卸载而未部署过的 REDmod 不会走 undeploy，这里补一次脏标记，否则它的
+    // 文件夹名会一直留在 V2077/modlist.txt 里，redMod 每次都照着它找不存在的东西。
+    if entry.layout == InstallLayout::Redmod {
+        crate::redmod::mark_dirty();
+    }
     let deployed_paths: Vec<String> = entry
         .deployed_files
         .iter()

@@ -1,5 +1,5 @@
 use crate::schema::{
-    AppResult, AppStateData, CommandError, InstallLayout, LoadOrderItem, LoadOrderView,
+    AppResult, AppStateData, CommandError, LoadOrderItem, LoadOrderView,
 };
 use crate::store::{now_stamp, Store};
 use std::collections::{HashMap, HashSet};
@@ -90,27 +90,39 @@ pub fn build_view(state: &AppStateData, game_root: Option<&Path>) -> LoadOrderVi
         })
         .collect();
 
-    let mut redmods: Vec<LoadOrderItem> = state
-        .mods
+    // REDmod 的加载顺序来自 `state.redmod_order`（用户拖过的顺序），没登记过的
+    // 按文件夹名字母序排在后面。这里只负责**展示**；真正写进 `V2077/modlist.txt`
+    // 是在 redmod::sync 里做的事。
+    let redmod_order = crate::redmod::normalize_order(state, &state.redmod_order);
+    let redmods: Vec<LoadOrderItem> = redmod_order
         .iter()
-        .filter(|entry| entry.enabled && entry.layout == InstallLayout::Redmod)
-        .map(|entry| LoadOrderItem {
-            id: format!("redmod:{}", entry.id),
-            mod_id: entry.id.clone(),
-            mod_name: entry.name.clone(),
-            filename: entry
-                .mod_folder
-                .clone()
-                .unwrap_or_else(|| entry.name.clone()),
-            category: entry.category.clone(),
-            deployed: true,
-            order: 0,
+        .filter_map(|id| {
+            let entry = state.mods.iter().find(|item| &item.id == id)?;
+            if !entry.enabled {
+                return None;
+            }
+            Some(LoadOrderItem {
+                id: format!("redmod:{}", entry.id),
+                mod_id: entry.id.clone(),
+                mod_name: entry.name.clone(),
+                filename: entry
+                    .mod_folder
+                    .clone()
+                    .unwrap_or_else(|| entry.name.clone()),
+                category: entry.category.clone(),
+                deployed: true,
+                order: 0,
+            })
         })
         .collect();
-    redmods.sort_by_key(|item| item.filename.to_ascii_lowercase());
-    for (index, item) in redmods.iter_mut().enumerate() {
-        item.order = index;
-    }
+    let redmods: Vec<LoadOrderItem> = redmods
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut item)| {
+            item.order = index;
+            item
+        })
+        .collect();
 
     let modlist_path = game_root.map(|root| {
         root.join("archive")

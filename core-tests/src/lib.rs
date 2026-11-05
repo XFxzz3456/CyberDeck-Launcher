@@ -37,6 +37,9 @@ pub mod glossary;
 pub mod installer;
 #[path = "../../src-tauri/src/loadorder.rs"]
 pub mod loadorder;
+// loadorder 的 REDmod 展示顺序要对 redmod::normalize_order 求解，先把模块带上。
+#[path = "../../src-tauri/src/redmod.rs"]
+pub mod redmod;
 #[path = "../../src-tauri/src/logs.rs"]
 pub mod logs;
 #[path = "../../src-tauri/src/modsettings.rs"]

@@ -21,6 +21,7 @@ mod loadorder;
 mod logs;
 mod environment;
 mod profiles;
+mod redmod;
 mod safemode;
 mod modname;
 mod modsettings;
@@ -423,6 +424,9 @@ fn apply_collection_order_inner(
         state.settings.write_modlist = true;
     }
 
+    // 整批部署完成后补一次 REDmod 同步（批量循环里只打了脏标记）。
+    redmod::flush_into(store, snapshot.game_dir.as_deref(), &mut report.warnings);
+
     Ok(report)
 }
 
@@ -768,6 +772,9 @@ async fn set_mods_enabled(
                 }
             }
         }
+        // 批量循环里只有打标记，这里是唯一一次真跑 redMod 的地方。
+        let snapshot = store.snapshot_data();
+        redmod::flush_into(&store, snapshot.game_dir.as_deref(), &mut report.warnings);
         Ok(report)
     })
     .await
@@ -847,7 +854,9 @@ fn repair_mod(
     if let Some(root) = data.game_dir.as_deref() {
         let _ = installer::undeploy_mod(&store, &id, Path::new(root));
     }
-    installer::deploy_mod(&store, &id, &game)
+    let mut report = installer::deploy_mod(&store, &id, &game)?;
+    redmod::flush_into(&store, data.game_dir.as_deref(), &mut report.warnings);
+    Ok(report)
 }
 
 #[tauri::command]
@@ -870,7 +879,9 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
         }
         // 部署前自动快照（865759）：失败只记日志，不阻断部署。
         snapshots::auto_snapshot_pre_deploy(&store, &data, Some(&game));
-        return installer::deploy_mod(&store, &id, &game);
+        let mut report = installer::deploy_mod(&store, &id, &game)?;
+        redmod::flush_into(&store, data.game_dir.as_deref(), &mut report.warnings);
+        return Ok(report);
     }
 
     let data = store.snapshot_data();
@@ -897,7 +908,8 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
             "部署清单还在，但游戏目录没有配置，无法安全移除链接。",
         ));
     };
-    let warnings = installer::undeploy_mod(&store, &id, Path::new(root))?;
+    let mut warnings = installer::undeploy_mod(&store, &id, Path::new(root))?;
+    redmod::flush_into(&store, data.game_dir.as_deref(), &mut warnings);
     let entry = store
         .snapshot_data()
         .mods
@@ -923,8 +935,15 @@ fn uninstall_mod(
 ) -> AppResult<()> {
     let _guard = busy.begin("卸载模组");
     let data = store.snapshot_data();
-    let game_root = data.game_dir.map(PathBuf::from);
-    installer::uninstall_mod(&store, &id, game_root.as_deref())
+    let game_root = data.game_dir.clone().map(PathBuf::from);
+    installer::uninstall_mod(&store, &id, game_root.as_deref())?;
+    // 卸载接口不返回提示列表，同步失败只记日志并保留脏标记，下次操作会重试。
+    let mut warnings = Vec::new();
+    redmod::flush_into(&store, data.game_dir.as_deref(), &mut warnings);
+    for warning in warnings {
+        eprintln!("[redmod] {warning}");
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1011,6 +1030,59 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
             "MODLIST_WRITE_FAILED",
             warnings.join("\n"),
         ));
+    }
+    Ok(view)
+}
+
+/// 保存 REDmod 的加载顺序（先加载的先赢）。
+///
+/// 与 archive 的 `save_load_order` 是两条独立链路：archive 走 `normalized_order`
+/// （元素是 archive 相对路径），REDmod 走 `redmod::normalize_order`（元素是 mod id），
+/// 混在一起会把对方的条目误当成脏数据剔除。
+///
+/// 顺序存好之后必须重跑 redMod——`modlist.txt` 的行序就是这个顺序，不重新部署
+/// 的话游戏读到的还是旧产物（redMod 察觉不到纯重排，见 `redmod::needs_rebuild`）。
+#[tauri::command]
+fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
+    let mut data = store.data.lock().expect("state mutex poisoned");
+    let valid: std::collections::HashSet<String> = data
+        .mods
+        .iter()
+        .filter(|entry| entry.layout == schema::InstallLayout::Redmod)
+        .map(|entry| entry.id.clone())
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    for id in &order {
+        if !valid.contains(id) {
+            return Err(CommandError::new(
+                "REDMOD_ORDER_UNKNOWN",
+                format!("REDmod 加载顺序里出现了未知模组：{id}"),
+            ));
+        }
+        if !seen.insert(id.clone()) {
+            return Err(CommandError::new(
+                "REDMOD_ORDER_DUPLICATE",
+                "REDmod 加载顺序里有重复条目。",
+            ));
+        }
+    }
+
+    data.redmod_order = order;
+    let requested = data.redmod_order.clone();
+    data.redmod_order = redmod::normalize_order(&data, &requested);
+    redmod::mark_dirty();
+    let game_dir = data.game_dir.clone();
+    store.save(&data)?;
+    let view = loadorder::build_view(&data, game_dir.as_deref().map(Path::new));
+    drop(data);
+
+    // 部署要在锁外跑：redMod 加载 6.5 MB 的 metadata.json，可能几十秒。
+    let mut warnings = Vec::new();
+    redmod::flush_into(&store, game_dir.as_deref(), &mut warnings);
+    if let Some(first) = warnings.into_iter().next() {
+        // 顺序已经存下来了，只是这一轮编译没成功；用错误把原因带出去，
+        // 前端能看到「顺序已保存但部署失败」，而不是以为顺序丢了。
+        return Err(CommandError::new("REDMOD_DEPLOY_FAILED", first));
     }
     Ok(view)
 }
@@ -3781,6 +3853,7 @@ pub fn run() {
             update_mod,
             get_load_order,
             save_load_order,
+            save_redmod_order,
             export_modlist,
             remove_modlist,
             set_write_modlist,

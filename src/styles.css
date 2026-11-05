@@ -3256,6 +3256,13 @@ pre {
   color: var(--muted-2);
 }
 
+/* 调序按钮：必须显式改回横向——`.redmod-row div` 把行内 div 全设成了 column。 */
+.redmod-row .redmod-actions {
+  flex-direction: row;
+  gap: 2px;
+  margin-left: auto;
+}
+
 /* ------------------------------------------------------------------ */
 /* Diagnostics                                                         */
 /* ------------------------------------------------------------------ */

@@ -516,6 +516,8 @@ function createInitial(): DemoDb {
     stagingDir: `${DEMO_DATA}\\staging`,
     mods,
     loadOrder: [...new Set(loadOrder)],
+    // 演示库里先给「按文件夹名」的默认顺序，调整之后才出现自定义顺序。
+    redmodOrder: [],
     modpacks: [],
     profiles: [
       {
@@ -715,18 +717,30 @@ function buildLoadOrder(state: AppStateData): LoadOrderView {
     if (!seen.has(item.path.toLowerCase())) ordered.push(item);
   }
 
-  const redmods = state.mods
-    .filter((entry) => entry.enabled && entry.layout === "redmod")
-    .sort((a, b) => (a.modFolder ?? a.name).localeCompare(b.modFolder ?? b.name))
-    .map((mod, index) => ({
-      id: `redmod:${mod.id}`,
-      modId: mod.id,
-      modName: mod.name,
-      filename: mod.modFolder ?? mod.name,
-      category: mod.category,
-      deployed: true,
-      order: index,
-    }));
+  // REDmod 顺序：redmodOrder 里登记过的按登记顺序在前，其余按文件夹名补后。
+  const redmodById = new Map(
+    state.mods.filter((entry) => entry.enabled && entry.layout === "redmod").map((mod) => [mod.id, mod]),
+  );
+  const redmodSeq: ModEntry[] = [];
+  for (const id of state.redmodOrder ?? []) {
+    const found = redmodById.get(id);
+    if (found) {
+      redmodSeq.push(found);
+      redmodById.delete(id);
+    }
+  }
+  const redmodRest = [...redmodById.values()].sort((a, b) =>
+    (a.modFolder ?? a.name).localeCompare(b.modFolder ?? b.name),
+  );
+  const redmods = [...redmodSeq, ...redmodRest].map((mod, index) => ({
+    id: `redmod:${mod.id}`,
+    modId: mod.id,
+    modName: mod.name,
+    filename: mod.modFolder ?? mod.name,
+    category: mod.category,
+    deployed: true,
+    order: index,
+  }));
 
   return {
     archives: ordered.map((item, index) => ({
@@ -1635,8 +1649,16 @@ export const mockApi = {
     return buildLoadOrder(db.state);
   },
 
-  async exportModlist(): Promise<ModlistExport> {
-    await sleep(320);
+  async saveRedmodOrder(order: string[]): Promise<LoadOrderView> {
+    // 真实后端这里要跑 redMod 部署，浏览器预览里只模拟那点耗时。
+    await sleep(700);
+    const db = loadDb();
+    db.state.redmodOrder = order;
+    saveDb(db);
+    return buildLoadOrder(db.state);
+  },
+
+  async exportModlist(): Promise<ModlistExport> {    await sleep(320);
     const db = loadDb();
     db.state.settings.writeModlist = true;
     saveDb(db);

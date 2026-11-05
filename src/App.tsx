@@ -1790,6 +1790,32 @@ export default function App() {
     [refresh, showError],
   );
 
+  const handleSaveRedmodOrder = useCallback(
+    async (order: string[]) => {
+      setSavingOrder(true);
+      try {
+        const viewNext = await api.saveRedmodOrder(order);
+        setSnapshot((current) =>
+          current
+            ? {
+                ...current,
+                loadOrder: viewNext,
+                state: { ...current.state, redmodOrder: order },
+              }
+            : current,
+        );
+      } catch (error) {
+        // 顺序可能已经存下来了，只是 redMod 这一轮没编译成功；用刷新拿到真实状态，
+        // 不要回滚成旧顺序让用户以为改动丢了。
+        showError(error, t("err.saveOrder"));
+        await refresh();
+      } finally {
+        setSavingOrder(false);
+      }
+    },
+    [refresh, showError],
+  );
+
   const takeoverModlist = useCallback(
     (thenEnable = true) => {
       setConfirm({
@@ -2829,6 +2855,7 @@ export default function App() {
                 conflicts={snapshot.conflicts}
                 saving={savingOrder}
                 onSave={handleSaveOrder}
+                onSaveRedmodOrder={handleSaveRedmodOrder}
                 onToggleWrite={handleToggleWrite}
                 onExport={handleExport}
                 onRemoveModlist={handleRemoveModlist}

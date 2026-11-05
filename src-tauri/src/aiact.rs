@@ -83,6 +83,15 @@ pub fn apply(store: &Store, action: &AiFixAction) -> AppResult<AiActionReport> {
         }
     };
 
+    // AI 操作同样会改动 REDmod 集合（启用 / 禁用），脏标记在这里统一落地。
+    let mut redmod_notes: Vec<String> = Vec::new();
+    crate::redmod::flush_into(store, data.game_dir.as_deref(), &mut redmod_notes);
+    let message = if redmod_notes.is_empty() {
+        message
+    } else {
+        format!("{message}（{}）", redmod_notes.join("；"))
+    };
+
     Ok(AiActionReport {
         kind: action.kind.clone(),
         target: action.target.clone(),

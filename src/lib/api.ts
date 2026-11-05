@@ -303,9 +303,16 @@ export const api = {
     if (!isTauri) return mockApi.saveLoadOrder(order);
     return call<LoadOrderView>("save_load_order", { order });
   },
+  /**
+   * 保存 REDmod 加载顺序。后端会顺手重跑一次 redMod 部署，
+   * 所以比 archive 的 saveLoadOrder 慢（redMod 要加载 6.5 MB 元数据）。
+   */
+  async saveRedmodOrder(order: string[]): Promise<LoadOrderView> {
+    if (!isTauri) return mockApi.saveRedmodOrder(order);
+    return call<LoadOrderView>("save_redmod_order", { order });
+  },
 
-  async exportModlist(force = false): Promise<ModlistExport> {
-    if (!isTauri) return mockApi.exportModlist();
+  async exportModlist(force = false): Promise<ModlistExport> {    if (!isTauri) return mockApi.exportModlist();
     return call<ModlistExport>("export_modlist", { force });
   },
 
