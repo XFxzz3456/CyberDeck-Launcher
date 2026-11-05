@@ -35,6 +35,10 @@ pub mod category;
 pub mod glossary;
 #[path = "../../src-tauri/src/installer.rs"]
 pub mod installer;
+// installer 的卸载逻辑要按文件类型分级（文本配置被工具重写不算篡改），
+// 判定函数只有一份，放在 environment 里，两个 crate 共用。
+#[path = "../../src-tauri/src/environment.rs"]
+pub mod environment;
 #[path = "../../src-tauri/src/loadorder.rs"]
 pub mod loadorder;
 // loadorder 的 REDmod 展示顺序要对 redmod::normalize_order 求解，先把模块带上。

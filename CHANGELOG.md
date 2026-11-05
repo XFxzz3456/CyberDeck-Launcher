@@ -32,7 +32,7 @@
 | `1.0.0` 批次 10 | 2026-11-03 | SVG 图形徽章、列表接管标签、i18n 门禁转绿 |
 | `1.1.0` | 2026-11-03/04 | 品牌全链路统一、一键发版链路、门禁并发化 7m23s→2m55s |
 | `1.1.1` | 2026-11-04 | 前端缺陷审查 15 条：状态文件原子落盘、卸载凭据保留、Esc 分层、焦点陷阱 |
-| `1.1.1` | 2026-11-06 | 模组库表格化三项；ASI / RED4ext 安装器；Vortex 差距审计与两项 P0 修复 |
+| `1.1.1` | 2026-11-06 | 模组库表格化三项；ASI / RED4ext 安装器；Vortex 差距审计；审计落地（3 条 P0 全修 + 11 条 P1） |
 
 ### 版本号规则
 
@@ -44,37 +44,49 @@
 
 ---
 
-## [1.1.1] - 2026-11-06（模组库表格化 · 安装器补齐 · Vortex 差距审计）
+## [1.1.1] - 2026-11-06（模组库表格化 · 安装器补齐 · Vortex 差距审计 · 审计落地）
 
-> 三个批次合成一条：① 模组库表格化三项（表头排序 / 状态持久化 / 分组维度）；② 按 Vortex 扩展补 ASI 与 RED4ext 安装器；
-> ③ 对 `Nexus-Mods/game-cyberpunk2077` 做五维静态审计并修掉两条 P0。
-> 审计全文见 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`。
+> 四个批次合成一条：① 模组库表格化三项（表头排序 / 状态持久化 / 分组维度）；② 按 Vortex 扩展补 ASI 与 RED4ext 安装器；
+> ③ 对 `Nexus-Mods/game-cyberpunk2077` 做五维静态审计并修掉两条 P0；④ 按审计结论继续落地——3 条 P0 全部修完，
+> 15 条 P1 修 11 条、1 条复核确认已覆盖、3 条顺延（原因见下方「已知边界」）。
+> 审计全文与逐条对账见 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`（第 9 节）。
 
 ### 新增
 
 - **模组库表格化三项**（`552cece`）：点列头排序并显示方向、排序/筛选/视图状态持久化、分组维度扩展。排序规则收敛到 `lib/librarySort.ts`；折叠键带维度前缀，分类维度保留裸值以兼容老 localStorage。工具栏的方向按钮并进排序框内部（独立成块要多占 36px，会把 1440 宽度下的密度档从 `full` 挤到 `compact`，低频按钮被收进「更多」）。
 - **ASI 与 RED4ext 安装布局**（`2010e6c`）：新增 `InstallLayout::Asi` / `Red4ext`。没带 `bin/` 前缀的 `.asi` 落到 `bin/x64/plugins/`；`dinput8.dll` 一类 ASI 加载器代理 dll 落到 `bin/x64/`（必须贴 exe）；散在包根的 `.dll` 落到 `red4ext/plugins/<folder>/`。新增 `strip_shell_dirs` 反复剥「整包共有的壳目录」，`MyAsi/plugins/x.asi` → `bin/x64/plugins/x.asi`。TweakXL / Audioware / ArchiveXL 经核对与 Vortex 同为「同源同目标」，现有 GameRoot 分支已正确落位，不新增枚举，改用测试钉住。
+- **FOMOD 向导包的识别与明确拒绝**（P1-5，`4ea9f7f`）：`detect_strip_prefix` 不再把 `fomod/` 当多余外壳剥掉，`refine_payload_root` 在剥壳前扫描 `fomod/ModuleConfig.xml`，命中即返回 `FOMOD_NOT_SUPPORTED`。错误里给两条出路（手动解压后重打要用的那套 / 用 Vortex 装一次再「收编」）。完整向导仍属独立模块，未做。
+- **前置框架表 4 → 9 项**（P1-15，`e75e59b`）：compat 新增 CET / redscript / Mod Settings / Audioware / Input Loader，并把「单一路径」改成候选列表。新增 `critical` 分级：只有 RED4ext / ArchiveXL / TweakXL / Codeware 缺失才进风险列表，其余只在框架列表里回显状态——保住这个模块原本「不制造焦虑」的设计。
 
 ### 修复
 
-- **换播放集后不重新部署 REDmod**（P0）：`profiles::switch_profile` 只重建 archive 部署，`r6/cache/modded` 里仍是上一个播放集的编译产物，而 `redMod` 察觉不到「集合换了但文件没动」。用户切到 B 进游戏，界面显示 B、实机加载 A，且游戏不报错。现在阶段 5 补一次 `redmod::flush_into`，靠 `mark_dirty` 判定是否真的需要重跑。
-- **`archive/pc/mod/modlist.txt` 格式污染**（P0）：以前首行写 `# Managed by CyberDeck Launcher`、末尾还多一个裸 `\n`，而这是游戏直接读的文件，官方 Vortex 写的是纯文件名。现在只写「纯文件名 + CRLF + 无尾换行」；托管标记挪到同目录旁挂文件 `.cyberdeck-modlist`（内容是上次写出的 FNV-1a 摘要，用户改过就对不上，仍然拒绝覆盖）。同时补上官方的「顺序恰好等于升序就删掉这个文件」行为，老版本带注释头的文件在下次写入时自动迁移。
+- **换播放集后不重新部署 REDmod**（P0-1）：`profiles::switch_profile` 只重建 archive 部署，`r6/cache/modded` 里仍是上一个播放集的编译产物，而 `redMod` 察觉不到「集合换了但文件没动」。用户切到 B 进游戏，界面显示 B、实机加载 A，且游戏不报错。现在阶段 5 补一次 `redmod::flush_into`，靠 `mark_dirty` 判定是否真的需要重跑。
+- **`archive/pc/mod/modlist.txt` 格式污染**（P0-2）：以前首行写 `# Managed by CyberDeck Launcher`、末尾还多一个裸 `\n`，而这是游戏直接读的文件，官方 Vortex 写的是纯文件名。现在只写「纯文件名 + CRLF + 无尾换行」；托管标记挪到同目录旁挂文件 `.cyberdeck-modlist`（内容是上次写出的 FNV-1a 摘要，用户改过就对不上，仍然拒绝覆盖）。同时补上官方的「顺序恰好等于升序就删掉这个文件」行为，老版本带注释头的文件在下次写入时自动迁移。
+- **改配置切断硬链接 → 禁用/卸载删不掉文件**（P0-3，`5bcb959`）：在启动器里改 Mod Settings 会重写 `user.ini`，旧实现走「写临时文件 + `MoveFileExW` 替换」，inode 变了，落地文件与暂存副本脱钩，之后 `same_file_identity` 校验不过直接拒绝删除。现在写之前先 `hardlink_source_for` 比 inode，命中就**原地截断重写**（两边同步、inode 不变）；原地写失败才退回换文件，并把清单里的链接类型降级为 `Copy` 且刷新 size/mtime，保证以后禁用仍能删。
+- **`LAYOUT_AMBIGUOUS` 误杀正常包**（P1-6，`5bcb959`）：同分候选互相嵌套时，外层才是真正的 Mod 根。旧逻辑只要 `best.len() > 1` 就报错，于是「主体 + `Extra/` 可选件」这类极常见的包一个都装不上（连 `bin/x64/plugins/cyber_engine_tweaks` 这种单文件包都会被拒）。现在先剪掉「被其它候选包含」的候选，只剩互不包含的同分根才报错。
+- **启动前不部署 REDmod**（P1-1，`e3ac6a4`）：旧实现只在命令收尾时顺手 flush，改完顺序立刻点启动会带着上一套 `r6/cache/modded` 进游戏。现在 `launch_game` 在 spawn 之前（锁外）调 `sync_before_launch`，失败返回 `REDMOD_SYNC_FAILED` 拦下启动，并在 `notes` 里说明本次重建了缓存。
+- **清缓存失败仍已写 modlist**（P1-2，`e3ac6a4`）：删 `r6/cache/modded` 失败时 modlist 已是新内容，下次 `needs_rebuild` 比较「新 modlist」与「当前集合」必然相等，旧产物就此钉死。现在写 modlist 之前先留原文，`clear_cache` 失败即回滚（原本不存在则删掉）。
+- **配置包缺字段把本机开关改成 false**（P1-10，`f967a40`）：`#[serde(default)] bool` 让「包里没写」和「显式 false」无法区分，一个只带 AI 配置的迷你包会把自动备份、卸载确认、写 modlist 悄悄关掉，`platformPref` / `launchArgs` 还会被清成空串。现在这 7 个字段改 `Option`，只覆盖包里显式存在的键。
+- **读不出的配置静默消失**（P1-11，`cbdddc3`）：六个探测分支都用 `.ok()?` 吞掉「文件在、读不出来 / 格式坏了」，详情页永远显示「没有可调参数」。现在 `ConfigResolver` 带 problems 收集器，`resolve_for_mod` 返回 `(sources, warnings)`，坏文件带路径回显。
+- **部署与 redMod 编译无互斥**（P1-12，`7e2753e`）：`DEPLOY_GATE` 此前只有 redmod 在用。现在 `redmod::deploy_gate()` 开放给 `deploy_mod` / `undeploy_mod`，取锁顺序统一为「先闸门后 state」；`uninstall_mod` 不取（它转调 undeploy，同线程二次取锁会自锁）。
+- **`Copy` 部署的删除不做身份校验**（P1-13，`445486a`）：改过也照删、事后提示一句。收编来的 Copy 尤其危险——母本在 Vortex 目录里，同一路径可能两家都在管。现在按类型分级：二进制资产被改过→拒删并告警（留在清单里可重试）；文本配置/脚本照删（工具本就会重写）。
+- **redscript 探针用旧文件名**（P1-14，`e75e59b`）：新版 redscript 只带 `scc.exe`，`game` / `deps` / `diagnostics` 三处主判据改 `scc.exe`，旧名与 `r6/config/cybercmd/scc.toml` 兜底。此前每个新用户都会看到假红灯。
 - **`enabled_folders` 排序结果不确定**（`d776125`）：`SameMod` / `samemod` 小写后排序键相同，而 `pending` 是 HashMap、迭代顺序每进程不同，去重后保留下来的大小写随机。排序键加原字符串兜底，并补连跑 32 轮的稳定性测试（门禁里就是这样偶发红过一次）。
 - 清掉两处未使用导入（`aiact.rs` 测试模块的 `AppStateData`、`wolvenkit.rs` 测试里的 `safe_join`），编译零警告（`1f701f6`）。
 
 ### 验证
 
-- `cargo test --lib` 290 passed / 0 failed / 2 ignored（新增 10 条：ASI 3 + RED4ext 2 + TweakXL/Audioware 1 + ArchiveXL 1 + modlist 3）
-- `node scripts/gate.mjs` → 38/38 全绿
+- `cargo test --lib`：**297 passed / 0 failed / 2 ignored**（本批新增 12 条：P0-3 端到端 1 + FOMOD 1 + 布局歧义重写 1 + Copy 拒删 1 + 坏 INI 1 + 迷你配置包 1 + 框架表 2 + ASI/RED4ext/TweakXL/ArchiveXL 4）
+- `npm run gate`：**42/42 全绿（合计 375s 工时）**
 - `npx tsc --noEmit` 0 错误；`npm run i18n:check` 0 处缺失
+- 首次门禁曾红一次：`core-tests` 是独立 crate，靠 `#[path]` 逐个 include 生产模块，`installer.rs` 新增的 `crate::environment::is_tool_editable` 在那个 crate 里不存在 → 补模块声明后转绿。这条已写进 `docs/MEMORY-CANON.md` §2.5。
 
 ### 已知边界（审计里列出、本批未修）
 
-- 改配置会切断硬链接 → 之后禁用/卸载拒绝删文件（`modsettings.rs` 的 `MoveFileExW` 覆盖目标使 inode 变更，`installer.rs` 的 `same_file_identity` 校验失败）。修复方案已写在审计报告 P0-3。
-- 启动前不部署 REDmod、部署失败也不拦启动（官方会取消启动）。
-- 混合包按单一布局处理、FOMOD 零支持、`LAYOUT_AMBIGUOUS` 会误杀「主体+可选件」包。
-- 前置探针用旧文件名 `redscript-cli.exe`（新版 redscript 只带 `scc.exe`），会产生假红灯。
-- 部署与 redMod 编译之间没有互斥（`DEPLOY_GATE` 只有 redmod 在用）。
+- **P1-3 Archive 拍平丢子路径**：拍平本身是生态主流写法，改成保结构会让已部署的模组路径整体迁移，风险高于收益。需要先拿真实包样本量化「子路径包」占比。
+- **P1-4 混合包按单枚举丢弃**：MultiType 要重写 `plan_for` 返回结构（单 layout → 多 layout 合并），独立批次；本批已把「被跳过的文件」计入 warning，消掉最伤的静默丢文件。
+- **P1-9 暂停写 modlist 不删文件**：「关开关就删游戏目录文件」是破坏性动作，需要单独的产品决策（删哪些、怎么提示、能否撤销）。
+- **P1-8 四份框架清单收敛**：本批已把 compat 扩到 9 项并统一 `scc.exe` 口径，抽 `framework.rs` 单一注册表仍是结构性重构，留待下一批。
 
 ---
 

@@ -262,4 +262,46 @@ CET 自造目录层（`:1179-1181`）；rar 先解压后校验（`:382→478-484
 
 ---
 
-*本报告所有行号基于 2026-11-06 的仓库状态（HEAD `2010e6c`）。*
+## 9. 修复进度（2026-11-06 收尾批次）
+
+本批次按报告结论改代码，逐条对账如下。判定口径：**已修** = 代码改完 + 有回归用例
+锁住行为；**已覆盖** = 复核确认现有实现已经满足，仅补用例；**顺延** = 本轮不修，
+原因写在备注里。
+
+### P0
+
+| # | 状态 | 落地方式 |
+|---|---|---|
+| P0-1 换播放集不重部署 REDmod | 已修 | `switch_profile` 阶段 5 调 `redmod::flush_into` |
+| P0-2 `modlist.txt` 格式污染 | 已修 | 纯文件名 + CRLF 无尾换行；托管标记挪到旁挂 `.cyberdeck-modlist`（FNV-1a），补升序即删文件与老格式迁移 |
+| P0-3 改配置切断硬链接 | 已修 | `hardlink_source_for` 先比 inode，命中原**地截断重写**；原地写失败才退回换文件并把清单降级为 `Copy`（刷新 size/mtime），保证禁用仍能删 |
+
+### P1
+
+| # | 状态 | 落地方式 |
+|---|---|---|
+| P1-1 启动前不部署 REDmod | 已修 | `launch_game` 在 spawn 前调 `redmod::sync_before_launch`，失败返回 `REDMOD_SYNC_FAILED` 拦下启动 |
+| P1-2 清缓存失败仍写 modlist | 已修 | 写 modlist 前留原文；`clear_cache` 失败即回滚 modlist，保证下次仍判定需重建 |
+| P1-3 Archive 拍平丢子路径 | 顺延 | 拍平本身是生态主流写法（绝大多数 archive 包就是平铺），改成保结构会让**已部署**的模组路径整体迁移，风险高于收益。需要拿真实包样本先量化「子路径包」占比，再决定是否引入迁移 |
+| P1-4 混合包按单枚举丢弃 | 顺延 | 做 MultiType 要重写 `plan_for` 的返回结构（单 layout → 多 layout 合并），属独立批次；本轮「同分祖先优先 + skipped 计入 warning」已消掉最伤的静默丢文件 |
+| P1-5 FOMOD 零支持 | 已修（识别+拒绝） | `detect_strip_prefix` 不再剥 `fomod/`；`refine_payload_root` 剥壳前拦截，报 `FOMOD_NOT_SUPPORTED` 并给两条出路。完整向导仍属独立模块 |
+| P1-6 `LAYOUT_AMBIGUOUS` 误杀 | 已修 | 同分候选里剪掉「被其它候选包含」的，只剩互不包含的同分根才报错；包根目录提示改为「（包根目录）」 |
+| P1-7 兄弟目录静默丢弃 | 已覆盖 | 复核确认 `layout_skipped` 已把这些文件计入 warning（`extra.archive` 用例已断言），无需改代码 |
+| P1-8 4 份框架清单 | 部分 | compat 表已扩到 9 项并支持候选路径，与 game/deps 口径统一到 `scc.exe`；抽 `framework.rs` 单一注册表是结构性重构，留作下一批 |
+| P1-9 暂停写 modlist 不删文件 | 顺延 | 「关开关就删游戏目录里的文件」是破坏性动作，需要单独的产品决策（删哪些、怎么提示、能否撤销），不与本批数据面修复混在一起 |
+| P1-10 配置包缺字段即 false | 已修 | 5 个开关 + `platformPref` + `launchArgs` 改 `Option`，只覆盖包里显式存在的键 |
+| P1-11 读配置错误全吞 | 已修 | `ConfigResolver` 加 problems 收集器，`resolve_for_mod` 返回 `(sources, warnings)`，坏文件带路径回显 |
+| P1-12 部署与 redMod 无互斥 | 已修 | `redmod::deploy_gate()` 开放给 `deploy_mod` / `undeploy_mod`，先闸门后 state 锁；`uninstall_mod` 不取（转调会自锁） |
+| P1-13 `Copy` 删除不做身份校验 | 已修 | 二进制资产被改过→拒删并告警（留在清单里可重试）；文本配置/脚本照删（工具本就会重写） |
+| P1-14 redscript 探针用旧文件名 | 已修 | `game` / `deps` / `diagnostics` 三处主判据改 `scc.exe`，旧名与 `scc.toml` 兜底 |
+| P1-15 compat 框架表缺项 | 已修 | 4 → 9 项（补 CET / redscript / Mod Settings / Audioware / Input Loader），新增 `critical` 分级：只有四件必需品缺失才进风险列表 |
+
+### 验证
+
+- `cargo test --lib`：**297 passed / 0 failed / 2 ignored**
+- `npm run gate`：见 `CHANGELOG.md` 对应条目
+- 新增回归用例 12 条，覆盖 P0-3、P1-5、P1-6、P1-10、P1-11、P1-13、P1-14/15
+
+---
+
+*本报告第 1–8 节的行号基于 2026-11-06 的仓库状态（HEAD `2010e6c`）；第 9 节为当日收尾批次的对账。*

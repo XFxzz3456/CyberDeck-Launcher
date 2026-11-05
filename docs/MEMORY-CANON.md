@@ -82,6 +82,7 @@
 - 文案/字符串批量替换只做字面匹配，**查不出条件分支错位** → 改完必须回读三元/if 上下文。
 - 跑门禁前先停掉手起的 `vite preview`（端口 1420 占用会让 gate 直接判失败）。
 - 截屏验收一律用 playwright 在浏览器预览里做；PowerShell `Add-Type System.Windows.Forms` 会被安全策略拦。
+- **`core-tests/` 是独立 crate，不是 `src-tauri` 的一部分**：它靠 `#[path]` 逐个 include 生产模块。`src-tauri/src/*.rs` 里新增 `crate::xxx::` 引用时，必须同步在 `core-tests/src/lib.rs` 补 `#[path] pub mod xxx;`，否则 `cargo test --lib` 全绿而门禁的 `cargo test（core-tests）` 报 `cannot find xxx in the crate root`（2026-11-06 实际踩到）。
 
 ## 3. 文档落点（三处必须同步）
 
