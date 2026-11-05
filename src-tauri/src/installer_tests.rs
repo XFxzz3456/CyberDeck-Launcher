@@ -837,3 +837,22 @@ fn copy_deployed_binary_is_kept_when_modified_after_deploy() {
         "保留文件必须给出提示：{warnings:?}"
     );
 }
+
+/// 2026-11-06 审计 P1-5：纯净的 FOMOD 向导包（文件全在 fomod/option-* 里）
+/// 过去落到 LAYOUT_UNKNOWN，提示完全帮不到用户；现在要报 FOMOD_NOT_SUPPORTED
+/// 并说清两条出路。
+#[test]
+fn pure_fomod_package_is_rejected_with_guidance() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "Wizard.zip",
+        &[
+            ("fomod/ModuleConfig.xml", b"<config/>".as_slice()),
+            ("fomod/Option-A/archive/a.archive", b"a".as_slice()),
+        ],
+    );
+    let error = install_zip(&fixture.store, zip.to_str().unwrap()).unwrap_err();
+    assert_eq!(error.code, "FOMOD_NOT_SUPPORTED");
+    assert!(error.message.contains("fomod/ModuleConfig.xml"), "{}", error.message);
+    assert!(error.message.contains("收编"), "{}", error.message);
+}

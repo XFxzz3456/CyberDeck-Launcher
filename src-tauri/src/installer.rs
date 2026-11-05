@@ -493,6 +493,20 @@ fn normalize_external_payload(payload: &Path) -> AppResult<usize> {
     Ok(files.iter().filter(|relative| !is_doc_only(relative)).count())
 }
 
+/// FOMOD 安装向导包的统一错误。
+///
+/// 说清三件事：这是什么、为什么装不了、可以怎么绕过去。旧逻辑让它落到
+/// `LAYOUT_UNKNOWN`，用户看到的是一句「无法判断这个模组要装到哪里」，
+/// 完全对不上他手里的包（2026-11-06 审计 P1-5）。
+fn fomod_unsupported() -> CommandError {
+    CommandError::new(
+        "FOMOD_NOT_SUPPORTED",
+        "这个包是 FOMOD 安装向导包（含 fomod/ModuleConfig.xml），安装时需要勾选组件。\n\
+         启动器暂不做向导式安装：请先手动解压，把你要的那套文件重新打成压缩包再导入；\n\
+         或者用 Vortex 安装一次，再用本启动器的「收编」功能接管。",
+    )
+}
+
 /// Locate the real mod root inside a possibly badly wrapped archive.
 ///
 /// Some authors ship `Wrapper/ActualMod/archive/...` or
@@ -502,6 +516,31 @@ fn normalize_external_payload(payload: &Path) -> AppResult<usize> {
 /// contains more than one mod root; silently choosing one would drop files, so
 /// that case is rejected.
 pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
+    // FOMOD 必须在「剥壳」之前拦下。
+    //
+    // 否则下面的打分会把 `fomod/Option-A/` 认成 Mod 根（它里面有 archive/），
+    // 于是一个本该让用户勾选组件的包被**静默装上其中一套**——比报错更坏。
+    for entry in WalkDir::new(payload)
+        .min_depth(1)
+        .max_depth(4)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(payload)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        if relative.ends_with("fomod/moduleconfig.xml") {
+            return Err(fomod_unsupported());
+        }
+    }
+
     let mut candidates: Vec<(i32, usize, PathBuf)> = Vec::new();
     for entry in WalkDir::new(payload)
         .min_depth(0)
@@ -869,6 +908,14 @@ fn detect_strip_prefix(paths: &[String]) -> Option<String> {
         return None;
     }
     let dir = top_dirs.into_iter().next()?;
+    // `fomod/` 绝不能被当成「多余的外壳目录」剥掉。
+    //
+    // 剥掉之后 `fomod/Option-A/` 会变成顶层目录，`refine_payload_root` 再把它认成
+    // Mod 根——一个本该让用户勾选组件的向导包就被静默装上了其中一套（2026-11-06
+    // 审计 P1-5）。保留它，让 refine 的 FOMOD 守卫能看见并明确拒绝。
+    if dir.eq_ignore_ascii_case("fomod") {
+        return None;
+    }
     if RECOGNIZED_ROOTS
         .iter()
         .any(|root| root.eq_ignore_ascii_case(&dir))
@@ -1028,6 +1075,14 @@ pub(crate) fn detect_layout(payload: &Path) -> AppResult<InstallLayout> {
     }
     if lower.iter().any(|path| path.ends_with(".dll")) {
         return Ok(InstallLayout::Red4ext);
+    }
+
+    // ⑥ FOMOD 安装向导包（第二道防线）。
+    //
+    // 正常路径已经在 `refine_payload_root` 里拦掉了；这里兜住「直接对某个目录
+    // 调 detect_layout」的路径（诊断工具 / 单测），免得又回到含糊的 LAYOUT_UNKNOWN。
+    if lower.iter().any(|path| path.ends_with("fomod/moduleconfig.xml")) {
+        return Err(fomod_unsupported());
     }
 
     Err(CommandError::new(
