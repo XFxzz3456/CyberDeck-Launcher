@@ -221,7 +221,7 @@ fn reorder(store: &Store, action: &AiFixAction, position: &str) -> AppResult<Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AppStateData, DeployedFile, InstallLayout, LinkType, ModEntry};
+    use crate::schema::{DeployedFile, InstallLayout, LinkType, ModEntry};
     use std::path::Path;
 
     fn temp_store(tag: &str) -> (PathBuf, Store) {

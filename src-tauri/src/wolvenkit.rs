@@ -560,7 +560,6 @@ mod tests {
 
     #[test]
     fn archive_refs_resolve_through_staging_first_then_game_dir() {
-        use crate::store::safe_join;
         let root = tmp_dir("resolve");
         let staging_mod = root.join("staging").join("mods").join("m1");
         let game = root.join("game");
