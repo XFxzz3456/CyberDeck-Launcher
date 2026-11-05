@@ -1582,6 +1582,9 @@ pub(crate) fn set_categories(
 }
 
 pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<DeployReport> {
+    // 与 redMod 编译串行（审计 P1-12）：redMod 正在遍历 mods/ 时往里写文件，
+    // 编出来的 r6/cache/modded 会半新半旧。先取闸门再锁 state，顺序与 redmod::sync 一致。
+    let _gate = crate::redmod::deploy_gate();
     let game_info = validate_game_dir(Path::new(&game.root))?;
     let game_root = PathBuf::from(&game_info.root);
     let mut state = store.data.lock().expect("state mutex poisoned");
@@ -2175,6 +2178,9 @@ fn remove_deployed_file(
 }
 
 pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<Vec<String>> {
+    // 同 deploy_mod：卸载也要和 redMod 编译串行。注意 `uninstall_mod` 会转调这里，
+    // 所以它自己不取闸门，否则同一线程二次取锁直接自锁。
+    let _gate = crate::redmod::deploy_gate();
     if !game_root.is_dir() {
         return Err(CommandError::new(
             "GAME_DIR_MISSING",

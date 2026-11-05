@@ -419,7 +419,7 @@ pub fn should_run(view: &RedmodView, game_root: &Path) -> bool {
 ///
 /// 调用约定：**不要在持有 store 锁时调用**（redMod 可能跑几十秒）。
 pub fn sync(view: &RedmodView, game_root: &Path) -> AppResult<SyncReport> {
-    let _gate = DEPLOY_GATE.lock().unwrap_or_else(|err| err.into_inner());
+    let _gate = deploy_gate();
 
     let folders = enabled_folders(view);
     let modlist_path = game_root.join(MODLIST_RELATIVE);
@@ -464,6 +464,20 @@ pub fn sync(view: &RedmodView, game_root: &Path) -> AppResult<SyncReport> {
         mod_count: folders.len(),
         rebuilt,
     })
+}
+
+/// 部署互斥闸门：**部署 / 卸载与 redMod 编译必须串行**。
+///
+/// 为什么需要：redMod 会遍历 `mods/` 下全部 REDmod 目录并产出 `r6/cache/modded`。
+/// 如果这期间有别的线程正在往里建链接 / 删文件，编译产物就是半新半旧的——游戏
+/// 加载到的既不是上一套也不是这一套（2026-11-06 审计 P1-12）。
+///
+/// 取锁顺序约定（避免死锁）：**先取闸门，再取 store 锁**。redmod::sync 只在闸门内
+/// 做文件操作，不碰 store 锁；installer 的 deploy / undeploy 反过来先取闸门再锁
+/// state。唯一例外是 `uninstall_mod`，它只是转调 `undeploy_mod`，自己不取闸门
+/// （否则同一线程二次取锁会自锁）。
+pub(crate) fn deploy_gate() -> std::sync::MutexGuard<'static, ()> {
+    DEPLOY_GATE.lock().unwrap_or_else(|err| err.into_inner())
 }
 
 /// 启动游戏前的强制同步：REDmod 顺序 / 集合变了就必须先重建缓存。
