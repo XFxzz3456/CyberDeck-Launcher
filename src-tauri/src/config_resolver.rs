@@ -120,12 +120,28 @@ pub struct GlobalConfigGroups {
 /// 配置解析器。持有游戏根目录，所有读取都限制在它下面。
 pub struct ConfigResolver {
     game_dir: PathBuf,
+    /// 解析过程中遇到的「文件在、但读不出来 / 格式坏了」。
+    ///
+    /// 以前这些错误被 `.ok()?` 静默吞掉，于是详情页永远显示「这个 Mod 没有可调
+    /// 参数」，用户完全不知道自己装的 Mod 配置文件是坏的（2026-11-06 审计 P1-11）。
+    /// 现在统一收集起来，作为 warnings 回传，抽屉照常能打开。
+    problems: std::cell::RefCell<Vec<String>>,
 }
 
 impl ConfigResolver {
     pub fn new(game_dir: impl Into<PathBuf>) -> Self {
         Self {
             game_dir: game_dir.into(),
+            problems: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    /// 记一条「读得到但解析不了」的问题，并继续找下一个来源。
+    fn note(&self, message: String) {
+        let mut problems = self.problems.borrow_mut();
+        // 同一个文件可能被多个探测分支撞到，去重避免提示刷屏。
+        if !problems.iter().any(|item| item == &message) {
+            problems.push(message);
         }
     }
 
@@ -135,11 +151,13 @@ impl ConfigResolver {
         &self.game_dir
     }
 
-    /// 返回某个 Mod 专属的配置来源。空 Vec 表示「这个 Mod 没有可调参数」。
+    /// 返回某个 Mod 专属的配置来源 + 解析过程中产生的问题。
     ///
     /// 顺序即优先级：同一个 Mod 可能同时命中多处（比如既有 user.ini 段、又带自己的
     /// settings.json），全部返回，前端按来源分组展示。
-    pub fn resolve_for_mod(&self, entry: &ModEntry) -> Result<Vec<ConfigSource>, String> {
+    ///
+    /// 不再返回 `Result`：单个来源读坏了不该让整页失败，问题一律走第二返回值。
+    pub fn resolve_for_mod(&self, entry: &ModEntry) -> (Vec<ConfigSource>, Vec<String>) {
         let candidates = candidate_names(entry);
         let mut sources = Vec::new();
 
@@ -170,7 +188,8 @@ impl ConfigResolver {
                 sources.push(source);
             }
         }
-        Ok(sources)
+        let problems = self.problems.borrow().clone();
+        (sources, problems)
     }
 
     /// 框架级全局配置，供设置页的「框架配置」区块使用。
@@ -204,8 +223,20 @@ impl ConfigResolver {
         ];
         candidates_paths.retain(|path| path.is_file());
         let path = candidates_paths.into_iter().next()?;
-        let text = read_text(&path).ok()?;
-        let ini = Ini::load_from_str(text.trim_start_matches('\u{feff}')).ok()?;
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.note(format!("读不到 {}：{err}", path.display()));
+                return None;
+            }
+        };
+        let ini = match Ini::load_from_str(text.trim_start_matches('\u{feff}')) {
+            Ok(ini) => ini,
+            Err(err) => {
+                self.note(format!("{} 不是合法的 INI：{err}", path.display()));
+                return None;
+            }
+        };
 
         let mut fields = Vec::new();
         for (section, properties) in &ini {
@@ -304,9 +335,18 @@ impl ConfigResolver {
         }
 
         let path = target?;
-        let text = read_text(&path).ok()?;
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.note(format!("读不到 {}：{err}", path.display()));
+                return None;
+            }
+        };
         // 语法自检：能解析才展示，解析不了就明确告诉玩家文件坏了。
         let readable = serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')).is_ok();
+        if !readable {
+            self.note(format!("{} 不是合法的 JSON，已按只读原文展示。", path.display()));
+        }
         let raw = if text.chars().count() > MAX_RAW_CHARS {
             None
         } else {
@@ -385,9 +425,20 @@ impl ConfigResolver {
         if !after.contains('/') {
             return None;
         }
-        let text = read_text(&path).ok()?;
-        let value =
-            serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')).ok()?;
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.note(format!("读不到 {}：{err}", path.display()));
+                return None;
+            }
+        };
+        let value = match serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')) {
+            Ok(value) => value,
+            Err(err) => {
+                self.note(format!("{} 不是合法的 JSON：{err}", path.display()));
+                return None;
+            }
+        };
         let mut fields = Vec::new();
         json_scalar_fields(&value, "", &mut fields);
         if fields.is_empty() {
@@ -412,8 +463,20 @@ impl ConfigResolver {
     fn audioxl_for(&self, entry: &ModEntry) -> Option<ConfigSource> {
         let (_rel, path) =
             self.find_deployed(entry, |lower| lower.contains("audioxl/") && lower.ends_with(".ini"))?;
-        let text = read_text(&path).ok()?;
-        let ini = Ini::load_from_str(text.trim_start_matches('\u{feff}')).ok()?;
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.note(format!("读不到 {}：{err}", path.display()));
+                return None;
+            }
+        };
+        let ini = match Ini::load_from_str(text.trim_start_matches('\u{feff}')) {
+            Ok(ini) => ini,
+            Err(err) => {
+                self.note(format!("{} 不是合法的 INI：{err}", path.display()));
+                return None;
+            }
+        };
         let fields = ini_fields(&ini);
         if fields.is_empty() {
             return None;
@@ -445,9 +508,20 @@ impl ConfigResolver {
         if !path.is_file() {
             return None;
         }
-        let text = read_text(&path).ok()?;
-        let value =
-            serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')).ok()?;
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(err) => {
+                self.note(format!("读不到 {}：{err}", path.display()));
+                return None;
+            }
+        };
+        let value = match serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')) {
+            Ok(value) => value,
+            Err(err) => {
+                self.note(format!("{} 不是合法的 JSON：{err}", path.display()));
+                return None;
+            }
+        };
         let mut fields = Vec::new();
         json_scalar_fields(&value, "", &mut fields);
         if fields.is_empty() {
@@ -944,15 +1018,10 @@ pub fn mod_config(store: &Store, mod_id: &str) -> AppResult<ModConfigView> {
     let (game_root, entry) = target_of(store, mod_id)?;
     let resolver = ConfigResolver::new(game_root);
     let mut warnings = Vec::new();
-    // 解析失败不该让整个抽屉打不开：退回「没有可调配置」并留下 warning，
-    // 详情页就能显示「这个 Mod 的配置文件读不出来」而不是一个弹窗错误。
-    let sources = match resolver.resolve_for_mod(&entry) {
-        Ok(sources) => sources,
-        Err(err) => {
-            warnings.push(err);
-            Vec::new()
-        }
-    };
+    // 解析失败不该让整个抽屉打不开：有问题就退回「没有可调配置」并留下 warning，
+    // 详情页会显示「这个 Mod 的配置文件读不出来」而不是一个弹窗错误。
+    let (sources, problems) = resolver.resolve_for_mod(&entry);
+    warnings.extend(problems);
     Ok(ModConfigView {
         mod_id: entry.id,
         sources,
@@ -977,9 +1046,7 @@ pub fn save_field(
     validate_write(value)?;
     let (game_root, entry) = target_of(store, mod_id)?;
     let resolver = ConfigResolver::new(&game_root);
-    let sources = resolver
-        .resolve_for_mod(&entry)
-        .map_err(|err| CommandError::new("CONFIG_RESOLVE", err))?;
+    let (sources, _) = resolver.resolve_for_mod(&entry);
     let source = sources
         .iter()
         .find(|item| item.id == source_id)
@@ -1201,7 +1268,7 @@ mod tests {
 
         let resolver = ConfigResolver::new(&game);
         let entry = mod_entry("Better Vehicle Handling");
-        let sources = resolver.resolve_for_mod(&entry).unwrap();
+        let (sources, _) = resolver.resolve_for_mod(&entry);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].id, "mod_settings");
         let keys: Vec<&SettingField> = sources[0].fields.iter().collect();
@@ -1213,12 +1280,39 @@ mod tests {
         fs::remove_dir_all(&root).ok();
     }
 
+    /// 2026-11-06 审计 P1-11：坏掉的 user.ini 不能静默当成「没有可调参数」，
+    /// 必须带一条 warning 回前端，否则用户永远不知道自己的配置文件是坏的。
+    #[test]
+    fn broken_user_ini_is_reported_as_a_warning() {
+        let (root, game) = fixture("broken-ini");
+        let ini_dir = game
+            .join("bin")
+            .join("x64")
+            .join("plugins")
+            .join("cyber_engine_tweaks")
+            .join("mods")
+            .join("ModSettings");
+        fs::create_dir_all(&ini_dir).unwrap();
+        // 半截的 section：没有右括号，ini crate 解析必失败。
+        fs::write(ini_dir.join("user.ini"), "[BetterVehicleHandling\nreduce_drift=true\n").unwrap();
+
+        let resolver = ConfigResolver::new(&game);
+        let entry = mod_entry("Better Vehicle Handling");
+        let (sources, warnings) = resolver.resolve_for_mod(&entry);
+        assert!(sources.is_empty(), "坏文件不该被当成可调配置");
+        assert!(
+            warnings.iter().any(|line| line.contains("user.ini")),
+            "必须报出是哪个文件坏了：{warnings:?}"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
     #[test]
     fn a_pure_content_mod_has_no_config() {
         let (root, game) = fixture("none");
         let resolver = ConfigResolver::new(&game);
         let entry = mod_entry("ArchiveXL");
-        let sources = resolver.resolve_for_mod(&entry).unwrap();
+        let (sources, _) = resolver.resolve_for_mod(&entry);
         assert!(sources.is_empty(), "内容层 Mod 不应该被造出配置项");
         fs::remove_dir_all(&root).ok();
     }
@@ -1251,7 +1345,7 @@ mod tests {
             size: None,
             modified_time: None,
         });
-        let sources = resolver.resolve_for_mod(&entry).unwrap();
+        let (sources, _) = resolver.resolve_for_mod(&entry);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].id, "native_interactions");
         assert!(!sources[0].editable, "Native Interactions 默认只读");
