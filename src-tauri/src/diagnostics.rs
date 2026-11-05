@@ -97,7 +97,7 @@ pub fn build_report(_store: &Store, state: &AppStateData, game: Option<&GameInfo
             id: "redscript-missing".to_string(),
             severity: "error".to_string(),
             title: "redscript 模组已启用，但编译器缺失".to_string(),
-            detail: "没有找到 engine\\tools\\redscript-cli.exe，r6\\scripts 下的 .reds 不会被编译。"
+            detail: "没有找到 engine\\tools\\scc.exe（旧版为 redscript-cli.exe），r6\\scripts 下的 .reds 不会被编译。"
                 .to_string(),
             action: Some("frameworks".to_string()),
         });

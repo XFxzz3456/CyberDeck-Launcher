@@ -14,6 +14,9 @@
 //! - 目录在但主文件不在（升级中断、被杀软删 dll）→ 记为风险（黄），
 //!   这种"半装"状态是玩家最容易踩、也最难自己看出来的坑。
 //!
+//! 除这四件之外，CET / redscript / Mod Settings / Audioware / Input Loader
+//! 也一并体检并回显状态，但它们属于「装了才有需求」，缺失不进风险列表。
+//!
 //! 刻意不做的事：不判「前置版本过旧」。判断过旧需要一份随游戏版本走的
 //! 框架最低版本基线（要联网且会被上游改），拍脑袋写死数字等于制造假警报。
 //! 报告里仍然回显每个框架的版本号，让用户和作者对话时有据可查。
@@ -29,16 +32,24 @@ use crate::schema::AppResult;
 
 /// 一个核心前置在游戏目录里的落点（相对路径）。
 ///
-/// 只列「玩家一定会装」的四件：RED4ext 是所有原生插件的基础，ArchiveXL /
-/// TweakXL / Codeware 覆盖了 90% 以上的现代 Mod。CET 与 redscript 属于
-/// 「装了才有需求」，缺了不构成风险，因此不进这张表。
+/// 前四件是「玩家一定会装」的：RED4ext 是所有原生插件的基础，ArchiveXL /
+/// TweakXL / Codeware 覆盖了 90% 以上的现代 Mod，缺了必然出问题，所以
+/// `critical = true`，缺失直接进风险列表。
+///
+/// 后四件（audioware / input_loader / Mod Settings / CET / redscript）属于
+/// 「装了才有需求」：缺少它们不构成风险，只把状态显示在框架列表里，让用户
+/// 想知道的时候能查。这与模块整体的「防焦虑」口径一致。
 struct CoreFramework {
     id: &'static str,
     name: &'static str,
-    /// 目录（判定"装没装"的强证据）。
+    /// 判定「装没装完」的候选主文件，按序取第一个命中的。
+    /// 一个框架跨多代发行版时文件名会变（redscript 的 scc.exe 就是），
+    /// 候选列表避免把新版判成缺失。
+    files: &'static [&'static [&'static str]],
+    /// 判定「装没装」的目录；目录在、候选文件全不在 = 半装。
     dir: &'static [&'static str],
-    /// 主文件（判定"装得完不完整"）。
-    file: &'static [&'static str],
+    /// 缺失是否构成风险。
+    critical: bool,
     note: &'static str,
 }
 
@@ -46,30 +57,91 @@ const CORE_FRAMEWORKS: &[CoreFramework] = &[
     CoreFramework {
         id: "red4ext",
         name: "RED4ext",
+        files: &[&["red4ext", "RED4ext.dll"]],
         dir: &["red4ext"],
-        file: &["red4ext", "RED4ext.dll"],
+        critical: true,
         note: "所有原生插件框架的运行基础",
     },
     CoreFramework {
         id: "archivexl",
         name: "ArchiveXL",
+        files: &[&["red4ext", "plugins", "ArchiveXL", "ArchiveXL.dll"]],
         dir: &["red4ext", "plugins", "ArchiveXL"],
-        file: &["red4ext", "plugins", "ArchiveXL", "ArchiveXL.dll"],
+        critical: true,
         note: "扩展 archive 加载能力（依赖 RED4ext）",
     },
     CoreFramework {
         id: "tweakxl",
         name: "TweakXL",
+        files: &[&["red4ext", "plugins", "TweakXL", "TweakXL.dll"]],
         dir: &["red4ext", "plugins", "TweakXL"],
-        file: &["red4ext", "plugins", "TweakXL", "TweakXL.dll"],
+        critical: true,
         note: "TweakDB 修改支持（依赖 RED4ext）",
     },
     CoreFramework {
         id: "codeware",
         name: "Codeware",
+        files: &[&["red4ext", "plugins", "Codeware", "Codeware.dll"]],
         dir: &["red4ext", "plugins", "Codeware"],
-        file: &["red4ext", "plugins", "Codeware", "Codeware.dll"],
+        critical: true,
         note: "许多功能模组依赖的脚本库",
+    },
+    CoreFramework {
+        id: "cet",
+        name: "Cyber Engine Tweaks",
+        files: &[
+            &[
+                "bin",
+                "x64",
+                "plugins",
+                "cyber_engine_tweaks",
+                "cyber_engine_tweaks.dll",
+            ],
+            &["bin", "x64", "plugins", "cyber_engine_tweaks", "init.lua"],
+        ],
+        dir: &["bin", "x64", "plugins", "cyber_engine_tweaks"],
+        critical: false,
+        note: "CET 控制台 / Lua 模组运行时",
+    },
+    CoreFramework {
+        id: "redscript",
+        name: "redscript",
+        // 新版编译器叫 scc.exe，旧发行版叫 redscript-cli.exe；只认旧名是常见的假红灯来源。
+        files: &[
+            &["engine", "tools", "scc.exe"],
+            &["engine", "tools", "redscript-cli.exe"],
+            &["r6", "config", "cybercmd", "scc.toml"],
+        ],
+        dir: &["engine", "tools"],
+        critical: false,
+        note: "编译 r6/scripts 下的 .reds 脚本",
+    },
+    CoreFramework {
+        id: "modsettings",
+        name: "Mod Settings",
+        files: &[
+            &["red4ext", "plugins", "mod_settings", "ModSettings.dll"],
+            &["red4ext", "plugins", "mod_settings", "mod_settings.dll"],
+        ],
+        dir: &["red4ext", "plugins", "mod_settings"],
+        critical: false,
+        note: "模组统一设置菜单",
+    },
+    CoreFramework {
+        id: "audioware",
+        name: "Audioware",
+        files: &[&["red4ext", "plugins", "audioware", "audioware.dll"]],
+        dir: &["red4ext", "plugins", "audioware"],
+        critical: false,
+        note: "自定义音频 / 语音事件支持",
+    },
+    CoreFramework {
+        id: "input_loader",
+        name: "Input Loader",
+        files: &[&["red4ext", "plugins", "input_loader", "input_loader.dll"]],
+        dir: &["red4ext", "plugins", "input_loader"],
+        critical: false,
+        note: "输入映射扩展（依赖 RED4ext）",
     },
 ];
 
@@ -129,21 +201,26 @@ fn join(root: &Path, parts: &[&str]) -> PathBuf {
 /// 检查一个前置。返回体检结果 + 可能的风险项。
 fn probe(root: &Path, spec: &CoreFramework) -> (CompatFramework, Option<CompatRisk>) {
     let dir = join(root, spec.dir);
-    let file = join(root, spec.file);
-    let shown = file.to_string_lossy().to_string();
+    let candidates: Vec<PathBuf> = spec.files.iter().map(|segs| join(root, segs)).collect();
     let dir_exists = dir.is_dir();
-    let file_exists = file.is_file();
+    let found = candidates.iter().find(|path| path.is_file());
+    // 回显路径优先给"实际命中的那个"，没命中就给首个候选（用户照着它核对目录）。
+    let shown = found
+        .map(|path| path.to_string_lossy().to_string())
+        .or_else(|| {
+            candidates
+                .first()
+                .map(|path| path.to_string_lossy().to_string())
+        })
+        .unwrap_or_default();
     // 目录本身不是文件，没有版本资源可读；只在主文件存在时问一次。
-    let version = if file_exists {
-        crate::game::file_version(&file)
-    } else {
-        None
-    };
+    let version = found.and_then(|path| crate::game::file_version(path));
 
-    let (status, risk) = if file_exists {
+    let (status, risk) = if found.is_some() {
         ("ok", None)
     } else if dir_exists {
         // 目录在、主文件不在：升级中断、被安全软件删 dll、或手动删了一半。
+        // 半装对任何框架都是真问题（框架自己起不来），无论 critical 与否都报。
         (
             "broken",
             Some(CompatRisk {
@@ -154,7 +231,7 @@ fn probe(root: &Path, spec: &CoreFramework) -> (CompatFramework, Option<CompatRi
                 detail: format!("目录里找不到 {shown}。建议重新安装 {} 后重启游戏。", spec.name),
             }),
         )
-    } else {
+    } else if spec.critical {
         (
             "missing",
             Some(CompatRisk {
@@ -165,6 +242,9 @@ fn probe(root: &Path, spec: &CoreFramework) -> (CompatFramework, Option<CompatRi
                 detail: format!("{}。期望路径：{shown}", spec.note),
             }),
         )
+    } else {
+        // 「装了才有需求」的框架：只回显状态，不进风险列表，避免制造焦虑。
+        ("missing", None)
     };
 
     (
@@ -240,7 +320,8 @@ mod tests {
         fs::write(path, b"stub").unwrap();
     }
 
-    /// 四件前置齐全 → healthy，且风险列表必须是空的（这是"防焦虑"的核心）。
+    /// 四件核心前置齐全 → healthy，且风险列表必须是空的（这是"防焦虑"的核心）。
+    /// 注意：非核心框架（CET / redscript / …）此时缺着，但**不该**产生风险。
     #[test]
     fn all_core_frameworks_installed_is_healthy() {
         let root = fixture("healthy");
@@ -250,7 +331,8 @@ mod tests {
         touch(&root.join("red4ext").join("plugins").join("Codeware").join("Codeware.dll"));
 
         let report = scan(Some(&root), Some("3.0.88.46235")).unwrap();
-        assert_eq!(report.scanned, 4);
+        assert_eq!(report.scanned, CORE_FRAMEWORKS.len());
+        assert_eq!(report.frameworks.len(), CORE_FRAMEWORKS.len());
         assert!(report.risks.is_empty(), "齐全时不该有任何风险：{report:?}");
         assert!(report.healthy);
         assert_eq!(report.target_label, "2.5");
@@ -258,12 +340,47 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// 空目录 → 四个缺失，且结论不 healthy；每个风险都带期望路径。
+    /// 新版 redscript 只带 scc.exe（不再有 redscript-cli.exe），必须判成已安装。
+    #[test]
+    fn new_redscript_scc_is_recognized() {
+        let root = fixture("scc");
+        touch(&root.join("engine").join("tools").join("scc.exe"));
+        let report = scan(Some(&root), None).unwrap();
+        let redscript = report
+            .frameworks
+            .iter()
+            .find(|item| item.id == "redscript")
+            .expect("应检查 redscript");
+        assert_eq!(redscript.status, "ok");
+        assert!(redscript.path.to_lowercase().ends_with("scc.exe"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 非核心框架缺失只回显状态，不进风险列表。
+    #[test]
+    fn optional_framework_missing_is_not_a_risk() {
+        let root = fixture("optional");
+        let report = scan(Some(&root), None).unwrap();
+        assert!(report.risks.iter().all(|item| {
+            CORE_FRAMEWORKS
+                .iter()
+                .any(|spec| spec.id == item.id && spec.critical)
+        }));
+        let cet = report
+            .frameworks
+            .iter()
+            .find(|item| item.id == "cet")
+            .expect("应检查 CET");
+        assert_eq!(cet.status, "missing");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 空目录 → 四个核心缺失，且结论不 healthy；每个风险都带期望路径。
     #[test]
     fn empty_dir_reports_missing_frameworks_with_paths() {
         let root = fixture("empty");
         let report = scan(Some(&root), None).unwrap();
-        assert_eq!(report.scanned, 4);
+        assert_eq!(report.scanned, CORE_FRAMEWORKS.len());
         assert_eq!(report.risks.len(), 4);
         assert!(!report.healthy);
         assert!(report.risks.iter().all(|item| item.severity == "risk"));

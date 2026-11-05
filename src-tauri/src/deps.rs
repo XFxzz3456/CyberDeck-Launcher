@@ -121,7 +121,8 @@ const CORE_FILES: &[(&str, &[&str])] = &[
     ("red4ext", &["red4ext.dll"]),
     ("cet", &["cyber_engine_tweaks.dll"]),
     ("modsettings", &["modsettings.dll"]),
-    ("redscript", &["redscript-cli.exe"]),
+    // redscript 的编译器在 2026 年改名为 scc.exe；旧名保留，避免老包漏判。
+    ("redscript", &["scc.exe", "redscript-cli.exe"]),
 ];
 
 /// 名称 → 框架 id 的别名表。元数据里写成什么都见过：`ArchiveXL`、`archive xl`、

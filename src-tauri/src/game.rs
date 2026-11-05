@@ -444,8 +444,13 @@ pub fn framework_statuses(root: &Path) -> Vec<FrameworkStatus> {
             "redscript",
             "redscript",
             &[
-                // 官方安装包落在 engine/tools；有 CLI 就一定能编译
+                // 新版 redscript 的编译器已改名 scc.exe（官方扩展亦以它为准），
+                // 排在旧名之前，否则装上最新版反而被判成缺失（假红灯）。
+                &["engine", "tools", "scc.exe"][..],
+                // 老发行包仍叫 redscript-cli.exe，保留作兼容兜底。
                 &["engine", "tools", "redscript-cli.exe"][..],
+                // scc 的配置存在即说明装过（个别版本不带 exe，走全局安装）。
+                &["r6", "config", "cybercmd", "scc.toml"][..],
                 // 只认 CLI 会漏判：绝大多数玩家是用 Vortex/手动把 .reds 标准库解到
                 // r6/scripts 的，CLI 往往不在（发行包版本不同）。
                 &["r6", "scripts"][..],
