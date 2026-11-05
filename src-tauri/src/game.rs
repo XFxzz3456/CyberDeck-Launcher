@@ -1564,8 +1564,10 @@ mod framework_tests {
         let redscript = list.iter().find(|item| item.id == "redscript").unwrap();
         assert!(!redscript.installed);
         let shown = redscript.path.clone().unwrap_or_default();
+        // 首选路径跟着官方口径走：新版 redscript 的编译器是 engine\tools\scc.exe。
+        // 旧名 redscript-cli.exe 只在「已装老版本」时才会被探测命中。
         assert!(
-            shown.to_lowercase().contains("redscript-cli.exe"),
+            shown.to_lowercase().contains("scc.exe"),
             "未装时应回显首选路径，实际: {shown}"
         );
         let _ = fs::remove_dir_all(root);
