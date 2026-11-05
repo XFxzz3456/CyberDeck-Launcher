@@ -423,21 +423,31 @@ pub fn sync(view: &RedmodView, game_root: &Path) -> AppResult<SyncReport> {
 
     let folders = enabled_folders(view);
     let modlist_path = game_root.join(MODLIST_RELATIVE);
+    // 先留一份原文：清缓存失败时要把 modlist 回滚，否则下次判定的基准就变成
+    // 「刚写进去的新内容」，与新集合必然相等 → `needs_rebuild` 永远 false，
+    // 于是 r6/cache/modded 里的旧产物一直留着（2026-11-06 审计 P1-2）。
+    let previous_bytes = fs::read(&modlist_path).ok();
     let previous = read_modlist(&modlist_path);
     write_modlist(game_root, &folders)?;
 
     // 「文件读不出来」时必须重建：已部署顺序不可知，redMod 可能沿用错误产物。
     let rebuilt = match &previous {
-        None => {
-            clear_cache(game_root)?;
-            true
-        }
-        Some(list) if needs_rebuild(list, &folders) => {
-            clear_cache(game_root)?;
-            true
-        }
-        _ => false,
+        None => true,
+        Some(list) => needs_rebuild(list, &folders),
     };
+    if rebuilt {
+        if let Err(err) = clear_cache(game_root) {
+            match &previous_bytes {
+                Some(bytes) => {
+                    let _ = fs::write(&modlist_path, bytes);
+                }
+                None => {
+                    let _ = fs::remove_file(&modlist_path);
+                }
+            }
+            return Err(err);
+        }
+    }
 
     let outcome = run_deploy(game_root)?;
     if outcome.exit_code != Some(0) {
@@ -454,6 +464,22 @@ pub fn sync(view: &RedmodView, game_root: &Path) -> AppResult<SyncReport> {
         mod_count: folders.len(),
         rebuilt,
     })
+}
+
+/// 启动游戏前的强制同步：REDmod 顺序 / 集合变了就必须先重建缓存。
+///
+/// 与 `flush_into` 的分工很明确：那个是「命令收尾」，失败只记 warning，因为
+/// 模组文件已经就位、REDmod 编译失败不该连带把「装了个 archive」报成错误；
+/// 这个在**启动前**跑，`r6/cache/modded` 落后于 `V2077/modlist.txt` 时游戏会按
+/// 上一套加载，而且它自己不报错——玩家只会觉得"我明明启用了却不生效"。所以
+/// 这里失败必须上抛，由调用方拦下启动。
+///
+/// 返回值 = 是否真的重建了缓存（供界面拼一条说明）。
+pub fn sync_before_launch(store: &Store, game_root: &Path) -> AppResult<bool> {
+    match flush(store, game_root)? {
+        Some(report) => Ok(report.rebuilt),
+        None => Ok(false),
+    }
 }
 
 /// 命令收尾：把待同步的 REDmod 变化真正落到 `r6/cache/modded`，结果并入 warnings。

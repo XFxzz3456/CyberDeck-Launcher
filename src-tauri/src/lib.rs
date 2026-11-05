@@ -3053,7 +3053,23 @@ fn launch_game(store: State<'_, Store>) -> AppResult<LaunchResult> {
     // #6 用户自定义启动参数：解析在 game::parse_launch_args（白名单校验），
     // 校验失败直接报错不启动，绝不把未校验的字符串交给进程。
     let custom_args = game::parse_launch_args(&data.settings.launch_args)?;
-    let result = game::launch_game(
+
+    // REDmod 缓存必须和当前播放集一致（2026-11-06 审计 P1-1）。
+    // 旧实现只在命令收尾时顺手同步，于是「改完顺序直接点启动」会带着上一套
+    // `r6/cache/modded` 进游戏：游戏不报错，玩家只觉得启用的东西不生效。
+    // 这里同步失败就拦下启动——带着错缓存进游戏比启动失败更难排查。
+    // 锁已在上面释放，redMod 是外部进程，不占 state 锁。
+    let mut redmod_rebuilt = false;
+    if redmod_enabled {
+        redmod_rebuilt = redmod::sync_before_launch(&store, Path::new(&game.root)).map_err(|err| {
+            CommandError::new(
+                "REDMOD_SYNC_FAILED",
+                format!("REDmod 缓存同步失败，已阻止启动：{}", err.message),
+            )
+        })?;
+    }
+
+    let mut result = game::launch_game(
         &game,
         &data.settings.launch_method,
         redmod_enabled,
@@ -3062,6 +3078,11 @@ fn launch_game(store: State<'_, Store>) -> AppResult<LaunchResult> {
         &data.settings.launch_gpu_pref,
         &data.settings.launch_pre_command,
     )?;
+    if redmod_rebuilt {
+        result
+            .notes
+            .push("REDmod 加载顺序有变化，已在启动前重建缓存。".to_string());
+    }
 
     let mut data = store.data.lock().expect("state mutex poisoned");
     data.last_launch = Some(store::now_iso());
