@@ -78,6 +78,15 @@
 
 ---
 
+## 0.5 2026-11-06 批次（Vortex 差距审计）
+
+- 新增审计报告 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`：对照 `Nexus-Mods/game-cyberpunk2077`（GPL-3.0）做五维静态比对，含 P0/P1/P2 共 15 条与「已领先 10 条」。
+- 本批修掉两条 P0：① `switch_profile` 补 `redmod::flush_into`（换播放集后实机加载上一个播放集的 REDmod）；② `archive/pc/mod/modlist.txt` 改回纯文件名、托管标记移到旁挂 `.cyberdeck-modlist`，并补「升序即删文件」与老格式迁移。
+- 另修 `enabled_folders` 排序并列不确定（HashMap 迭代序），补 32 轮稳定性测试。
+- 重建：`npm run tauri:build`（release profile 3m48s），exe **10,353,152 B / md5 `edcb21a93d735a9362d9dc6bbccad570`**，已替换 `release/CyberDeck Launcher.exe`，旧版在 `CyberDeck Launcher.prev.exe`。**便携 ZIP 未打**（对外分发需单独确认）。
+- 验证：`cargo test --lib` 290 passed / 0 failed / 2 ignored；`node scripts/gate.mjs` 38/38 全绿。
+- 未修但已在报告里定位（下一批优先级从高到低）：改配置切断硬链接导致禁用/卸载拒绝删文件（P0-3）、启动前不部署 REDmod、混合包/FOMOD/`LAYOUT_AMBIGUOUS` 误杀、redscript 探针用旧文件名 `redscript-cli.exe`、部署与 redMod 编译无互斥。
+
 ## 1. 项目简介
 
 CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动器：
