@@ -6,7 +6,7 @@ use crate::installer::{
     undeploy_mod, uninstall_mod,
 };
 use crate::loadorder::{build_view, normalized_order, write_modlist, MANAGED_HEADER};
-use crate::schema::{InstallLayout, ModEntry};
+use crate::schema::{InstallLayout, LinkType, ModEntry};
 use crate::store::Store;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -780,4 +780,60 @@ fn editing_mod_settings_keeps_hardlink_identity() {
     // 端到端：禁用后游戏目录里的文件必须真的消失。
     undeploy_mod(&fixture.store, &entry.id, Path::new(&game.root)).unwrap();
     assert!(!target.exists(), "禁用后文件应被删除");
+}
+
+/// 2026-11-06 审计 P1-13：Copy 部署的文件被外部改过时，二进制资产必须保留
+/// （很可能有别的工具在管同一个路径），文本配置 / 脚本照常删除（游戏和工具
+/// 本来就会反复重写它们）。
+#[test]
+fn copy_deployed_binary_is_kept_when_modified_after_deploy() {
+    let fixture = Fixture::new();
+    let zip = fixture.zip(
+        "CopyMix.zip",
+        &[
+            ("archive/pc/mod/thing.archive", b"0123456789".as_slice()),
+            ("r6/config/settings.ini", b"[A]\nK = 1\n".as_slice()),
+        ],
+    );
+    let entry = install(&fixture, &zip);
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &entry.id, &game).unwrap();
+
+    let archive = fixture
+        .game
+        .join("archive")
+        .join("pc")
+        .join("mod")
+        .join("thing.archive");
+    let ini = fixture.game.join("r6").join("config").join("settings.ini");
+
+    // 模拟「跨卷部署降级成 Copy」：清单里改成 Copy，并记下当前大小 / 时间。
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let record = state
+            .mods
+            .iter_mut()
+            .find(|item| item.id == entry.id)
+            .expect("应已登记");
+        for file in record.deployed_files.iter_mut() {
+            let target = fixture.game.join(file.relative_path.replace('/', "\\"));
+            let (size, mtime) = crate::installer::file_stamp(&target);
+            file.link_type = LinkType::Copy;
+            file.size = size;
+            file.modified_time = mtime;
+        }
+        fixture.store.save(&state).unwrap();
+    }
+
+    // 部署之后再改这两个文件。
+    std::fs::write(&archive, b"tampered-with-a-longer-payload").unwrap();
+    std::fs::write(&ini, b"[A]\nK = 2\n").unwrap();
+
+    let warnings = undeploy_mod(&fixture.store, &entry.id, Path::new(&game.root)).unwrap();
+    assert!(archive.is_file(), "被改过的二进制资产不该被删");
+    assert!(!ini.exists(), "文本配置照常删除");
+    assert!(
+        warnings.iter().any(|line| line.contains("thing.archive")),
+        "保留文件必须给出提示：{warnings:?}"
+    );
 }

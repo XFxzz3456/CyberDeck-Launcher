@@ -30,7 +30,7 @@ const SIZE_TOLERANCE_BYTES: u64 = 1024;
 
 /// 这些后缀属于脚本 / 配置 / 元数据，外部工具（Vortex、CET、redscript、汉化包）
 /// 会频繁重写它们，比对大小与时间戳纯属噪音 —— 只查「还在不在」。
-fn is_tool_editable(relative_path: &str) -> bool {
+pub(crate) fn is_tool_editable(relative_path: &str) -> bool {
     let lower = relative_path.to_ascii_lowercase();
     [
         ".xl", ".xlp", ".reds", ".lua", ".toml", ".json", ".ini", ".yaml", ".yml", ".txt",

@@ -2047,7 +2047,8 @@ pub fn collect_conflicts(mods: &[ModEntry]) -> Vec<ConflictInfo> {
 /// 有一处判断**。两套实现迟早会漂移，而这里判断失误的代价是删掉玩家的原版文件。
 ///
 /// - `Ok(false)`：已删除，且部署后没被外部改过
-/// - `Ok(true)`：已删除，但这是 Copy 部署且部署后被改过（调用方要告知用户）
+/// - `Ok(true)`：已删除，但这是 Copy 部署、部署后被改过（只可能发生在文本类
+///   配置 / 脚本上；二进制资产被改过会直接返回 `Err` 保留文件）
 /// - `Err(reason)`：跳过，原因给上层拼提示用
 ///
 /// `trust_manifest`：跳过硬链接身份校验，只按部署清单删。目前只有「收编 Mod 且
@@ -2088,9 +2089,16 @@ fn remove_deployed_file(
             ));
         }
     }
-    // Copy 部署的文件与暂存区没有身份关系（自检 P2-2）：用户手改过也无从拒绝删除，
-    // 因为「清单里写着这是启动器放的」。这里不比身份、只比对部署那一刻记下的
-    // 大小/时间，改动过就明确告知——否则用户会以为改动「还在某处」，其实已随文件删除。
+    // Copy 部署的文件与暂存区没有身份关系（自检 P2-2）：用户手改过也无从比对
+    // inode，只能拿部署那一刻记下的大小/时间当线索。
+    //
+    // 2026-11-06 审计 P1-13：旧实现「改过也照删，事后提示一句」。问题在于收编
+    // 来的 Copy —— 母本在 Vortex 的目录里，同一个游戏路径可能两家都在管，删掉
+    // 就等于替别的工具做了决定。现在的口径：
+    //   - 文本类配置 / 脚本（.ini/.lua/.reds/.toml…）不算篡改：游戏和工具本来就
+    //     会反复重写它们，按「改过就不删」会让这类 Mod 永远禁用不掉；
+    //   - 二进制资产被改过 → 拒绝删除，把文件留在游戏目录并回一条明确提示，
+    //     让用户自己决定（文件仍留在部署清单里，下次还能重试）。
     let mut edited = false;
     if !is_symlink && file.link_type == LinkType::Copy {
         let (size, mtime) = file_stamp(&target);
@@ -2098,6 +2106,12 @@ fn remove_deployed_file(
         let time_changed =
             matches!((file.modified_time, mtime), (Some(before), Some(after)) if before != after);
         edited = size_changed || time_changed;
+        if edited && !crate::environment::is_tool_editable(&file.relative_path) {
+            return Err(format!(
+                "文件在部署后被修改过，已保留不删（可能是别的工具在管同一个路径）：{}",
+                file.relative_path
+            ));
+        }
     }
     remove_link_or_copy(&target, is_symlink)
         .map_err(|err| format!("无法删除 {}：{err}", target.display()))?;
