@@ -4,14 +4,82 @@ use crate::schema::{
 use crate::store::{now_stamp, Store};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// 当前版本写进 modlist.txt 首行的管理标记。
+/// 旧版本写在 modlist.txt 首行的管理标记。
+///
+/// **2026-11-06 起不再写入**：`archive/pc/mod/modlist.txt` 是游戏直接读的文件，
+/// 官方 Vortex 写进去的只有纯文件名，我们往里塞注释头属于污染格式。
+/// 这个常量只保留用于**识别并迁移**老版本留下的文件。
 pub const MANAGED_HEADER: &str = "# Managed by CyberDeck Launcher";
 
-/// 判断 modlist.txt 首行是不是本启动器写的。
+/// 托管标记的旁挂文件（与 modlist.txt 同目录）。
+///
+/// 游戏只扫 `.archive`，不会碰这个点文件；托管判定也不再依赖游戏文件的内容格式。
+const MANAGED_MARK: &str = ".cyberdeck-modlist";
+
+/// 判断 modlist.txt 首行是不是旧版管理标记。
 pub fn is_managed_modlist(raw: &str) -> bool {
     raw.starts_with(MANAGED_HEADER)
+}
+
+fn managed_mark_path(dir: &Path) -> PathBuf {
+    dir.join(MANAGED_MARK)
+}
+
+/// FNV-1a 64，用于把「上次写出去的内容」记在旁挂文件里。
+///
+/// 为什么不用内容全量比对：modlist 可能几百行，每次部署都读两遍没必要；
+/// 为什么不用 `DefaultHasher`：它不保证跨版本稳定，而这份摘要要跨进程重启存活。
+fn fingerprint(text: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// 这个 modlist.txt 是不是本启动器写的。
+///
+/// 三条判据，任一成立即「是」：
+/// 1. 旁挂标记存在且摘要与当前文件一致（正常路径）；
+/// 2. 旁挂标记存在但文件已被删除（用户手删了文件，标记还在）；
+/// 3. 首行是旧版 `# Managed by ...` 标记（老版本遗留，下次写入时自动迁移）。
+///
+/// 用户或别的工具改过内容 → 摘要对不上 → 判为「不是我们的」，写入会被拒绝，
+/// 与以前「首行标记」的自我保护强度一致。
+fn is_managed(dir: &Path, file: &Path) -> bool {
+    let mark = managed_mark_path(dir);
+    if mark.is_file() {
+        let Ok(expected) = fs::read_to_string(&mark) else {
+            return false;
+        };
+        if !file.is_file() {
+            return true;
+        }
+        return fs::read_to_string(file)
+            .map(|raw| fingerprint(&raw) == expected.trim())
+            .unwrap_or(false);
+    }
+    fs::read_to_string(file)
+        .map(|raw| is_managed_modlist(&raw))
+        .unwrap_or(false)
+}
+
+fn clear_managed(dir: &Path) {
+    let _ = fs::remove_file(managed_mark_path(dir));
+}
+
+/// 文件名清单是否已经是升序。
+///
+/// 官方 `modListFor` 的判据是「已升序就返回 undefined」，随后把 modlist.txt 删掉——
+/// 因为游戏的默认顺序就是升序，写一份与默认完全相同的清单只会掩盖问题
+/// （比如用户以为「我排过序」，其实什么都没改）。
+fn is_ascending(names: &[String]) -> bool {
+    names
+        .windows(2)
+        .all(|pair| pair[0].to_ascii_lowercase() <= pair[1].to_ascii_lowercase())
 }
 
 pub fn deployed_archives(state: &AppStateData) -> Vec<(String, String, String, String)> {
@@ -132,17 +200,12 @@ pub fn build_view(state: &AppStateData, game_root: Option<&Path>) -> LoadOrderVi
             .to_string_lossy()
             .to_string()
     });
-    let (modlist_exists, managed_modlist) = match &modlist_path {
-        Some(path) => {
-            let file = Path::new(path);
-            if file.is_file() {
-                let managed = fs::read_to_string(file)
-                    .map(|raw| is_managed_modlist(&raw))
-                    .unwrap_or(false);
-                (true, managed)
-            } else {
-                (false, false)
-            }
+    let (modlist_exists, managed_modlist) = match game_root {
+        Some(root) => {
+            let dir = root.join("archive").join("pc").join("mod");
+            let file = dir.join("modlist.txt");
+            let exists = file.is_file();
+            (exists, exists && is_managed(&dir, &file))
         }
         None => (false, false),
     };
@@ -160,42 +223,26 @@ pub fn write_modlist(state: &AppStateData, game_root: &Path) -> AppResult<Option
     let order = normalized_order(state);
     let dir = game_root.join("archive").join("pc").join("mod");
     let path = dir.join("modlist.txt");
+    let managed = path.is_file() && is_managed(&dir, &path);
 
-    if order.is_empty() {
-        if path.is_file() {
-            let managed = fs::read_to_string(&path)
-                .map(|raw| is_managed_modlist(&raw))
-                .unwrap_or(false);
-            if managed {
-                fs::remove_file(&path)?;
-                return Ok(None);
-            }
-        }
-        return Ok(None);
+    // 有内容要写、而盘上这份不是我们写的 → 绝不覆盖。
+    if !order.is_empty() && path.is_file() && !managed {
+        return Err(CommandError::new(
+            "MODLIST_UNMANAGED",
+            "archive/pc/mod/modlist.txt 已存在，而且不是本启动器写的。为避免破坏你的加载顺序，已停止写入；请在设置里选择「备份并接管」。",
+        ));
     }
 
-    if path.is_file() {
-        let raw = fs::read_to_string(&path)?;
-        if !is_managed_modlist(&raw) {
-            return Err(CommandError::new(
-                "MODLIST_UNMANAGED",
-                "archive/pc/mod/modlist.txt 已存在，而且不是本启动器写的。为避免破坏你的加载顺序，已停止写入；请在设置里选择「备份并接管」。",
-            ));
-        }
-    }
-
-    let mut names: HashSet<String> = HashSet::new();
-    let mut lines: Vec<String> = vec![
-        MANAGED_HEADER.to_string(),
-        "# Delete this file to restore ASCII-alphabetical load order.".to_string(),
-    ];
-    for relative in order {
+    // 游戏原生 modlist.txt 只认文件名，不认目录。
+    let mut names: Vec<String> = Vec::with_capacity(order.len());
+    let mut seen: HashSet<String> = HashSet::new();
+    for relative in &order {
         let name = relative
             .rsplit('/')
             .next()
             .unwrap_or(relative.as_str())
             .to_string();
-        if !names.insert(name.to_ascii_lowercase()) {
+        if !seen.insert(name.to_ascii_lowercase()) {
             return Err(CommandError::new(
                 "MODLIST_DUPLICATE",
                 format!(
@@ -203,11 +250,25 @@ pub fn write_modlist(state: &AppStateData, game_root: &Path) -> AppResult<Option
                 ),
             ));
         }
-        lines.push(name);
+        names.push(name);
     }
+
+    // 空清单，或顺序恰好等于游戏默认的升序 → 删掉这个文件，让游戏走原生顺序。
+    // 官方同样的处理：默认顺序不需要被一份多余的文件「确认」一遍。
+    if names.is_empty() || is_ascending(&names) {
+        if managed {
+            fs::remove_file(&path)?;
+        }
+        clear_managed(&dir);
+        return Ok(None);
+    }
+
     fs::create_dir_all(&dir)?;
-    let content = format!("{}\n", lines.join("\r\n"));
+    // 纯文件名 + CRLF + 无尾随换行，与官方逐字同构。
+    let content = names.join("\r\n");
     write_atomic(&path, &content)?;
+    // 托管标记写进旁挂文件（顺带完成老版本「首行注释」的迁移）。
+    fs::write(managed_mark_path(&dir), fingerprint(&content))?;
     Ok(Some(path.to_string_lossy().to_string()))
 }
 
@@ -253,22 +314,20 @@ pub fn backup_unmanaged_modlist(store: &Store, game_root: &Path) -> AppResult<Op
 }
 
 pub fn remove_modlist(game_root: &Path) -> AppResult<bool> {
-    let path = game_root
-        .join("archive")
-        .join("pc")
-        .join("mod")
-        .join("modlist.txt");
+    let dir = game_root.join("archive").join("pc").join("mod");
+    let path = dir.join("modlist.txt");
     if !path.is_file() {
+        clear_managed(&dir);
         return Ok(false);
     }
-    let raw = fs::read_to_string(&path)?;
-    if !is_managed_modlist(&raw) {
+    if !is_managed(&dir, &path) {
         return Err(CommandError::new(
             "MODLIST_UNMANAGED",
             "这个 modlist.txt 不是启动器写的，不会删除。",
         ));
     }
-    fs::remove_file(path)?;
+    fs::remove_file(&path)?;
+    clear_managed(&dir);
     Ok(true)
 }
 

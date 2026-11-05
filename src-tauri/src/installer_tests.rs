@@ -306,10 +306,14 @@ fn native_modlist_follows_saved_order_and_refuses_unmanaged_file() {
 
     let modlist = write_modlist(&state, &fixture.game).unwrap().unwrap();
     let content = std::fs::read_to_string(&modlist).unwrap();
-    assert!(content.starts_with(MANAGED_HEADER));
-    let beta_pos = content.find("beta.archive").unwrap();
-    let alpha_pos = content.find("alpha.archive").unwrap();
-    assert!(beta_pos < alpha_pos, "{content}");
+    // 游戏直接读这个文件，格式必须与官方一致：纯文件名、CRLF、无尾换行、无注释头。
+    assert_eq!(content, "beta.archive\r\nalpha.archive");
+    assert!(!content.contains('#'), "{content}");
+    // 托管标记落在旁挂文件里，不污染游戏文件。
+    assert!(fixture
+        .game
+        .join("archive/pc/mod/.cyberdeck-modlist")
+        .is_file());
 
     // A user-authored modlist must never be overwritten implicitly.
     std::fs::write(&modlist, "my-custom-list.archive\r\n").unwrap();
@@ -319,6 +323,55 @@ fn native_modlist_follows_saved_order_and_refuses_unmanaged_file() {
         std::fs::read_to_string(&modlist).unwrap(),
         "my-custom-list.archive\r\n"
     );
+}
+
+#[test]
+fn alphabetical_order_removes_modlist_instead_of_pinning_it() {
+    let fixture = Fixture::new();
+    let zip_a = fixture.zip("Alpha.zip", &[("Alpha/alpha.archive", b"a".as_slice())]);
+    let zip_b = fixture.zip("Beta.zip", &[("Beta/beta.archive", b"b".as_slice())]);
+    let alpha = install(&fixture, &zip_a);
+    let beta = install(&fixture, &zip_b);
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &alpha.id, &game).unwrap();
+    deploy_mod(&fixture.store, &beta.id, &game).unwrap();
+
+    // 顺序恰好是游戏默认的升序 → 不该留一份多余的 modlist.txt（官方也是删掉）。
+    let state = fixture.store.snapshot_data();
+    assert_eq!(write_modlist(&state, &fixture.game).unwrap(), None);
+    assert!(!fixture.game.join("archive/pc/mod/modlist.txt").exists());
+}
+
+/// 老版本把 `# Managed by ...` 写在 modlist.txt 首行；重新写一次就应迁到旁挂标记。
+#[test]
+fn legacy_header_modlist_is_migrated_to_plain_names() {
+    let fixture = Fixture::new();
+    let zip_a = fixture.zip("Alpha.zip", &[("Alpha/alpha.archive", b"a".as_slice())]);
+    let zip_b = fixture.zip("Beta.zip", &[("Beta/beta.archive", b"b".as_slice())]);
+    let alpha = install(&fixture, &zip_a);
+    let beta = install(&fixture, &zip_b);
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &alpha.id, &game).unwrap();
+    deploy_mod(&fixture.store, &beta.id, &game).unwrap();
+
+    let dir = fixture.game.join("archive/pc/mod");
+    std::fs::write(
+        dir.join("modlist.txt"),
+        format!("{MANAGED_HEADER}\r\nbeta.archive\r\nalpha.archive\r\n"),
+    )
+    .unwrap();
+
+    let mut state = fixture.store.snapshot_data();
+    state.load_order = vec![
+        "archive/pc/mod/beta.archive".to_string(),
+        "archive/pc/mod/alpha.archive".to_string(),
+    ];
+
+    let written = write_modlist(&state, &fixture.game).unwrap().unwrap();
+    let content = std::fs::read_to_string(&written).unwrap();
+    assert_eq!(content, "beta.archive\r\nalpha.archive");
+    assert!(!content.contains('#'), "老注释头必须被清掉：{content}");
+    assert!(dir.join(".cyberdeck-modlist").is_file());
 }
 
 #[test]
