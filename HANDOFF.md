@@ -78,14 +78,48 @@
 
 ---
 
-## 0.5 2026-11-06 批次（Vortex 差距审计）
+## 0.5 2026-11-06 批次（Vortex 差距审计 + 按报告落地）
 
-- 新增审计报告 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`：对照 `Nexus-Mods/game-cyberpunk2077`（GPL-3.0）做五维静态比对，含 P0/P1/P2 共 15 条与「已领先 10 条」。
-- 本批修掉两条 P0：① `switch_profile` 补 `redmod::flush_into`（换播放集后实机加载上一个播放集的 REDmod）；② `archive/pc/mod/modlist.txt` 改回纯文件名、托管标记移到旁挂 `.cyberdeck-modlist`，并补「升序即删文件」与老格式迁移。
-- 另修 `enabled_folders` 排序并列不确定（HashMap 迭代序），补 32 轮稳定性测试。
-- 重建：`npm run tauri:build`（release profile 3m48s），exe **10,353,152 B / md5 `edcb21a93d735a9362d9dc6bbccad570`**，已替换 `release/CyberDeck Launcher.exe`，旧版在 `CyberDeck Launcher.prev.exe`。**便携 ZIP 未打**（对外分发需单独确认）。
-- 验证：`cargo test --lib` 290 passed / 0 failed / 2 ignored；`node scripts/gate.mjs` 38/38 全绿。
-- 未修但已在报告里定位（下一批优先级从高到低）：改配置切断硬链接导致禁用/卸载拒绝删文件（P0-3）、启动前不部署 REDmod、混合包/FOMOD/`LAYOUT_AMBIGUOUS` 误杀、redscript 探针用旧文件名 `redscript-cli.exe`、部署与 redMod 编译无互斥。
+一次「审计 → 修」的闭环，两段合成一条：先做五维静态比对出报告，再照报告逐条改代码。
+
+**① 审计**
+
+- 新增 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`：对照 `Nexus-Mods/game-cyberpunk2077`（GPL-3.0）做五维静态比对，
+  含 P0 3 条 / P1 15 条 / P2 若干 + 「已领先 10 条 + 不采纳 3 条」。第 9 节是修复进度对账表。
+
+**② 落地（3 条 P0 全修，15 条 P1 修 11 / 覆盖 1 / 顺延 3）**
+
+| 级别 | 条目 | 落地要点 |
+|---|---|---|
+| P0-1 | 换播放集不重部署 REDmod | `switch_profile` 阶段 5 调 `redmod::flush_into` |
+| P0-2 | `modlist.txt` 格式污染 | 纯文件名 + CRLF 无尾换行；托管标记移到旁挂 `.cyberdeck-modlist` |
+| P0-3 | 改配置切断硬链接 → 删不掉文件 | `hardlink_source_for` 比 inode，命中则**原地截断重写**；失败才退回换文件并把清单降级为 `Copy` |
+| P1-1 | 启动前不部署 REDmod | `launch_game` spawn 前 `sync_before_launch`，失败 `REDMOD_SYNC_FAILED` 拦启动 |
+| P1-2 | 清缓存失败仍写 modlist | 写前留原文，`clear_cache` 失败即回滚 |
+| P1-5 | FOMOD 零支持 | 不剥 `fomod/`，剥壳前拦截并报 `FOMOD_NOT_SUPPORTED`（不做完整向导） |
+| P1-6 | `LAYOUT_AMBIGUOUS` 误杀 | 同分候选剪掉「被其它候选包含」的，只剩互不包含才报错 |
+| P1-10 | 配置包缺字段即 false | 7 个字段改 `Option`，只覆盖包里显式存在的键 |
+| P1-11 | 读配置错误全吞 | `ConfigResolver` 加 problems 收集器，`resolve_for_mod` 返回 `(sources, warnings)` |
+| P1-12 | 部署与 redMod 无互斥 | `redmod::deploy_gate()` 给 `deploy_mod` / `undeploy_mod`，先闸门后 state |
+| P1-13 | `Copy` 删除无身份校验 | 二进制被改过→拒删并告警；文本配置照删 |
+| P1-14 | redscript 探针旧文件名 | `game`/`deps`/`diagnostics` 主判据改 `scc.exe` |
+| P1-15 | compat 框架表缺项 | 4 → 9 项，新增 `critical` 分级（只有四件必需品缺失才报风险） |
+
+顺延 4 条及原因见 CHANGELOG「已知边界」：P1-3 拍平改结构风险高、P1-4 MultiType 需重写 `plan_for`、
+P1-9 关开关删文件属破坏性决策、P1-8 抽 `framework.rs` 属结构性重构。
+
+**③ 产物**
+
+- 重建：`npm run tauri:build`（release profile 3m06s），exe **10,359,808 B / md5 `b0aa89dc3977d203f690e954894221b7`**，
+  已替换 `release/CyberDeck Launcher.exe`；上一版（10,353,152 B / `edcb21a93d735a9362d9dc6bbccad570`）
+  在 `CyberDeck Launcher.prev.exe`。**便携 ZIP 未打**（对外分发需单独确认）。
+- 验证：`cargo test --lib` **297 passed / 0 failed / 2 ignored**；`npm run gate` **42/42 全绿（375s）**；
+  `core-tests` 独立 crate 因漏 include `environment` 红过一次，已补声明并写进 `MEMORY-CANON §2.5`。
+
+**④ 下一批优先级**
+
+P1-3（需真实包样本量化）→ P1-4 MultiType → P1-8 单一框架注册表 → P1-9（需产品决策）；
+P0 已清零，其余为报告 §6 的 P2 可维护性项。
 
 ## 1. 项目简介
 
