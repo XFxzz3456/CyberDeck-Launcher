@@ -213,7 +213,16 @@ pub fn enabled_folders(view: &RedmodView) -> Vec<String> {
         }
     }
     let mut rest: Vec<(String, String)> = pending.into_iter().collect();
-    rest.sort_by_key(|(_, folder)| folder.to_ascii_lowercase());
+    // 只用小写名当排序键会留下并列：`SameMod` 和 `samemod` 在 Windows 上是同一个
+    // mod，小写后完全相同。而 `pending` 是 HashMap，迭代顺序每个进程都不同——
+    // 并列时谁排前面是随机的，去重后保留下来的大小写也就随机，等于每次写出的
+    // modlist.txt 可能不一样。用原字符串兜底，让结果可复现。
+    rest.sort_by(|left, right| {
+        left.1
+            .to_ascii_lowercase()
+            .cmp(&right.1.to_ascii_lowercase())
+            .then_with(|| left.1.cmp(&right.1))
+    });
     ordered.extend(rest.into_iter().map(|(_, folder)| folder));
 
     // modlist.txt 只认文件夹名，同名的两个 mod 会让 redMod 覆盖掉一个。
@@ -735,6 +744,31 @@ mod tests {
         };
         // 同名两份会让 redMod 互相覆盖，只保留第一个。
         assert_eq!(enabled_folders(&view), vec!["SameMod".to_string()]);
+    }
+
+    #[test]
+    fn enabled_folders_is_stable_across_calls() {
+        // 回归防线：`pending` 是 HashMap，每次新建都换随机种子，迭代顺序会变。
+        // 排序键只用小写名时 `SameMod` / `samemod` 并列，谁排前面取决于 HashMap
+        // 的迭代顺序，于是保留下来的大小写（乃至 modlist.txt 的全文）每次都可能不同。
+        // 单次断言抓不稳这种问题，这里连跑多轮比对。
+        let view = RedmodView {
+            order: Vec::new(),
+            mods: vec![
+                redmod_entry("a", "SameMod", true),
+                redmod_entry("b", "samemod", true),
+                redmod_entry("c", "Beta", true),
+                redmod_entry("d", "alpha", true),
+            ],
+        };
+        let first = enabled_folders(&view);
+        for round in 0..32 {
+            assert_eq!(
+                enabled_folders(&view),
+                first,
+                "第 {round} 轮结果与首轮不一致：同一份状态必须每次写出同一份 modlist.txt"
+            );
+        }
     }
 
     #[test]
