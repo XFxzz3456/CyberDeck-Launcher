@@ -32,6 +32,7 @@
 | `1.0.0` 批次 10 | 2026-11-03 | SVG 图形徽章、列表接管标签、i18n 门禁转绿 |
 | `1.1.0` | 2026-11-03/04 | 品牌全链路统一、一键发版链路、门禁并发化 7m23s→2m55s |
 | `1.1.1` | 2026-11-04 | 前端缺陷审查 15 条：状态文件原子落盘、卸载凭据保留、Esc 分层、焦点陷阱 |
+| `1.1.1` | 2026-11-06 | 模组库表格化三项；ASI / RED4ext 安装器；Vortex 差距审计与两项 P0 修复 |
 
 ### 版本号规则
 
@@ -40,6 +41,40 @@
 | **MAJOR** | 持久化结构变更 / 数据迁移 / 删除命令 / 改 `identifier` | 老用户升级后需要做出动作 |
 | **MINOR** | 新增 Tauri 命令、新增模块、新增组件 | 功能只增不减，向前兼容 |
 | **PATCH** | 修 bug、调样式、改文案 | 用户无感或只感觉到「变好了」 |
+
+---
+
+## [1.1.1] - 2026-11-06（模组库表格化 · 安装器补齐 · Vortex 差距审计）
+
+> 三个批次合成一条：① 模组库表格化三项（表头排序 / 状态持久化 / 分组维度）；② 按 Vortex 扩展补 ASI 与 RED4ext 安装器；
+> ③ 对 `Nexus-Mods/game-cyberpunk2077` 做五维静态审计并修掉两条 P0。
+> 审计全文见 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`。
+
+### 新增
+
+- **模组库表格化三项**（`552cece`）：点列头排序并显示方向、排序/筛选/视图状态持久化、分组维度扩展。排序规则收敛到 `lib/librarySort.ts`；折叠键带维度前缀，分类维度保留裸值以兼容老 localStorage。工具栏的方向按钮并进排序框内部（独立成块要多占 36px，会把 1440 宽度下的密度档从 `full` 挤到 `compact`，低频按钮被收进「更多」）。
+- **ASI 与 RED4ext 安装布局**（`2010e6c`）：新增 `InstallLayout::Asi` / `Red4ext`。没带 `bin/` 前缀的 `.asi` 落到 `bin/x64/plugins/`；`dinput8.dll` 一类 ASI 加载器代理 dll 落到 `bin/x64/`（必须贴 exe）；散在包根的 `.dll` 落到 `red4ext/plugins/<folder>/`。新增 `strip_shell_dirs` 反复剥「整包共有的壳目录」，`MyAsi/plugins/x.asi` → `bin/x64/plugins/x.asi`。TweakXL / Audioware / ArchiveXL 经核对与 Vortex 同为「同源同目标」，现有 GameRoot 分支已正确落位，不新增枚举，改用测试钉住。
+
+### 修复
+
+- **换播放集后不重新部署 REDmod**（P0）：`profiles::switch_profile` 只重建 archive 部署，`r6/cache/modded` 里仍是上一个播放集的编译产物，而 `redMod` 察觉不到「集合换了但文件没动」。用户切到 B 进游戏，界面显示 B、实机加载 A，且游戏不报错。现在阶段 5 补一次 `redmod::flush_into`，靠 `mark_dirty` 判定是否真的需要重跑。
+- **`archive/pc/mod/modlist.txt` 格式污染**（P0）：以前首行写 `# Managed by CyberDeck Launcher`、末尾还多一个裸 `\n`，而这是游戏直接读的文件，官方 Vortex 写的是纯文件名。现在只写「纯文件名 + CRLF + 无尾换行」；托管标记挪到同目录旁挂文件 `.cyberdeck-modlist`（内容是上次写出的 FNV-1a 摘要，用户改过就对不上，仍然拒绝覆盖）。同时补上官方的「顺序恰好等于升序就删掉这个文件」行为，老版本带注释头的文件在下次写入时自动迁移。
+- **`enabled_folders` 排序结果不确定**（`d776125`）：`SameMod` / `samemod` 小写后排序键相同，而 `pending` 是 HashMap、迭代顺序每进程不同，去重后保留下来的大小写随机。排序键加原字符串兜底，并补连跑 32 轮的稳定性测试（门禁里就是这样偶发红过一次）。
+- 清掉两处未使用导入（`aiact.rs` 测试模块的 `AppStateData`、`wolvenkit.rs` 测试里的 `safe_join`），编译零警告（`1f701f6`）。
+
+### 验证
+
+- `cargo test --lib` 290 passed / 0 failed / 2 ignored（新增 10 条：ASI 3 + RED4ext 2 + TweakXL/Audioware 1 + ArchiveXL 1 + modlist 3）
+- `node scripts/gate.mjs` → 38/38 全绿
+- `npx tsc --noEmit` 0 错误；`npm run i18n:check` 0 处缺失
+
+### 已知边界（审计里列出、本批未修）
+
+- 改配置会切断硬链接 → 之后禁用/卸载拒绝删文件（`modsettings.rs` 的 `MoveFileExW` 覆盖目标使 inode 变更，`installer.rs` 的 `same_file_identity` 校验失败）。修复方案已写在审计报告 P0-3。
+- 启动前不部署 REDmod、部署失败也不拦启动（官方会取消启动）。
+- 混合包按单一布局处理、FOMOD 零支持、`LAYOUT_AMBIGUOUS` 会误杀「主体+可选件」包。
+- 前置探针用旧文件名 `redscript-cli.exe`（新版 redscript 只带 `scc.exe`），会产生假红灯。
+- 部署与 redMod 编译之间没有互斥（`DEPLOY_GATE` 只有 redmod 在用）。
 
 ---
 
