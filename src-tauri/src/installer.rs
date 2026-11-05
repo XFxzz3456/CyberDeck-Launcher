@@ -552,14 +552,36 @@ pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
     best.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
 
     if best.len() > 1 {
+        // 同分但互相嵌套时，外层那个才是真正的 Mod 根，内层只是它的一段路径。
+        //
+        // 实例：包里只有 `bin/x64/plugins/cyber_engine_tweaks/mods/ModSettings/user.ini`。
+        // 根目录因「直接子目录 bin 是可识别根」得 3 分，`.../cyber_engine_tweaks`
+        // 因「直接子目录 mods 是可识别根」也只得 3 分——两者其实是同一条路径的
+        // 前缀与后缀，旧逻辑直接判 LAYOUT_AMBIGUOUS 把正常包拒了（2026-11-06 审计 P1-6）。
+        let paths: Vec<PathBuf> = best.iter().map(|(_, path)| path.clone()).collect();
+        best.retain(|(_, path)| {
+            !paths
+                .iter()
+                .any(|other| other != path && path.starts_with(other))
+        });
+    }
+
+    if best.len() > 1 {
         let names: Vec<String> = best
             .iter()
             .take(3)
             .map(|(_, path)| {
-                path.strip_prefix(payload)
+                let shown = path
+                    .strip_prefix(payload)
                     .unwrap_or(path)
                     .to_string_lossy()
-                    .replace('\\', "/")
+                    .replace('\\', "/");
+                // 包根目录 strip 之后是空串，直接拼进提示会变成「（、bin/...）」。
+                if shown.is_empty() {
+                    "（包根目录）".to_string()
+                } else {
+                    shown
+                }
             })
             .collect();
         return Err(CommandError::new(
@@ -2524,6 +2546,80 @@ pub(crate) fn same_file_identity(left: &Path, right: &Path) -> bool {
 #[cfg(not(windows))]
 pub(crate) fn same_file_identity(left: &Path, right: &Path) -> bool {
     fs::canonicalize(left).ok() == fs::canonicalize(right).ok()
+}
+
+/// 把绝对落点换算成部署清单里的相对路径写法（正斜杠）。
+fn manifest_relative(game_root: &Path, target: &Path) -> Option<String> {
+    let relative = target.strip_prefix(game_root).ok()?;
+    Some(relative.to_string_lossy().replace('\\', "/"))
+}
+
+/// 找出与 `target` 硬链接同源的暂存文件。
+///
+/// 为什么需要它：`MoveFileExW(REPLACE_EXISTING)` 换文件会换 inode，硬链接就此
+/// 与暂存区脱钩；之后禁用/卸载时 `same_file_identity` 校验不过，会拒绝删除游戏
+/// 目录里的文件（表现为「禁用成功但文件还在，游戏照样加载」）。所以凡是「启动器
+/// 自己改写的、可能是硬链接的」文件，写之前先用本函数确认能不能原地重写。
+///
+/// 返回 `None` 的情况都意味着「不必/不能原地写」：清单里没有、不是硬链接、
+/// 暂存副本已不在、或身份校验不通过（说明这个文件已经被外部替换过）。
+pub(crate) fn hardlink_source_for(
+    store: &Store,
+    game_root: &Path,
+    target: &Path,
+) -> Option<PathBuf> {
+    let relative = manifest_relative(game_root, target)?;
+    let candidates: Vec<String> = {
+        let state = store.data.lock().expect("state mutex poisoned");
+        state
+            .mods
+            .iter()
+            .flat_map(|entry| entry.deployed_files.iter())
+            .filter(|file| {
+                file.link_type == LinkType::HardLink
+                    && file.relative_path.eq_ignore_ascii_case(&relative)
+            })
+            .map(|file| file.source.clone())
+            .collect()
+    };
+    candidates
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|source| source.is_file() && same_file_identity(source, target))
+}
+
+/// 硬链接被换成普通文件后，把部署清单里的链接类型降级为 `Copy`。
+///
+/// 不降级的后果：`remove_deployed_file` 仍按硬链接做身份校验，而新文件的 inode
+/// 与暂存副本不同，于是永远拒绝删除——用户点「禁用」等于没点。
+pub(crate) fn downgrade_hardlink_to_copy(store: &Store, game_root: &Path, target: &Path) {
+    let Some(relative) = manifest_relative(game_root, target) else {
+        return;
+    };
+    let (size, modified_time) = file_stamp(target);
+    let Ok(mut state) = store.data.lock() else {
+        return;
+    };
+    let mut changed = false;
+    for entry in state.mods.iter_mut() {
+        for file in entry.deployed_files.iter_mut() {
+            if file.link_type == LinkType::HardLink
+                && file.relative_path.eq_ignore_ascii_case(&relative)
+            {
+                file.link_type = LinkType::Copy;
+                file.size = size;
+                file.modified_time = modified_time;
+                changed = true;
+            }
+        }
+    }
+    if !changed {
+        return;
+    }
+    // 先克隆再落盘：`save` 内部还会读 store，持着同一把锁直接调会自锁。
+    let snapshot = state.clone();
+    drop(state);
+    let _ = store.save(&snapshot);
 }
 
 fn prune_empty_dirs(mut current: Option<&Path>, root: &Path) {

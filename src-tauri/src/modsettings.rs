@@ -195,13 +195,65 @@ pub fn save(
         )
     })?;
 
-    replace_file(&canonical, updated.as_bytes()).map_err(|e| {
+    let keep_link =
+        crate::installer::hardlink_source_for(store, &canonical_root, &canonical).is_some();
+    write_config(
+        store,
+        &canonical_root,
+        &canonical,
+        updated.as_bytes(),
+        keep_link,
+    )
+    .map_err(|e| {
         CommandError::new(
             "SETTINGS_WRITE",
             format!("写入 user.ini 失败（原文件已备份到 {}）：{e}", backup.display()),
         )
     })?;
     get(store)
+}
+
+/// 写入配置正文。
+///
+/// `keep_link = true` 表示这个文件是硬链接部署进游戏目录的：必须**原地重写**
+/// （截断后写入），不能像普通文件那样"写临时文件再改名"——`MoveFileExW` 换掉
+/// inode 后，落地文件与暂存副本就成了两个不同的文件对象，随后禁用 / 卸载时
+/// `same_file_identity` 校验不过会拒绝删除，表现为「禁用成功但文件还在，游戏
+/// 照样加载」（2026-11-06 审计 P0-3）。
+///
+/// 原地写不是原子的，但调用方在写之前已经把原文备份成 `user.ini.bak`，
+/// 真写到一半失败也能回滚。
+fn write_config(
+    store: &Store,
+    game_root: &Path,
+    target: &Path,
+    bytes: &[u8],
+    keep_link: bool,
+) -> std::io::Result<()> {
+    if !keep_link {
+        return replace_file(target, bytes);
+    }
+    let in_place = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(target)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+        Ok(())
+    })();
+    match in_place {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            // 原地写失败（只读属性 / 被别的进程独占）→ 退回"换文件"，但链接关系
+            // 就此断开，必须把清单里的类型降级成 Copy，否则以后禁用 / 卸载会被
+            // 硬链接身份校验永远挡下。
+            replace_file(target, bytes)?;
+            crate::installer::downgrade_hardlink_to_copy(store, game_root, target);
+            Ok(())
+        }
+    }
 }
 
 pub fn restore_backup(store: &Store) -> AppResult<ModSettingsView> {
@@ -225,7 +277,8 @@ pub fn restore_backup(store: &Store) -> AppResult<ModSettingsView> {
             CommandError::new("SETTINGS_BACKUP", format!("恢复前备份失败：{e}"))
         })?;
     }
-    replace_file(&path, raw.as_bytes())
+    let keep_link = crate::installer::hardlink_source_for(store, &root, &path).is_some();
+    write_config(store, &root, &path, raw.as_bytes(), keep_link)
         .map_err(|e| CommandError::new("SETTINGS_WRITE", format!("恢复 user.ini 失败：{e}")))?;
     get(store)
 }

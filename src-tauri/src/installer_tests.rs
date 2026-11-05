@@ -482,8 +482,13 @@ fn multiple_wrapped_mod_roots_are_rejected_instead_of_dropping_files() {
     assert!(error.message.contains("ModB"));
 }
 
+/// 同分候选互相嵌套时，外层才是真正的 Mod 根（2026-11-06 审计 P1-6）。
+///
+/// 旧逻辑把「根目录」与「根目录下的 Extra/」当成两个并列的安装根直接报错，
+/// 于是「主体 + 附带可选件」这种极常见的包一个都装不上。现在外层的根胜出，
+/// 附带件被跳过时必须进 warnings（P1-7），不能静默丢文件。
 #[test]
-fn root_and_nested_mod_roots_are_both_reported_as_ambiguous() {
+fn nested_extra_root_loses_to_its_ancestor_and_is_reported_as_skipped() {
     let fixture = Fixture::new();
     let zip = fixture.zip(
         "RootAndNested.zip",
@@ -492,9 +497,14 @@ fn root_and_nested_mod_roots_are_both_reported_as_ambiguous() {
             ("Extra/archive/pc/mod/extra.archive", b"extra".as_slice()),
         ],
     );
-    let error = install_zip(&fixture.store, zip.to_str().unwrap()).unwrap_err();
-    assert_eq!(error.code, "LAYOUT_AMBIGUOUS");
-    assert!(error.message.contains("Extra"), "{}", error.message);
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::GameRoot);
+    assert_eq!(sorted_plan(&entry), vec!["archive/pc/mod/top.archive"]);
+    assert!(
+        entry.warnings.iter().any(|line| line.contains("extra.archive")),
+        "被跳过的附带件必须出现在提示里：{:?}",
+        entry.warnings
+    );
 }
 
 #[test]
@@ -713,4 +723,61 @@ fn archive_and_archivexl_pair_both_go_to_archive_pc_mod() {
         sorted_plan(&entry),
         vec!["archive/pc/mod/MyMod.archive", "archive/pc/mod/MyMod.xl"]
     );
+}
+
+/// 2026-11-06 审计 P0-3：在启动器里改 Mod Settings 会重写 user.ini。
+///
+/// 旧实现走「写临时文件 + MoveFileExW 替换」，inode 变了，落地文件与暂存副本
+/// 成了两个不同的文件对象；随后禁用 / 卸载时 `same_file_identity` 校验不过，
+/// 直接拒绝删除——表现是「禁用成功但文件还在 archive 里被游戏加载」。
+#[test]
+fn editing_mod_settings_keeps_hardlink_identity() {
+    let fixture = Fixture::new();
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        state.game_dir = Some(fixture.game.to_string_lossy().to_string());
+        fixture.store.save(&state).unwrap();
+    }
+
+    let rel = "bin/x64/plugins/cyber_engine_tweaks/mods/ModSettings/user.ini";
+    let zip = fixture.zip(
+        "Settings.zip",
+        &[(rel, b"[Gameplay]\nDifficulty = 0\n".as_slice())],
+    );
+    let entry = install(&fixture, &zip);
+    assert_eq!(entry.layout, InstallLayout::GameRoot);
+
+    let game = validate_game_dir(&fixture.game).unwrap();
+    let report = deploy_mod(&fixture.store, &entry.id, &game).unwrap();
+    assert_eq!(report.hard_links, 1, "本用例要求硬链接部署：{report:?}");
+
+    let target = fixture.game.join(rel.replace('/', "\\"));
+    let source = {
+        let state = fixture.store.data.lock().unwrap();
+        let record = state
+            .mods
+            .iter()
+            .find(|item| item.id == entry.id)
+            .expect("应已登记");
+        PathBuf::from(record.deployed_files[0].source.clone())
+    };
+    assert!(crate::installer::same_file_identity(&source, &target));
+
+    crate::modsettings::save(&fixture.store, "Gameplay", "Difficulty", "3").unwrap();
+
+    let written = std::fs::read_to_string(&target).unwrap();
+    assert!(written.contains("Difficulty = 3"), "配置应已写入：{written}");
+    // 关键断言：改完配置后，落地文件与暂存副本必须仍是同一个文件对象。
+    assert!(
+        crate::installer::same_file_identity(&source, &target),
+        "改配置把硬链接写断了，之后禁用 / 卸载会拒绝删文件"
+    );
+    assert!(
+        std::fs::read_to_string(&source).unwrap().contains("Difficulty = 3"),
+        "暂存副本应同步到新内容"
+    );
+
+    // 端到端：禁用后游戏目录里的文件必须真的消失。
+    undeploy_mod(&fixture.store, &entry.id, Path::new(&game.root)).unwrap();
+    assert!(!target.exists(), "禁用后文件应被删除");
 }
