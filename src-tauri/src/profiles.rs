@@ -168,6 +168,18 @@ pub fn switch_profile(store: &Store, profile_id: &str) -> Result<SwitchProfileRe
         }
     }
 
+    // ── 阶段 5：补一次 REDmod 同步 ───────────────────────────────
+    //
+    // 上面三步只换了 archive 的部署，`r6/cache/modded` 里还是**上一个播放集**编译
+    // 出来的产物。redMod 自己察觉不到「集合换了但这些文件没动」，所以不在这里
+    // 主动重跑，用户切到 B 再进游戏，实机加载的就是 A 的 REDmod —— 界面显示 B、
+    // 游戏跑 A，而且游戏不会报任何错。
+    //
+    // `flush_into` 内部自己判 dirty（撤销/部署阶段已经 mark_dirty），无事可做时
+    // 是一次纯读，开销可忽略。它不持 store 锁，放心在锁外调用。
+    let root_text = game_root.to_string_lossy().to_string();
+    crate::redmod::flush_into(store, Some(root_text.as_str()), &mut warnings);
+
     Ok(SwitchProfileReport {
         profile,
         undeployed,
