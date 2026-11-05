@@ -25,10 +25,13 @@ pub struct PackSettings {
     pub ai_model: String,
     #[serde(default)]
     pub ai_protocol: String,
-    #[serde(default)]
-    pub nexus_hide_adult: bool,
-    #[serde(default)]
-    pub nxm_auto_download: bool,
+    // 这些开关一律用 Option：`#[serde(default)]` + bool 会让「包里没写」和
+    // 「显式写成 false」无法区分，于是一个只带 AI 配置的迷你包会把玩家的自动备份、
+    // 卸载确认悄悄关掉（2026-11-06 审计 P1-10）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nexus_hide_adult: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nxm_auto_download: Option<bool>,
     #[serde(default)]
     pub wolvenkit_cli_path: String,
     #[serde(default)]
@@ -37,18 +40,18 @@ pub struct PackSettings {
     pub archive_tool_path: String,
     #[serde(default)]
     pub launch_method: String,
-    #[serde(default)]
-    pub platform_pref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_pref: Option<String>,
     #[serde(default)]
     pub close_behavior: String,
-    #[serde(default)]
-    pub auto_backup: bool,
-    #[serde(default)]
-    pub confirm_uninstall: bool,
-    #[serde(default)]
-    pub write_modlist: bool,
-    #[serde(default)]
-    pub launch_args: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_backup: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm_uninstall: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_modlist: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_args: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -93,18 +96,18 @@ fn collect_pack(data: &crate::schema::AppStateData, app_version: &str) -> Config
             ai_base_url: settings.ai_base_url.clone(),
             ai_model: settings.ai_model.clone(),
             ai_protocol: settings.ai_protocol.clone(),
-            nexus_hide_adult: settings.nexus_hide_adult,
-            nxm_auto_download: settings.nxm_auto_download,
+            nexus_hide_adult: Some(settings.nexus_hide_adult),
+            nxm_auto_download: Some(settings.nxm_auto_download),
             wolvenkit_cli_path: settings.wolvenkit_cli_path.clone(),
             wolvenkit_timeout_secs: settings.wolvenkit_timeout_secs,
             archive_tool_path: settings.archive_tool_path.clone(),
             launch_method: settings.launch_method.clone(),
-            platform_pref: settings.platform_pref.clone(),
+            platform_pref: Some(settings.platform_pref.clone()),
             close_behavior: settings.close_behavior.clone(),
-            auto_backup: settings.auto_backup,
-            confirm_uninstall: settings.confirm_uninstall,
-            write_modlist: settings.write_modlist,
-            launch_args: settings.launch_args.clone(),
+            auto_backup: Some(settings.auto_backup),
+            confirm_uninstall: Some(settings.confirm_uninstall),
+            write_modlist: Some(settings.write_modlist),
+            launch_args: Some(settings.launch_args.clone()),
         },
         game_dir: data.game_dir.clone(),
         profiles: data.profiles.clone(),
@@ -185,12 +188,32 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
         } else if !protocol.is_empty() {
             ignored.push(format!("aiProtocol={protocol}"));
         }
-        target.nexus_hide_adult = s.nexus_hide_adult;
-        target.nxm_auto_download = s.nxm_auto_download;
-        target.auto_backup = s.auto_backup;
-        target.confirm_uninstall = s.confirm_uninstall;
-        target.write_modlist = s.write_modlist;
-        applied.push("nexus/backup 开关".into());
+        // 只覆盖「包里显式存在」的开关。缺省 = 保持本机原值，绝不因为包没写就把
+        // 自动备份 / 卸载确认关掉（2026-11-06 审计 P1-10）。
+        let mut switches = 0;
+        if let Some(value) = s.nexus_hide_adult {
+            target.nexus_hide_adult = value;
+            switches += 1;
+        }
+        if let Some(value) = s.nxm_auto_download {
+            target.nxm_auto_download = value;
+            switches += 1;
+        }
+        if let Some(value) = s.auto_backup {
+            target.auto_backup = value;
+            switches += 1;
+        }
+        if let Some(value) = s.confirm_uninstall {
+            target.confirm_uninstall = value;
+            switches += 1;
+        }
+        if let Some(value) = s.write_modlist {
+            target.write_modlist = value;
+            switches += 1;
+        }
+        if switches > 0 {
+            applied.push(format!("nexus/backup 开关 ×{switches}"));
+        }
 
         if !s.wolvenkit_cli_path.trim().is_empty() {
             target.wolvenkit_cli_path = s.wolvenkit_cli_path.trim().to_string();
@@ -212,9 +235,17 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
             target.close_behavior = s.close_behavior.clone();
             applied.push("closeBehavior".into());
         }
-        target.platform_pref = s.platform_pref.clone();
-        target.launch_args = s.launch_args.clone();
-        applied.push("launchArgs".into());
+        if let Some(value) = s.platform_pref.as_ref() {
+            if !value.trim().is_empty() {
+                target.platform_pref = value.clone();
+                applied.push("platformPref".into());
+            }
+        }
+        // launch_args 允许显式空串（= 清空启动参数），所以只判「包里有没有这个键」。
+        if let Some(value) = s.launch_args.as_ref() {
+            target.launch_args = value.clone();
+            applied.push("launchArgs".into());
+        }
 
         // 游戏目录：路径来自另一台机器时几乎一定失效，只写值不保证可用。
         let mut reverify = false;
@@ -292,6 +323,34 @@ mod tests {
         assert_eq!(err.code, "CONFIG_PACK_INVALID");
         let after = fs::read_to_string(root.join("launcher-state.json")).unwrap();
         assert_eq!(before, after, "导入失败不能改动状态文件");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 2026-11-06 审计 P1-10：只带 AI 配置的迷你包，绝不能把本机的自动备份 /
+    /// 卸载确认 / 写 modlist 这些开关顺手改成 false。
+    #[test]
+    fn minimal_pack_keeps_existing_switches() {
+        let (root, store) = temp_store("minimal");
+        {
+            // 必须持锁原地改：`save` 只负责落盘，不会把快照写回内存。
+            let mut state = store.data.lock().unwrap();
+            state.settings.auto_backup = true;
+            state.settings.confirm_uninstall = true;
+            state.settings.write_modlist = true;
+            state.settings.launch_args = "--skipStartScreen".into();
+            store.save(&state).unwrap();
+        }
+        let pack = format!(
+            "{{\"schemaVersion\":{},\"settings\":{{\"aiModel\":\"gpt-4o-mini\"}}}}",
+            PACK_VERSION
+        );
+        import_text(&store, &pack).unwrap();
+        let data = store.snapshot_data();
+        assert!(data.settings.auto_backup, "自动备份被迷你包静默关掉了");
+        assert!(data.settings.confirm_uninstall, "卸载确认被迷你包静默关掉了");
+        assert!(data.settings.write_modlist, "modlist 开关被迷你包静默关掉了");
+        assert_eq!(data.settings.launch_args, "--skipStartScreen", "启动参数被清空了");
+        assert_eq!(data.settings.ai_model, "gpt-4o-mini", "显式字段应当生效");
         let _ = fs::remove_dir_all(root);
     }
 
