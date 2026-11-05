@@ -15473,6 +15473,142 @@ body::before {
   height: 34px;
 }
 
+/* ── 列表视图表头（排序） ──────────────────────────────────────────
+   与 .mod-row 共用同一套列 class，列宽天然对齐；这里只补「表头行」
+   自己的容器样式和按钮外观。
+   高度 26px 远小于虚拟滚动的 overscan（列表视图 8 行 ≈ 384px），
+   而且它挂在滚动容器的内容流里占位，行不会被它盖住、也不会露白带。 */
+.mod-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  /* 内边距与 gap 必须和 .mod-row 完全一致，否则每一列都会渐渐错开累积成一条斜线 */
+  gap: 8px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  height: 26px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* 不可排序的列只占位：宽度必须与行里的复选框 / 缩略图 / 开关 / 菜单按钮一致 */
+.mod-list-slot {
+  flex: 0 0 auto;
+  display: block;
+  height: 1px;
+}
+
+.mod-list-slot-check {
+  width: 15px;
+}
+
+.mod-list-slot-thumb {
+  width: 32px;
+}
+
+.mod-list-slot-toggle {
+  width: 36px;
+}
+
+.mod-list-slot-action {
+  width: 24px;
+}
+
+/* 表头格：行里的 .row-main 是纵向 flex，表头里要横向居中 */
+.mod-list-col {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mod-list-col.row-main {
+  flex-direction: row;
+}
+
+/* 右对齐列（版本 / 大小）：按钮贴右侧，和行里 text-align:right 的数值对齐 */
+.mod-list-col.is-right {
+  justify-content: flex-end;
+}
+
+.mod-list-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted-2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.14s ease;
+}
+
+.mod-list-sort:hover {
+  color: var(--text);
+}
+
+.mod-list-sort:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 当前排序列高亮：用户点了列头之后必须能一眼看出「现在按这列排」 */
+.mod-list-sort.is-active {
+  color: var(--accent-text);
+}
+
+.mod-list-sort-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mod-list-sort-dir {
+  flex: 0 0 auto;
+}
+
+/* 排序方向按钮：并进 .sort-control 里，靠一条分隔线分左右两半（左边选字段、右边转方向）。
+   不单独占工具栏格子——独立放会多花 36px（28 + 组内 gap 8），把 1440 宽度下的密度档
+   从 full 挤到 compact，「补全」「导入方式」就被收进「更多」了。
+   高度撑满父盒（26px 内高），所以视觉上和下拉齐平，不像浮在外面。 */
+.sort-control--dir {
+  padding-right: 0;
+  gap: 4px;
+}
+
+.sort-dir-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line-soft);
+  color: var(--muted-2);
+  cursor: pointer;
+  transition: color 0.14s ease;
+}
+
+.sort-dir-btn:hover {
+  color: var(--text);
+}
+
+.sort-dir-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .mod-row {
   display: flex;
   align-items: center;

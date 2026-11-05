@@ -56,7 +56,8 @@ import { Sidebar } from "./components/Sidebar";
 import { LogoMark } from "./components/LogoMark";
 import { TitleBar } from "./components/TitleBar";
 import { TopBar } from "./components/TopBar";
-import { LibraryView, type SortMode } from "./components/LibraryView";
+import { LibraryView } from "./components/LibraryView";
+import { nextSort, type SortMode as LibrarySortMode } from "./lib/librarySort";
 import { SplashScreen } from "./components/SplashScreen";
 import { LoadOrderView } from "./components/LoadOrderView";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
@@ -155,6 +156,10 @@ export default function App() {
     setMotionSpeed,
     setSplash,
     setLibraryView,
+    setLibrarySort,
+    setLibrarySortDir,
+    setLibraryStatusFilter,
+    setLibraryGroupBy,
     setUiFont,
     setCodeFont,
     setCustomUiFont,
@@ -254,7 +259,19 @@ export default function App() {
   const [search, setSearch] = useState("");
   // Category 的取值是持久化数据（B 类，见 types.ts），不可翻译；显示映射见 categoryLabel()。
   const [category, setCategory] = useState<Category>("全部"); // i18n-ignore
-  const [sort, setSort] = useState<SortMode>("name");
+  // 排序字段 / 方向 / 状态筛选 / 分组维度都住在偏好里：这些是「看表的方式」，
+  // 用户调过一次就不该每次开软件重来。此前 sort 是本组件 useState，重启即丢。
+  const sort = preferences.librarySort;
+  const sortDir = preferences.librarySortDir;
+  /** 点列头与切下拉共用一套方向规则：换字段用该字段默认方向，同字段则翻转。 */
+  const handleSort = useCallback(
+    (field: LibrarySortMode) => {
+      const next = nextSort(preferences.librarySort, preferences.librarySortDir, field);
+      setLibrarySort(next.sort);
+      setLibrarySortDir(next.dir);
+    },
+    [preferences.librarySort, preferences.librarySortDir, setLibrarySort, setLibrarySortDir],
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -2804,9 +2821,10 @@ export default function App() {
                 search={search}
                 category={category}
                 sort={sort}
+                sortDir={sortDir}
                 busyId={busyId}
                 onCategory={setCategory}
-                onSort={setSort}
+                onSort={handleSort}
                 onToggle={(mod, enabled) => void handleToggle(mod, enabled)}
                 onOpen={(mod) => setDetailId(mod.id)}
                 onOpenConflicts={() => setConflictCenterOpen(true)}
@@ -2833,6 +2851,10 @@ export default function App() {
                 reclassifying={reclassifying}
                 view={preferences.libraryView}
                 onViewChange={setLibraryView}
+                statusFilter={preferences.libraryStatusFilter}
+                onStatusFilter={setLibraryStatusFilter}
+                groupBy={preferences.libraryGroupBy}
+                onGroupBy={setLibraryGroupBy}
               />
             ) : null}
 

@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   AlertTriangle,
-  ArrowDownUp,
+  ArrowDown,
+  ArrowUp,
+  Boxes,
   ChevronDown,
   FileJson,
   FolderTree,
@@ -40,18 +42,15 @@ import { api, isTauri, normalizeError } from "../lib/api";
 import { isCollectionManifestPath } from "../lib/collection";
 import type { LibraryView as LibraryViewMode } from "../lib/preferences";
 import { VirtualModGrid } from "./VirtualModGrid";
-import { buildLibraryList } from "../lib/libraryList";
+import { ModListHeader } from "./ModListHeader";
+import { buildLibraryList, type GroupBy, type StatusFilter } from "../lib/libraryList";
+import { compareMods, type SortDir, type SortMode } from "../lib/librarySort";
 import { depIgnoresVersion, missingDependencyNames, subscribeDepIgnores } from "../lib/dependencies";
 import { ModContextMenu, type ModContextMenuState } from "./ModContextMenu";
 import { AiToolsDialog } from "./AiToolsDialog";
 import { CollectionWizard } from "./CollectionWizard";
 import { ConfirmDialog, EmptyState, Modal, Spinner } from "./ui";
 import { categoryLabel, t, type MessageKey } from "../i18n";
-
-export type SortMode = "name" | "recent" | "size" | "status";
-
-/** 列表视图的状态筛选。分类型筛选（左侧导航）和状态筛选是两条独立维度，可以叠加。 */
-type StatusFilter = "all" | "enabled" | "disabled" | "missing";
 
 /**
  * 工具栏密度三档（按实测溢出逐级收紧）：
@@ -94,17 +93,29 @@ function readGroupMode(): boolean {
   }
 }
 
-const SORTS: Array<{ id: SortMode; label: string }> = [
-  { id: "name", label: t("library.sortName") },
-  { id: "recent", label: t("library.sortRecent") },
-  { id: "size", label: t("library.sortSize") },
-  { id: "status", label: t("library.sortStatus") },
+/** 工具栏排序下拉的选项。文案存 key，不在模块加载时求值（切语言要能跟着变）。 */
+const SORTS: Array<{ id: SortMode; labelKey: MessageKey }> = [
+  { id: "name", labelKey: "library.sortName" },
+  { id: "version", labelKey: "library.sortVersion" },
+  { id: "category", labelKey: "library.sortCategory" },
+  { id: "size", labelKey: "library.sortSize" },
+  { id: "recent", labelKey: "library.sortRecent" },
+  { id: "status", labelKey: "library.sortStatus" },
 ];
 
-/** 展示名：有中文译名时用译名，否则回退原名。排序与卡片标题共用同一规则。 */
-function displayNameOf(mod: ModEntry): string {
-  const translated = (mod.translatedName ?? "").trim();
-  return translated.length > 0 ? translated : mod.name;
+/** 列表视图的分组维度下拉。 */
+const GROUP_BYS: Array<{ id: GroupBy; labelKey: MessageKey }> = [
+  { id: "category", labelKey: "library.groupByCategory" },
+  { id: "status", labelKey: "library.groupByStatus" },
+  { id: "author", labelKey: "library.groupByAuthor" },
+  { id: "installed", labelKey: "library.groupByInstalled" },
+];
+
+/** 窄窗口下「更多 ▾」里的分组维度只有一个入口，所以按固定顺序轮转。 */
+const GROUP_BY_ORDER: GroupBy[] = ["category", "status", "author", "installed"];
+
+function labelKeyOfGroupBy(by: GroupBy): MessageKey {
+  return GROUP_BYS.find((item) => item.id === by)?.labelKey ?? "library.groupByCategory";
 }
 
 export function LibraryView({
@@ -142,6 +153,11 @@ export function LibraryView({
   reclassifying = false,
   view,
   onViewChange,
+  sortDir,
+  statusFilter,
+  onStatusFilter,
+  groupBy,
+  onGroupBy,
 }: {
   snapshot: Snapshot;
   conflicts: ConflictInfo[];
@@ -151,9 +167,12 @@ export function LibraryView({
   search: string;
   category: Category;
   sort: SortMode;
+  /** 排序方向。与 sort 分开存，才能表达「体积从小到大」这类反直觉方向。 */
+  sortDir: SortDir;
   busyId: string | null;
   onCategory: (category: Category) => void;
-  onSort: (sort: SortMode) => void;
+  /** 只传字段：方向由上层用 nextSort 推导（换列用默认方向、同列翻转）。 */
+  onSort: (field: SortMode) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   onOpen: (mod: ModEntry) => void;
   onOpenConflicts: () => void;
@@ -185,9 +204,14 @@ export function LibraryView({
   /** 卡片 / 列表切换（bf7889 反馈）：状态存在偏好里，重启后保持。 */
   view: LibraryViewMode;
   onViewChange: (view: LibraryViewMode) => void;
+  /** 状态筛选（全部 / 已启用 / 已禁用 / 缺前置）：存偏好，重启后保持。 */
+  statusFilter: StatusFilter;
+  onStatusFilter: (filter: StatusFilter) => void;
+  /** 列表视图的分组维度（分类 / 状态 / 作者 / 安装月份）：存偏好，重启后保持。 */
+  groupBy: GroupBy;
+  onGroupBy: (groupBy: GroupBy) => void;
 }) {
   const mods = snapshot.state.mods;
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => readCollapsedGroups());
   const [groupMode, setGroupMode] = useState<boolean>(() => readGroupMode());
   const enabledCount = mods.filter((mod) => mod.enabled).length;
@@ -282,24 +306,18 @@ export function LibraryView({
         mod.description.toLowerCase().includes(needle)
       );
     });
-    result = [...result].sort((a, b) => {
-      // 名称排序统一走「展示名」，中文列表才不会中英混排。
-      if (sort === "name") return displayNameOf(a).localeCompare(displayNameOf(b), "zh-CN");
-      if (sort === "recent") return (b.installedAt ?? "").localeCompare(a.installedAt ?? "");
-      if (sort === "size") return b.sizeBytes - a.sizeBytes;
-      return (
-        Number(b.enabled) - Number(a.enabled) ||
-        displayNameOf(a).localeCompare(displayNameOf(b), "zh-CN")
-      );
-    });
+    // 排序全部交给 compareMods：方向、自然序版本号、并列回落名称都在那里，
+    // 这里不再按字段写一串 if——否则每加一列就要在这里再补一遍方向逻辑。
+    result = [...result].sort((a, b) => compareMods(a, b, sort, sortDir));
     return result;
-  }, [mods, category, search, sort, statusFilter, dependencyReport, frameworks, depIgnoresRev]);
+  }, [mods, category, search, sort, sortDir, statusFilter, dependencyReport, frameworks, depIgnoresRev]);
 
-  const toggleGroup = (categoryKey: string) => {
+  // 折叠键带分组维度前缀（status:on / author:xxx / 分类名…），换维度不会误用旧状态。
+  const toggleGroup = (key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(categoryKey)) next.delete(categoryKey);
-      else next.add(categoryKey);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       try {
         window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
       } catch {
@@ -323,8 +341,11 @@ export function LibraryView({
 
   // 只有「列表视图 + 分组模式」才摊成组头行；其余组合沿用原来的平铺渲染。
   const listItems = useMemo(
-    () => (view === "list" && groupMode ? buildLibraryList(filtered, collapsedGroups, true) : undefined),
-    [filtered, collapsedGroups, groupMode, view],
+    () =>
+      view === "list" && groupMode
+        ? buildLibraryList(filtered, collapsedGroups, true, groupBy)
+        : undefined,
+    [filtered, collapsedGroups, groupMode, view, groupBy],
   );
 
   const conflictTargets = new Set(conflicts.map((conflict) => conflict.target.toLowerCase())).size;
@@ -797,7 +818,7 @@ export function LibraryView({
                 <ListFilter size={13} />
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                  onChange={(event) => onStatusFilter(event.target.value as StatusFilter)}
                   aria-label={t("library.statusFilterAria")}
                 >
                   {STATUS_FILTERS.map((item) => (
@@ -808,16 +829,41 @@ export function LibraryView({
                 </select>
               </label>
 
-              <label className="sort-control">
-                <ArrowDownUp size={13} />
-                <select value={sort} onChange={(event) => onSort(event.target.value as SortMode)}>
+              {/* 排序下拉：换字段时方向走该字段的默认值（体积→大到小、名称→A→Z），
+                  与点列头同一套规则，所以这里也只传字段名。 */}
+              {/* 方向按钮并进排序框内部，不单独占一个 36px 的格子。
+                  原因：1440 下工具栏只剩 24px 余量，独立按钮会把密度档从 full 挤到
+                  compact，「补全」「导入方式」就被收进「更多」了（check-toolbar 的
+                  「宽屏低频按钮直显」会红）。并进来只多花十几像素，语义也更紧：
+                  这个框管的就是「按什么排 + 往哪排」。
+                  用 div 不用 label：里面装了 button，label 会把点击转发给 select，
+                  点方向箭头时会顺手弹出下拉。 */}
+              <div className="sort-control sort-control--dir" title={t("library.sortControlTitle")}>
+                <select
+                  value={sort}
+                  onChange={(event) => onSort(event.target.value as SortMode)}
+                  aria-label={t("library.sortControlAria")}
+                >
                   {SORTS.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </option>
                   ))}
                 </select>
-              </label>
+                <button
+                  type="button"
+                  className="sort-dir-btn"
+                  onClick={() => onSort(sort)}
+                  title={t("library.sortToggleDir")}
+                  aria-label={t("library.sortToggleDir")}
+                >
+                  {sortDir === "asc" ? (
+                    <ArrowUp size={12} strokeWidth={2.6} />
+                  ) : (
+                    <ArrowDown size={12} strokeWidth={2.6} />
+                  )}
+                </button>
+              </div>
 
               {view === "list" ? (
                 <button
@@ -830,6 +876,24 @@ export function LibraryView({
                   <Layers size={13} />
                   {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
                 </button>
+              ) : null}
+
+              {/* 分组维度：只在「列表 + 已分组」时才有意义，平铺时不出现。 */}
+              {view === "list" && groupMode ? (
+                <label className="sort-control is-group-by" title={t("library.groupByTitle")}>
+                  <Boxes size={13} />
+                  <select
+                    value={groupBy}
+                    onChange={(event) => onGroupBy(event.target.value as GroupBy)}
+                    aria-label={t("library.groupByAria")}
+                  >
+                    {GROUP_BYS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {t(item.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ) : null}
 
               <div className="view-switch" role="group" aria-label={t("library.viewToggleAria")}>
@@ -1151,6 +1215,31 @@ export function LibraryView({
                         {groupMode ? t("library.groupModeGrouped") : t("library.groupModeFlat")}
                       </button>
                     ) : null}
+                    {/* 窄窗口里分组维度的下拉会被工具栏挤没，这里留一个轮转入口：
+                        按顺序切下一个维度，标题里写明下一个是什么。 */}
+                    {view === "list" && groupMode ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOverflowOpen(false);
+                          const index = GROUP_BY_ORDER.indexOf(groupBy);
+                          onGroupBy(GROUP_BY_ORDER[(index + 1) % GROUP_BY_ORDER.length]);
+                        }}
+                        title={t("library.groupByCycleTitle", {
+                          next: t(
+                            labelKeyOfGroupBy(
+                              GROUP_BY_ORDER[
+                                (GROUP_BY_ORDER.indexOf(groupBy) + 1) % GROUP_BY_ORDER.length
+                              ],
+                            ),
+                          ),
+                        })}
+                      >
+                        <Boxes size={13} />
+                        {t(labelKeyOfGroupBy(groupBy))}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1286,10 +1375,19 @@ export function LibraryView({
             />
           ) : (
             <VirtualModGrid
-              filterKey={`${category}:${sort}:${statusFilter}`}
+              filterKey={`${category}:${sort}:${sortDir}:${statusFilter}:${groupMode ? groupBy : "flat"}`}
               view={view}
               mods={filtered}
               listItems={listItems}
+              listHeader={
+                <ModListHeader
+                  sort={sort}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                  selectable={selectMode}
+                  grouped={groupMode}
+                />
+              }
               onToggleGroup={toggleGroup}
               conflicts={conflicts}
               frameworks={frameworks}

@@ -13,6 +13,8 @@ import {
   useTheme,
   type StyleTheme,
 } from "./theme";
+import { isSortDir, isSortMode, type SortDir, type SortMode } from "./librarySort";
+import { isGroupBy, isStatusFilter, type GroupBy, type StatusFilter } from "./libraryList";
 
 /** 外观风格 id。旧名字保留给现有调用方。 */
 export type ThemeId = StyleTheme;
@@ -41,6 +43,13 @@ export interface Preferences {
   splash: boolean;
   /** 模组库显示方式：卡片网格 / 紧凑列表（bf7889 反馈新增，落盘记住）。 */
   libraryView: LibraryView;
+  /** 模组库排序字段与方向（2026-11-04：表头可点后不再写死在代码里）。 */
+  librarySort: SortMode;
+  librarySortDir: SortDir;
+  /** 列表视图的状态筛选（全部 / 已启用 / 已禁用 / 缺前置）。 */
+  libraryStatusFilter: StatusFilter;
+  /** 列表视图的分组维度（分类 / 启用状态 / 作者 / 安装月份）。 */
+  libraryGroupBy: GroupBy;
   /** 全局界面字体（T8 字体设置）：跟随系统 / 思源黑体 / JetBrains Mono。 */
   uiFont: UiFontId;
   /** 代码与日志字体（T8 字体设置），默认跟随主题等宽。 */
@@ -66,6 +75,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   motionSpeed: 100,
   splash: true,
   libraryView: "grid",
+  librarySort: "name",
+  librarySortDir: "asc",
+  libraryStatusFilter: "all",
+  libraryGroupBy: "category",
   uiFont: "system",
   codeFont: "theme",
   customUiFont: "",
@@ -110,6 +123,10 @@ interface StoredPreferences {
   motionSpeed: number;
   splash: boolean;
   libraryView: LibraryView;
+  librarySort: SortMode;
+  librarySortDir: SortDir;
+  libraryStatusFilter: StatusFilter;
+  libraryGroupBy: GroupBy;
   uiFont: UiFontId;
   codeFont: CodeFontId;
   customUiFont: string;
@@ -139,6 +156,14 @@ function loadStored(): StoredPreferences {
       splash: value.splash !== false,
       // 老配置里没有这个字段：默认卡片视图，和升级前看到的界面一致。
       libraryView: value.libraryView === "list" ? "list" : "grid",
+      // 排序 / 筛选 / 分组：老配置没有，一律回到「名称升序 + 全部 + 按分类分组」，
+      // 也就是升级前写死的那套行为，用户的观感不该因为升级而变化。
+      librarySort: isSortMode(value.librarySort) ? value.librarySort : "name",
+      librarySortDir: isSortDir(value.librarySortDir) ? value.librarySortDir : "asc",
+      libraryStatusFilter: isStatusFilter(value.libraryStatusFilter)
+        ? value.libraryStatusFilter
+        : "all",
+      libraryGroupBy: isGroupBy(value.libraryGroupBy) ? value.libraryGroupBy : "category",
       // 字体：老配置没有该字段，一律「跟随主题」，升级后界面字体不该突变。
       uiFont: isUiFont(value.uiFont) ? value.uiFont : "system",
       codeFont: isCodeFont(value.codeFont) ? value.codeFont : "theme",
@@ -413,6 +438,14 @@ export function usePreferences() {
     setSplash: (splash: boolean) => setStored((current) => ({ ...current, splash })),
     setLibraryView: (libraryView: LibraryView) =>
       setStored((current) => ({ ...current, libraryView })),
+    setLibrarySort: (librarySort: SortMode) =>
+      setStored((current) => ({ ...current, librarySort })),
+    setLibrarySortDir: (librarySortDir: SortDir) =>
+      setStored((current) => ({ ...current, librarySortDir })),
+    setLibraryStatusFilter: (libraryStatusFilter: StatusFilter) =>
+      setStored((current) => ({ ...current, libraryStatusFilter })),
+    setLibraryGroupBy: (libraryGroupBy: GroupBy) =>
+      setStored((current) => ({ ...current, libraryGroupBy })),
     setUiFont: (uiFont: UiFontId) => setStored((current) => ({ ...current, uiFont })),
     setCodeFont: (codeFont: CodeFontId) => setStored((current) => ({ ...current, codeFont })),
     setCustomUiFont: (customUiFont: string) =>

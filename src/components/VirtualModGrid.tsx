@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ConflictInfo, DependencyReport, FrameworkStatus, ModEntry } from "../types";
 import { missingDependencyNames } from "../lib/dependencies";
@@ -23,6 +23,7 @@ export function VirtualModGrid({
   updateIds,
   view = "grid",
   listItems,
+  listHeader,
   onToggleGroup,
   onToggle,
   onOpen,
@@ -48,7 +49,15 @@ export function VirtualModGrid({
   view?: LibraryView;
   /** 列表视图的分组行（组头 + 模组）。给了就按它渲染，不给就按 mods 平铺。 */
   listItems?: LibraryListItem[];
-  onToggleGroup?: (category: string) => void;
+  /**
+   * 列表视图的固定表头（排序用）。
+   *
+   * 挂在滚动容器内部、虚拟网格之前：sticky 定位让它跟着滚动停住，而它本身在
+   * 文档流里占位，所以行从它下面开始排列。虚拟器的 range 计算会比实际位置
+   * 少算一个表头高度（26px），overscan 有 8 行（≈384px），完全盖得住。
+   */
+  listHeader?: ReactNode;
+  onToggleGroup?: (key: string) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   onOpen: (mod: ModEntry) => void;
   onContextMenu?: (mod: ModEntry, event: React.MouseEvent) => void;
@@ -131,7 +140,7 @@ export function VirtualModGrid({
       if (!list) return index;
       const item = list[index];
       if (!item) return index;
-      return item.type === "header" ? `h:${item.category}` : `m:${item.mod.id}`;
+      return item.type === "header" ? `h:${item.key}` : `m:${item.mod.id}`;
     },
     overscan: view === "list" ? 8 : 4,
   });
@@ -182,6 +191,7 @@ export function VirtualModGrid({
 
   return (
     <div className={`grid-scroll view-${view}`} ref={scrollRef}>
+      {view === "list" ? listHeader : null}
       <div className="virtual-grid" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
           if (list) {
@@ -195,10 +205,10 @@ export function VirtualModGrid({
                   style={{ transform: `translateY(${virtualRow.start}px)` }}
                 >
                   <ModGroupHeader
-                    category={item.category}
+                    label={item.label}
                     count={item.count}
                     collapsed={item.collapsed}
-                    onToggle={() => onToggleGroup?.(item.category)}
+                    onToggle={() => onToggleGroup?.(item.key)}
                   />
                 </div>
               );
