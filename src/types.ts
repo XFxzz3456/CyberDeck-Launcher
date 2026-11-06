@@ -1104,6 +1104,20 @@ export interface AdoptReport {
   outcomes: AdoptOutcome[];
   mods: ModEntry[];
 }
+
+/**
+ * 库整理（adopt_normalize）的返回。
+ *
+ * 背景：2026-11-06 之前的收编把 ArchiveXL 的伴生元数据（`X.archive.xl`）当成
+ * 独立模组登记，库里数量因此虚高。`merged` 是这次并回主体的条数，`removed`
+ * 是清掉的失效条目（只剩元数据、主体不存在）——只删记录，游戏文件不动。
+ */
+export interface LibraryNormalizeReport {
+  merged: number;
+  mergedNames: string[];
+  removed: string[];
+  empty: string[];
+}
 // ---------------------------------------------------------------------------
 // 存档管理（任务 deepseek_865759，2026-10-30）：环境快照 + 只读存档扫描。
 // 与后端 snapshots.rs / saves.rs 一一对应。

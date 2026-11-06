@@ -42,7 +42,7 @@ mod wolvenkit;
 use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
     AiProfileList,
-    AdoptCandidate, AdoptReport, AdoptScanReport,
+    AdoptCandidate, AdoptReport, AdoptScanReport, LibraryNormalizeReport,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
     ProfileList, SwitchProfileReport,
@@ -155,6 +155,20 @@ fn bootstrap(store: State<'_, Store>) -> AppResult<Snapshot> {
     // 先把库拉回和磁盘一致：玩家很可能在上次退出后用 Vortex 删过文件。
     if let Err(err) = run_physical_sync(&store) {
         eprintln!("physical sync failed: {err:?}");
+    }
+    // 库整理：2026-11-06 之前的收编把 ArchiveXL 的伴生元数据（X.archive.xl）
+    // 记成了独立条目，库里的模组数因此虚高（实机 119 条里 37 条是这种碎片）。
+    // 合并是纯 state 操作、幂等、不碰游戏目录，放启动时跑一次最省事——
+    // 用户不需要知道曾经有过这个 bug，只该看到数字是对的。
+    match adopt::normalize_library(store.inner()) {
+        Ok(report) if report.merged > 0 => {
+            log_startup(
+                &store.data_dir,
+                &format!("stage=adopt-normalize merged={}", report.merged),
+            );
+        }
+        Ok(_) => {}
+        Err(err) => eprintln!("adopt normalize failed: {err:?}"),
     }
     // 前端挂载后第一个调用的命令：这行日志等于"UI 真的起来了"的心跳，
     // 一旦界面白屏/连不上 devUrl，日志里就不会出现 stage=frontend。
@@ -481,6 +495,15 @@ async fn adopt_execute(
 #[tauri::command]
 fn adopt_cancel() -> bool {
     adopt::request_cancel()
+}
+
+/// 库整理：把历史收编留下的「伴生 .xl 独立成条」并回它的 archive 主体。
+///
+/// 纯 state 操作（不碰游戏目录、不动暂存文件），几百条毫秒级，同步执行即可。
+/// 幂等：没有可合并的条目时返回 `merged: 0`，重复调用无副作用。
+#[tauri::command]
+fn adopt_normalize(store: State<'_, Store>) -> AppResult<LibraryNormalizeReport> {
+    adopt::normalize_library(store.inner())
 }
 
 /// 在资源管理器里定位一个文件/文件夹。
@@ -3845,6 +3868,7 @@ pub fn run() {
             adopt_scan,
             adopt_execute,
             adopt_cancel,
+            adopt_normalize,
             switch_profile,
             export_profile_modlist,
             import_profile_modlist,

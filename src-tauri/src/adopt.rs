@@ -15,7 +15,8 @@ use crate::game::same_volume;
 use crate::installer::file_stamp;
 use crate::schema::{
     AdoptCandidate, AdoptError, AdoptFileRef, AdoptOutcome, AdoptProgress, AdoptReport,
-    AdoptScanReport, AppResult, CommandError, DeployedFile, InstallLayout, LinkType, ModEntry,
+    AdoptScanReport, AppResult, CommandError, DeployedFile, InstallLayout,
+    LibraryNormalizeReport, LinkType, ModEntry,
 };
 use crate::store::{is_within, now_iso, safe_join, Store};
 use std::collections::HashSet;
@@ -165,6 +166,24 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
         ext: String,
         rel: String,
     }
+
+    /// 伴生文件（.xl / .xlp）是否属于这个 archive。
+    ///
+    /// 生态里两种写法都存在：
+    /// - **ArchiveXL 标准写法**：`X.archive` 的元数据叫 `X.archive.xl`（或 `.archive.xlp`）；
+    /// - 早期手工包：`X.archive` 配 `X.xl`（同词干）。
+    ///
+    /// 2026-11-06 之前只认后者。真实玩家库里 90% 是标准写法，于是每个 mod 都被
+    /// 拆成「主体 + 碎片」两条记录——实机统计 119 条里有 37 条是 `.archive.xl` 碎片，
+    /// 用户看到的模组数直接虚高三分之四。
+    fn companion_follows(companion: &RawFile, archive: &RawFile) -> bool {
+        if companion.stem_lower == archive.stem_lower {
+            return true;
+        }
+        // 用「archive 全名 + 点」做前缀，避免 foo.archive 抢走 foobar.archive.xl。
+        let prefix = format!("{}.", archive.name.to_ascii_lowercase());
+        companion.name.to_ascii_lowercase().starts_with(&prefix)
+    }
     let mut archives: Vec<RawFile> = Vec::new();
     let mut companions: Vec<RawFile> = Vec::new();
 
@@ -208,7 +227,7 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
         files.push(file_ref(&game_root, &archive.rel));
         for companion in companions
             .iter()
-            .filter(|item| item.stem_lower == archive.stem_lower)
+            .filter(|item| companion_follows(item, archive))
         {
             files.push(file_ref(&game_root, &companion.rel));
             used_companions.insert(companion.name.clone());
@@ -471,8 +490,163 @@ fn ensure_free_space(_dir: &Path, _required: u64) -> AppResult<()> {
     Ok(())
 }
 
-/// 执行一批收编。进度通过回调推送（命令层负责 emit "adopt-progress"）。
+/// 库整理：把历史上「伴生 .xl 被单独收编成条」的碎片并回它的 archive 主体。
 ///
+/// 背景：2026-11-06 之前的 `scan` 只认同词干（`X.archive` + `X.xl`），认不出
+/// ArchiveXL 的标准写法（`X.archive` + `X.archive.xl`），于是每个 mod 在库里
+/// 留下「主体 + 碎片」两条记录。实机取样：119 条里 37 条是这种碎片。
+/// 修 `scan` 只解决「以后不再产生」，已经进库的脏数据靠这里收口。
+///
+/// 范围与安全边界：
+/// - 只动 `origin == "adopted"`、且部署清单恰好一个 `.archive.xl/.xlp` 的条目；
+/// - 合并是**纯 state 操作**：游戏目录与暂存文件一个都不动，碎片条目的 `source`
+///   仍指向它自己的暂存目录，之后禁用/卸载照常工作；
+/// - 「只剩元数据、主体不在游戏目录」与「清单为空」的条目**只统计不删除**——
+///   删用户数据需要单独动作，不能在整理里顺手做掉。
+pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
+    use std::collections::HashMap;
+
+    let mut state = store.data.lock().unwrap_or_else(|err| err.into_inner());
+
+    // rel（小写）→ 占有它的条目下标。合并前先拍一次快照，合并过程中下标不动。
+    let mut owners: HashMap<String, usize> = HashMap::new();
+    for (index, entry) in state.mods.iter().enumerate() {
+        for file in &entry.deployed_files {
+            owners.insert(file.relative_path.to_ascii_lowercase(), index);
+        }
+    }
+
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for (index, entry) in state.mods.iter().enumerate() {
+        if entry.origin != "adopted" || entry.deployed_files.len() != 1 {
+            continue;
+        }
+        let rel = entry.deployed_files[0].relative_path.to_ascii_lowercase();
+        if !(rel.ends_with(".archive.xl") || rel.ends_with(".archive.xlp")) {
+            continue;
+        }
+        // `archive/pc/mod/X.archive.xl` → `archive/pc/mod/X.archive`
+        let Some(cut) = rel.rfind('.') else { continue };
+        if let Some(&owner_index) = owners.get(&rel[..cut]) {
+            if owner_index != index && state.mods[owner_index].origin == "adopted" {
+                pairs.push((index, owner_index));
+            }
+        }
+    }
+
+    let mut merged_names: Vec<String> = Vec::new();
+    let mut merged_ids: Vec<String> = Vec::new();
+    for (child, owner) in &pairs {
+        let child_entry = state.mods[*child].clone();
+        let owner_entry = &mut state.mods[*owner];
+        for file in child_entry.deployed_files {
+            if !owner_entry
+                .deployed_files
+                .iter()
+                .any(|item| item.relative_path.eq_ignore_ascii_case(&file.relative_path))
+            {
+                owner_entry.deployed_files.push(file);
+            }
+        }
+        for rel in child_entry.planned_files {
+            if !owner_entry
+                .planned_files
+                .iter()
+                .any(|item| item.eq_ignore_ascii_case(&rel))
+            {
+                owner_entry.planned_files.push(rel);
+            }
+        }
+        owner_entry.file_count = owner_entry.deployed_files.len();
+        owner_entry.size_bytes = owner_entry.size_bytes.saturating_add(child_entry.size_bytes);
+        owner_entry.updated_at = Some(now_iso());
+        merged_names.push(child_entry.name.clone());
+        merged_ids.push(child_entry.id.clone());
+    }
+    if !merged_ids.is_empty() {
+        state.mods.retain(|item| !merged_ids.contains(&item.id));
+    }
+
+    // 合并后重新拍一遍占有关系，用于判定「谁只剩元数据」。
+    let mut owned: HashSet<String> = HashSet::new();
+    for entry in &state.mods {
+        for file in &entry.deployed_files {
+            owned.insert(file.relative_path.to_ascii_lowercase());
+        }
+    }
+    let game_root = state.game_dir.clone().map(PathBuf::from);
+
+    // 「失效条目」= 只剩 ArchiveXL 元数据、且它指向的 `X.archive` 既不在库、也不在游戏目录。
+    //
+    // 这种条目在游戏里不产生任何效果（.xl 找不到主体就是死文件），却实打实占着
+    // 「已安装」的计数——用户看到的就是数字虚高。清理只删记录、不删文件：
+    // 游戏目录里的 .xl 原样保留，暂存目录也不动，以后补回主体再收编一次即可。
+    //
+    // 只认 `X.archive.xl` / `X.archive.xlp`。`X.xl` 这种独立元数据可能是汉化
+    // extend 包（`extend:` 指向别的 archive），没有同名主体也照样生效，绝不能动。
+    let mut invalids: Vec<String> = Vec::new();
+    let mut invalid_ids: Vec<String> = Vec::new();
+    for entry in &state.mods {
+        if entry.deployed_files.is_empty() {
+            continue;
+        }
+        let mut orphan = true;
+        for file in &entry.deployed_files {
+            let low = file.relative_path.to_ascii_lowercase();
+            let stem = low
+                .strip_suffix(".xl")
+                .or_else(|| low.strip_suffix(".xlp"));
+            let Some(stem) = stem else {
+                orphan = false;
+                break;
+            };
+            if !stem.ends_with(".archive") {
+                orphan = false;
+                break;
+            }
+            let body = stem.to_string();
+            let body_exists = owned.contains(&body)
+                || game_root
+                    .as_ref()
+                    .map(|root| root.join(body.replace('/', "\\")).is_file())
+                    .unwrap_or(false);
+            if body_exists {
+                orphan = false;
+                break;
+            }
+        }
+        if orphan {
+            invalids.push(entry.name.clone());
+            invalid_ids.push(entry.id.clone());
+        }
+    }
+    if !invalid_ids.is_empty() {
+        state.mods.retain(|item| !invalid_ids.contains(&item.id));
+    }
+
+    let empty: Vec<String> = state
+        .mods
+        .iter()
+        .filter(|entry| entry.deployed_files.is_empty() && entry.planned_files.is_empty())
+        .map(|entry| entry.name.clone())
+        .collect();
+
+    let merged = merged_names.len();
+    let invalidated = invalid_ids.len();
+    if merged > 0 || invalidated > 0 {
+        store.save(&state)?;
+    }
+    drop(state);
+
+    Ok(LibraryNormalizeReport {
+        merged,
+        merged_names,
+        removed: invalids,
+        empty,
+    })
+}
+
+/// 执行一批收编。进度通过回调推送（命令层负责 emit "adopt-progress"）。
 /// 失败语义：
 /// - 单文件 IO 失败 → 该模组 ADOPT_STAGING_FAILED 跳过，其余继续；
 /// - 验证失败 → ADOPT_VERIFY_FAILED 跳过；

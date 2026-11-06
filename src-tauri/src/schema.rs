@@ -494,6 +494,21 @@ pub struct AdoptReport {
     pub mods: Vec<ModEntry>,
 }
 
+/// 库整理（adopt_normalize）的返回。
+///
+/// - `merged` / `merged_names`：这次并回主体的伴生文件条目；
+/// - `removed`：已从库中清掉的失效条目（只剩 `X.archive.xl`，主体既不在库也不在
+///   游戏目录）。**只删记录、不删文件**，游戏目录里的 `.xl` 原样保留；
+/// - `empty`：部署清单为空的条目名，通常是正常禁用的模组，仅供信息展示。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryNormalizeReport {
+    pub merged: usize,
+    pub merged_names: Vec<String>,
+    pub removed: Vec<String>,
+    pub empty: Vec<String>,
+}
+
 /// Provenance for a mod imported through the Nexus Mods API. Optional: manual
 /// ZIPs and browser downloads never carry this.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -3,6 +3,7 @@ import type {
   AdoptCandidate,
   AdoptReport,
   AdoptScanReport,
+  LibraryNormalizeReport,
   EnvSnapshot,
   SaveScanReport,
   AiDiagnosis,
@@ -237,6 +238,15 @@ export const api = {
   async adoptCancel(): Promise<boolean> {
     if (!isTauri) return mockApi.adoptCancel();
     return call<boolean>("adopt_cancel");
+  },
+
+  /**
+   * 库整理：把历史收编产生的「伴生 .xl 独立成条」并回主体，并清掉主体不存在的
+   * 失效条目。纯记录操作，游戏目录与暂存文件都不动；启动时会自动执行一次。
+   */
+  async adoptNormalize(): Promise<LibraryNormalizeReport> {
+    if (!isTauri) return { merged: 0, mergedNames: [], removed: [], empty: [] };
+    return call<LibraryNormalizeReport>("adopt_normalize");
   },
 
   /** 环境体检：确认已部署文件还在、没被替换。 */

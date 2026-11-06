@@ -2,6 +2,7 @@ import type {
   AdoptCandidate,
   AdoptReport,
   AdoptScanReport,
+  LibraryNormalizeReport,
   AiDiagnosis,
   AiStatus,
   AiFixProposal,
@@ -1461,6 +1462,12 @@ export const mockApi = {
   async adoptCancel(): Promise<boolean> {
     await sleep(80);
     return false;
+  },
+
+  /** 演示数据是手工构造的，不存在历史遗留的碎片条目。 */
+  async adoptNormalize(): Promise<LibraryNormalizeReport> {
+    await sleep(60);
+    return { merged: 0, mergedNames: [], removed: [], empty: [] };
   },
 
   async diagnoseEnvironment(): Promise<EnvDiagnosis> {

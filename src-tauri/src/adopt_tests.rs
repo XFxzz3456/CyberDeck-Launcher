@@ -616,3 +616,153 @@ fn adopt_rollback_on_state_write_fail() {
     // 清理注入，避免 Drop 阶段目录删除出现意外。
     fs::remove_dir(&state_file).unwrap();
 }
+
+/// 2026-11-06 用户反馈「模组数量怎么还不对」的根因回归。
+///
+/// ArchiveXL 的标准写法是 `X.archive` 配 `X.archive.xl`（元数据文件名带 archive 全名），
+/// 而旧逻辑只认同词干 `X.archive` + `X.xl`。于是真机上每个 mod 都被拆成两条记录，
+/// 实测 119 条里 37 条是这种碎片，用户看到的就是「数量虚高」。
+#[test]
+fn archive_xl_companion_follows_its_archive() {
+    let fixture = Fixture::new();
+    fixture.game_file("VirtualAtelier.archive", b"body");
+    fixture.game_file("VirtualAtelier.archive.xl", b"meta");
+    // 只有元数据、没有主体的汉化包（ArchiveXL 的 extend 写法），应独立成候选。
+    fixture.game_file("zz-VirtualAtelier-CHS.archive.xl", b"chs-meta");
+
+    let report = adopt::scan(&fixture.store).unwrap();
+    assert_eq!(report.candidates.len(), 2, "{:?}", report.candidates);
+
+    let main = report
+        .candidates
+        .iter()
+        .find(|item| item.archive_rel.eq_ignore_ascii_case("archive/pc/mod/VirtualAtelier.archive"))
+        .expect("主体候选丢失");
+    assert_eq!(
+        main.files.len(),
+        2,
+        "标准写法的 .archive.xl 必须跟随主体，不能单独成条：{:?}",
+        main.files
+    );
+    assert!(main
+        .files
+        .iter()
+        .any(|file| file.rel.eq_ignore_ascii_case("archive/pc/mod/VirtualAtelier.archive.xl")));
+
+    let orphan = report
+        .candidates
+        .iter()
+        .find(|item| item.archive_rel.contains("zz-VirtualAtelier-CHS"))
+        .expect("孤立元数据应独立成候选");
+    assert_eq!(orphan.files.len(), 1);
+}
+
+/// 库整理：历史遗留的「碎片条目」要能并回主体，且不改游戏目录、不动暂存文件。
+#[test]
+fn normalize_merges_companion_fragments_into_body() {
+    let _guard = lock();
+    let fixture = Fixture::new();
+    fixture.game_file("Normalized.archive", b"body-bytes");
+    fixture.game_file("Normalized.archive.xl", b"meta-bytes");
+
+    // 先按修好后的配对收编一次：主体 + 伴生元数据进同一条记录。
+    let candidates = vec![candidate(&fixture, "archive/pc/mod/Normalized.archive")];
+    let candidates = {
+        // candidate() 只带主体一个文件，这里补上伴生文件，模拟 scan 的正常输出。
+        let mut list = candidates;
+        let meta = fixture.game.join("archive").join("pc").join("mod").join("Normalized.archive.xl");
+        let (size, mtime) = file_stamp(&meta);
+        list[0].files.push(AdoptFileRef {
+            rel: "archive/pc/mod/Normalized.archive.xl".to_string(),
+            size_bytes: size.unwrap_or(0),
+            modified_time: mtime,
+        });
+        list[0].size_bytes += size.unwrap_or(0);
+        list
+    };
+    adopt::execute(&fixture.store, &candidates, &mut no_progress).unwrap();
+
+    // 还原成 bug 时代的形态：主体一条 + 碎片一条。
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let main = state.mods[0].clone();
+        let meta = main
+            .deployed_files
+            .iter()
+            .find(|file| file.relative_path.to_ascii_lowercase().ends_with(".archive.xl"))
+            .expect("伴生文件应已登记")
+            .clone();
+        state.mods[0]
+            .deployed_files
+            .retain(|file| !file.relative_path.to_ascii_lowercase().ends_with(".archive.xl"));
+        state.mods[0].file_count = state.mods[0].deployed_files.len();
+
+        let mut fragment = main.clone();
+        fragment.id = "adopt-fragment-for-test".to_string();
+        fragment.name = "normalized.archive".to_string();
+        fragment.deployed_files = vec![meta];
+        fragment.planned_files = vec!["archive/pc/mod/Normalized.archive.xl".to_string()];
+        fragment.size_bytes = 9;
+        fragment.file_count = 1;
+        state.mods.push(fragment);
+        fixture.store.save(&state).unwrap();
+    }
+    assert_eq!(fixture.store.snapshot_data().mods.len(), 2, "前置：应有两条件记录");
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.merged, 1, "{report:?}");
+    assert_eq!(report.merged_names.len(), 1);
+
+    let state = fixture.store.snapshot_data();
+    assert_eq!(state.mods.len(), 1, "碎片条目应已并回主体");
+    assert_eq!(state.mods[0].deployed_files.len(), 2, "主体的部署清单应含伴生元数据");
+    assert_eq!(state.mods[0].file_count, 2);
+    // 游戏目录一个字节都不该被动过。
+    assert_eq!(
+        fs::read(fixture.game.join("archive").join("pc").join("mod").join("Normalized.archive")).unwrap(),
+        b"body-bytes"
+    );
+    assert_eq!(
+        fs::read(fixture.game.join("archive").join("pc").join("mod").join("Normalized.archive.xl")).unwrap(),
+        b"meta-bytes"
+    );
+
+    // 幂等：再跑一次没有可合并的东西。
+    let again = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(again.merged, 0);
+}
+
+/// 库整理第二段：只剩 `X.archive.xl`、主体既不在库也不在游戏目录的条目，
+/// 在游戏里不产生任何效果，却占着「已安装」计数——整理时要清掉记录。
+/// 只清记录：游戏目录里的 .xl 与暂存文件都不动。
+#[test]
+fn normalize_removes_metadata_only_entries_without_body() {
+    let _guard = lock();
+    let fixture = Fixture::new();
+    fixture.game_file("Keep.archive", b"keep-bytes");
+
+    let candidates = vec![candidate(&fixture, "archive/pc/mod/Keep.archive")];
+    adopt::execute(&fixture.store, &candidates, &mut no_progress).unwrap();
+
+    // 造一条 bug 时代遗留的「孤儿元数据」条目。
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let mut ghost = state.mods[0].clone();
+        ghost.id = "adopt-ghost-metadata-only".to_string();
+        ghost.name = "ghost".to_string();
+        ghost.deployed_files[0].relative_path = "archive/pc/mod/Ghost.archive.xl".to_string();
+        ghost.planned_files = vec!["archive/pc/mod/Ghost.archive.xl".to_string()];
+        ghost.file_count = 1;
+        state.mods.push(ghost);
+        fixture.store.save(&state).unwrap();
+    }
+    assert_eq!(fixture.store.snapshot_data().mods.len(), 2);
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.removed.len(), 1, "{report:?}");
+    assert_eq!(report.merged, 0);
+
+    let state = fixture.store.snapshot_data();
+    assert_eq!(state.mods.len(), 1, "孤儿元数据条目应被清掉");
+    assert_eq!(state.mods[0].name, "keep");
+}
