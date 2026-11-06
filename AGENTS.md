@@ -2,6 +2,7 @@
 
 > 本文件是**执行层**规范：目录约定、版本发布流程、构建与门禁命令。
 > **规则级**长期结论（铁律、环境坑、事故教训）收敛在 `docs/MEMORY-CANON.md`，两者配合阅读。
+> **新会话接手先读 `docs/SESSION-START.md`**：进度载体已迁到 GitHub Issues，含「第一句话」模板与上下文落点。
 > 修改本文件需在 `CHANGELOG.md` 留痕。
 
 ---
@@ -165,6 +166,8 @@ CARGO_PROFILE_RELEASE_LTO=false node_modules/.bin/tauri.cmd build --no-bundle
 |---|---|
 | 源码 | `CHANGELOG.md`、`HANDOFF.md`、`docs/*`、`AGENTS.md`（本文件） |
 | 资料库 | space `btCAC0glhsDub7qu3xaeLI`；**以空间内最新同名节点为准**（每次上传新建节点，不要在本文件记录 node id，会永远过期） |
-| 项目网盘 | tdrive 根 `CyberDeck Launcher 项目文档` = `YbyPEuDRRBHW`；6 个子目录及 `dir_id` 见 `docs/MEMORY-CANON.md` 第 3 节，上传时 `dir_id` 必须传子目录 id |
+| ~~项目网盘~~ | ~~tdrive 根 `CyberDeck Launcher 项目文档` = `YbyPEuDRRBHW`~~ → **2026-11-07 起停用**：文档以 GitHub 仓库为准，不再主动覆盖网盘。已有内容保持原状不删 |
+| 进度载体 | https://github.com/XFxzz3456/CyberDeck-Launcher/issues （9 条 issue，全部 open，标签 P0/P1/P2/migrated） |
 
 资料库**无删除接口**，清理只能移入「历史归档」`BCdu1Ae573PdgfNEQ9c7AD` 或由人工在界面删除。
+**2026-11-07 起不再每次任务自动同步网盘 / 资料库**，详见 `docs/SESSION-START.md` 第 6 节。
