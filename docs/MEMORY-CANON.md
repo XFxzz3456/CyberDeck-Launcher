@@ -83,6 +83,10 @@
 - 跑门禁前先停掉手起的 `vite preview`（端口 1420 占用会让 gate 直接判失败）。
 - 截屏验收一律用 playwright 在浏览器预览里做；PowerShell `Add-Type System.Windows.Forms` 会被安全策略拦。
 - **`core-tests/` 是独立 crate，不是 `src-tauri` 的一部分**：它靠 `#[path]` 逐个 include 生产模块。`src-tauri/src/*.rs` 里新增 `crate::xxx::` 引用时，必须同步在 `core-tests/src/lib.rs` 补 `#[path] pub mod xxx;`，否则 `cargo test --lib` 全绿而门禁的 `cargo test（core-tests）` 报 `cannot find xxx in the crate root`（2026-11-06 实际踩到）。
+- **`src-tauri/target` 会被会话级文件备份拖死（2026-11-06 事故）**：WorkBuddy 的 modify_backup 会备份工作区内每个被修改的文件，`target/**/*.o`、`dep-graph.bin` 也在其中（单个 dep-graph 就 70 MB，单会话堆到 16 GB 把 C 盘吃到 0 字节）。备份进程持有句柄，于是 `rustc` 清理中间文件时报 `os error 5 拒绝访问`，表现为「编译莫名失败、换 target 目录也没用」。
+  - 判据：错误里是 `failed to remove ... .o / .rmeta` 而不是编译语法错；`%LOCALAPPDATA%\..\.workbuddy\workspace\sessions\<会话id>\modify_backup` 里能看到同名 `.o` 备份。
+  - 做法：构建时把产物放到**仓库外、且不在会话工作区内**的目录，例如 `CARGO_TARGET_DIR=D:/cdbuild cargo build`、`CARGO_TARGET_DIR=D:/cdbuild npm run tauri:dev`。`D:/用户/...` 仍在备份范围内，放那儿照样被锁。
+  - 附带：C 盘满时 `cargo` 还会报 `database or disk is full`，与句柄问题叠加，容易误判成代码错。
 
 ## 3. 文档落点（三处必须同步）
 

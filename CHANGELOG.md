@@ -33,6 +33,7 @@
 | `1.1.0` | 2026-11-03/04 | 品牌全链路统一、一键发版链路、门禁并发化 7m23s→2m55s |
 | `1.1.1` | 2026-11-04 | 前端缺陷审查 15 条：状态文件原子落盘、卸载凭据保留、Esc 分层、焦点陷阱 |
 | `1.2.0` | 2026-11-06 | 模组库表格化三项；ASI / RED4ext 安装器；Vortex 差距审计落地（3 条 P0 全修 + 11 条 P1）；收编数量修正（碎片合并 + 失效条目清理） |
+| `1.2.1` | 2026-11-06 | 收编入口收进模组库「更多」；收编自动带 Nexus 元数据与官方分类（照 Vortex 透传做法）；幽灵条目清理不再按 origin 过滤 |
 
 ### 版本号规则
 
@@ -43,6 +44,42 @@
 | **PATCH** | 修 bug、调样式、改文案 | 用户无感或只感觉到「变好了」 |
 
 ---
+
+## [1.2.1] - 2026-11-06（收编自动分类 · 入口收进模组库 · 幽灵条目清理）
+
+> 用户反馈两件事：① 模组库右上角找不到「收编」入口（实际只在诊断页与命令面板）；② 收编进来的模组不像
+> Vortex 那样自动分类。第 ② 件查了 Vortex 源码，结论是它的「自动分类」并非本地推断，而是把 Nexus 返回的
+> `category` 字段直接透传。我们同样有这份数据（就在 Vortex 库里），于是改成收编时按目录名精确配对取用。
+
+### 新增
+
+- **「收编既有模组」收进模组库「更多」菜单**：此前入口只在诊断页与命令面板（Ctrl+K），用户在模组库找不到。
+- **收编时自动带上 Nexus 元数据与分类**：Vortex 的 `installationPath` 与它的 mod 目录名是同一个字符串，按它做精确配对，一次取回 Nexus 编号 / 作者 / 版本 / 封面 / **官方分类**。分类映射表照抄 Nexus 的 26 项分类树（`3 Armour and Clothing`、`7 Gameplay`、`10 Visuals and Graphics`…）并合并到本地 10 类；多分类写法（`7,3333`）取第一个。
+  - 为什么这么做：Vortex 的「自动分类」实际是 Nexus 元数据透传（`getCategoriesFromNexusMods.ts` → `api.nexusmods.com/v1/games/<domain>.json` 的 `categories`），本地零推断。实机 222 条记录**全部**带 `category`，0 条为空，比关键词投票可靠。
+  - 收编条目的 `metadataSource` 记为 `vortex`，卡片一开始就有 Nexus 徽标、作者、版本、封面。
+- **`vortex_import_metadata` 同时补分类**：对已在库里、之前只补过编号的条目，再跑一次「从 Vortex 导入」也会把分类带上（用户手动改过的分类不覆盖）。
+
+### 修复
+
+- **655 文件的错位幽灵条目清不掉**：`r6/scripts/DigitalVixenCore 28390 4.9.10 …/` 这类记录指向从未创建的目录，禁用/卸载必然报错。旧清理只认 `origin == "adopted"`，而实机这条是 `cyberdeck`（正常安装流程写进去的），于是永远留在列表里。现在判据只看事实——清单里的文件一个都不在磁盘上就算幽灵，只删记录不删文件；游戏目录不可用时整体跳过，避免误删全库。
+- **收编候选列表里 `absorb_entry_ids` 之外的元数据全丢**：`build_entry` 此前把 `version` / `author` / `category` 硬编码成 `None` / `"其他"`，收编完的信息量等于零。现在按配对结果填充，拿不到才退回本地推断。
+
+### 已知边界
+
+- 分类只对**来自 Nexus 的模组**生效（Vortex 里有记录的那些）。纯手工安装、Vortex 也不认识的模组仍走 `category.rs` 的关键词 + 内容证据推断——这一层我们比 Vortex 强（它对这类模组直接显示未分类）。
+- Vortex 正在运行时会锁住 `state.v2`，此时收编照常可用，只是不带 Nexus 元数据；关掉 Vortex 后重新收编或跑一次「从 Vortex 导入」即可补齐。
+
+### 验证结果
+
+- `cargo test --lib`（core-tests）**251 passed / 0 failed / 2 ignored**。首轮门禁在这里红过一次：`cannot find vortex in the crate root`——`core-tests` 是独立 crate，不为它引入 LevelDB，现补了返回空记录集的 `vortex` stub。
+- `npm run gate` **42/42 全绿**（重跑 12m40s / 1759s 工时）；`npx tsc --noEmit` 0 错误。
+- `node scripts/check-version-sync.mjs` 通过：`package.json` / `Cargo.toml` / `tauri.conf.json` 三处均为 `1.2.1`。
+- 提交前把 `adopt.rs` / `vortex.rs` 行尾从 LF 改回 CRLF（脚本写入曾引入 2293 行假 diff），真实改动收敛到 451 行。
+- **未构建 exe、未打便携 ZIP**：按交付顺序规则，先 localhost 验收、用户确认后再出包。
+
+### 工程环境
+
+- **编译产物目录被自动备份拖死**：会话级文件备份会把 `src-tauri/target` 下每个 `.o` 复制一份并持有句柄，导致 `rustc` 无法删除/重写中间文件（`os error 5 拒绝访问`），同时把 C 盘吃到 0 字节（单会话备份体积 16 GB）。现改用仓库外的 `CARGO_TARGET_DIR`（如 `D:/cdbuild`）构建，`src-tauri/target` 仅保留历史产物。这条已写进 `docs/MEMORY-CANON.md`。
 
 ## [1.2.0] - 2026-11-06（模组库表格化 · 安装器补齐 · Vortex 差距审计落地 · 收编数量修正）
 

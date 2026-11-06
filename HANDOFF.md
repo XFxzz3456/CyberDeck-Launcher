@@ -6,13 +6,14 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.1.1`（2026-11-04 发布；1.1.0 是同日的前一版，1.0.0 是 2026-10-31 的首个正式版）。**
+**本仓库的实际版本是 `1.2.1`（2026-11-06）。** 1.2.0 与 1.2.1 都还没有构建 exe——`release/CyberDeck Launcher.exe` 里仍是 1.1.1 的包（10,359,808 B / md5 `b0aa89dc3977d203f690e954894221b7`），等用户验收后再重出。
 
-以下三处互相一致（2026-11-04 发版时由 `npm run release` 同步）：
+以下三处互相一致（`node scripts/check-version-sync.mjs` 把关）：
 
-- `package.json` → `"version": "1.1.1"`
-- `src-tauri/Cargo.toml` → `version = "1.1.1"`
-- `src-tauri/tauri.conf.json` → `"version": "1.1.1"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
+- `package.json` → `"version": "1.2.1"`
+- `src-tauri/Cargo.toml` → `version = "1.2.1"`
+- `src-tauri/tauri.conf.json` → `"version": "1.2.1"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
+- ⚠️ **构建产物目录必须放在仓库外**：`CARGO_TARGET_DIR=D:/cdbuild` 后再跑 `cargo build` / `npm run tauri:dev` / `npm run gate`。原因见 `docs/MEMORY-CANON.md` §2.5「`src-tauri/target` 会被会话级文件备份拖死」——备份进程持有 `.o` 句柄会让 `rustc` 报 `os error 5`，并把 C 盘吃到 0 字节。
 - **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。
   之后 **2026-11-01 09:58 重建（含 P5）**：exe 11,168,256 B / md5 `bc1ef81eeb5e1a2e56c7392c0aa2bae0`，冒烟 `stage=frontend mods=186`；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,313,934 B，覆盖首发包）。版本号按用户要求保持 1.0.0，CHANGELOG 用「1.0.0 追加批次」区分。
 - **2026-11-01 11:38 再次重建（含毛玻璃补齐 / AI 汉化入口 / 分类重构）**：exe 11,172,352 B / md5 `b973dc58ff50565710e30557add9cf81`，冒烟 `2026-11-01T03:41:22Z stage=frontend mods=186`；零编译警告。便携版与网盘本轮未重做（等确认）。

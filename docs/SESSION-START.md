@@ -47,12 +47,12 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.2.1**（三处版本文件已改，但**尚未提交、未 localhost 验收**） |
-| 远端 | `main` = `56823a5`，22 个本地提交已推送；tag 最新 `v1.1.1` |
+| 版本 | **1.2.1**（已提交，tag `v1.2.1`；**exe 未构建、未 localhost 验收**） |
+| 远端 | `main` 含 1.2.1 提交；tag 最新 **`v1.2.1`** |
 | 进度 | GitHub Issues **#1–#9**，全部 open，标签 `P0` / `P1` / `P2` / `migrated` |
-| 门禁基线 | `cargo test --lib` 251 项通过；`npm run gate` 38/38 全绿 |
-| 腾讯文档进度表 | 连接器未启用，待用户在聊天窗口左下角「+」菜单启用「腾讯文档」 |
-| 未做 | `v1.2.1` tag、便携 ZIP（规则：需先问） |
+| 门禁基线 | `cargo test --lib` **251 passed / 2 ignored**；`npm run gate` **42/42 全绿**；`tsc --noEmit` 0 错误 |
+| 腾讯文档进度表 | 连接器已启用，但**当前会话票据未注入**（`no_token`）；降级交付 `CyberDeck-进度看板.csv`，待新会话同步在线表格 |
+| 未做 | 便携 ZIP（规则：需先问）、exe 构建（需用户验收确认） |
 
 ---
 
