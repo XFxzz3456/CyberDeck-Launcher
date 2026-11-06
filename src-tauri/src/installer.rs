@@ -18,6 +18,18 @@ const MAX_ENTRIES: usize = 30_000;
 const MAX_UNCOMPRESSED: u64 = 8 * 1024 * 1024 * 1024;
 const RECOGNIZED_ROOTS: [&str; 6] = ["archive", "bin", "r6", "red4ext", "engine", "mods"];
 
+/// 判断路径首段是否是「游戏根镜像」里认识的那一层。
+///
+/// 供养 `vortex_source` 用：Vortex 的 mod 目录里会混进 `__vortex_backup`
+/// 这类元数据目录，必须按同一份白名单过滤，否则收编会把它们当模组内容。
+pub(crate) fn recognized_root(first: &str) -> bool {
+    RECOGNIZED_ROOTS
+        .iter()
+        .any(|root| root.eq_ignore_ascii_case(first))
+        // REDmod 在 Vortex 里可能被铺成 `V2077/mod/<name>`，与 `mods/` 等价。
+        || first.eq_ignore_ascii_case("v2077")
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PlanFile {
     pub(crate) source: PathBuf,

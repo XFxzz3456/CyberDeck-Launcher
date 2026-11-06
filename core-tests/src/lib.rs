@@ -8,6 +8,8 @@
 
 #[path = "../../src-tauri/src/adopt.rs"]
 pub mod adopt;
+#[path = "../../src-tauri/src/vortex_source.rs"]
+pub mod vortex_source;
 #[path = "../../src-tauri/src/deps.rs"]
 pub mod deps;
 #[path = "../../src-tauri/src/translation.rs"]

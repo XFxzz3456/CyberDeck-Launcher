@@ -249,6 +249,8 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
                 LinkType::Copy
             },
             already_managed: already,
+            source: "archive".to_string(),
+            absorb_entry_ids: Vec::new(),
         });
     }
 
@@ -273,8 +275,17 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
                 LinkType::Copy
             },
             already_managed: already,
+            source: "archive".to_string(),
+            absorb_entry_ids: Vec::new(),
         });
     }
+
+    append_vortex_candidates(
+        &state,
+        &game_root,
+        &staging_dir,
+        &mut candidates,
+    );
 
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     let total_bytes = candidates.iter().map(|item| item.size_bytes).sum();
@@ -292,6 +303,130 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
         cross_volume,
         archive_dir: archive_dir.to_string_lossy().to_string(),
     })
+}
+
+/// Vortex 口径的候选：一个 mod 目录 = 一条记录。
+///
+/// 与 archive 反推的区别：archive 反推是「一个文件一条」，既认不出同一个 mod
+/// 的 CET/redscript 部分，也扫不到 `archive/pc/mod/<子目录>/`（4K 材质包常用）。
+/// Vortex 的 mod 存储目录本身就是游戏根镜像，直接读目录树就能拿到精确归属。
+///
+/// 去重与合并：
+/// - 与该目录有文件交集的既有条目，只要它的文件**全部**落在本目录内，就是
+///   同一批文件的碎片记录 → 记进 `absorb_entry_ids`，执行期并入本候选后删除；
+/// - 若某个既有条目横跨多个 Vortex 目录，说明归属本身有歧义，收编会让两边
+///   抢同一批文件 → 标 `already_managed` 跳过，不动它。
+fn append_vortex_candidates(
+    state: &crate::schema::AppStateData,
+    game_root: &Path,
+    staging_dir: &Path,
+    candidates: &mut Vec<AdoptCandidate>,
+) {
+    let Some(root) = crate::vortex_source::find_mods_root(crate::vortex_source::GAME_ID) else {
+        return;
+    };
+    append_vortex_candidates_from(&root, state, game_root, staging_dir, candidates);
+}
+
+/// 可注入存储根的同体函数，专供测试构造夹具。
+pub(crate) fn append_vortex_candidates_from(
+    root: &Path,
+    state: &crate::schema::AppStateData,
+    game_root: &Path,
+    staging_dir: &Path,
+    candidates: &mut Vec<AdoptCandidate>,
+) {
+    use std::collections::HashMap;
+
+    let dirs = crate::vortex_source::scan_dirs(root, game_root);
+    if dirs.is_empty() {
+        return;
+    }
+
+    // rel（小写）→ 占有它的条目下标。只认 deployed_files：planned 里可能有
+    // 「禁用中、文件已从游戏目录撤走」的记录，把它们算进来会让合并后
+    // 出现「条目启用但文件不全」的假象。
+    let mut owner_of: HashMap<String, usize> = HashMap::new();
+    for (index, entry) in state.mods.iter().enumerate() {
+        for file in &entry.deployed_files {
+            owner_of.insert(file.relative_path.to_ascii_lowercase(), index);
+        }
+    }
+
+    for dir in dirs {
+        let dir_lower: HashSet<String> = dir
+            .files
+            .iter()
+            .map(|item| item.to_ascii_lowercase())
+            .collect();
+
+        let mut overlap: Vec<usize> = Vec::new();
+        for rel in &dir.files {
+            if let Some(index) = owner_of.get(&rel.to_ascii_lowercase()) {
+                if !overlap.contains(index) {
+                    overlap.push(*index);
+                }
+            }
+        }
+
+        let straddles = overlap.iter().any(|index| {
+            state.mods[*index]
+                .deployed_files
+                .iter()
+                .any(|file| !dir_lower.contains(&file.relative_path.to_ascii_lowercase()))
+        });
+
+        let files: Vec<AdoptFileRef> = dir
+            .files
+            .iter()
+            .map(|rel| file_ref(game_root, rel))
+            .collect();
+        if files.iter().all(|file| file.size_bytes == 0) {
+            continue;
+        }
+        let size_bytes = files.iter().map(|file| file.size_bytes).sum();
+        let main_path = game_root.join(dir.files[0].replace('/', "\\"));
+
+        if straddles {
+            candidates.push(AdoptCandidate {
+                id: candidate_id(&format!("vortex:{}", dir.dir_name)),
+                name: format!("{}（与其它条目交叉，需先手动整理）", dir.display_name),
+                archive_rel: dir.files[0].clone(),
+                files,
+                size_bytes,
+                link_type: if same_volume(&main_path, staging_dir) {
+                    LinkType::HardLink
+                } else {
+                    LinkType::Copy
+                },
+                already_managed: true,
+                source: "vortex".to_string(),
+                absorb_entry_ids: Vec::new(),
+            });
+            continue;
+        }
+
+        let absorb: Vec<String> = overlap
+            .iter()
+            .map(|index| state.mods[*index].id.clone())
+            .collect();
+
+        candidates.push(AdoptCandidate {
+            id: candidate_id(&format!("vortex:{}", dir.dir_name)),
+            name: dir.display_name,
+            archive_rel: dir.files[0].clone(),
+            files,
+            size_bytes,
+            link_type: if same_volume(&main_path, staging_dir) {
+                LinkType::HardLink
+            } else {
+                LinkType::Copy
+            },
+            already_managed: false,
+            source: "vortex".to_string(),
+            absorb_entry_ids: absorb,
+        });
+    }
 }
 
 /// 读取游戏侧文件的引用（大小/时间来自真实文件，供执行期二次校验）。
@@ -328,14 +463,15 @@ fn stage_and_verify(
     })?;
     let mut staged = Vec::new();
     for file in &candidate.files {
-        if !file
-            .rel
-            .to_ascii_lowercase()
-            .starts_with("archive/pc/mod/")
-        {
+        // 收编目标必须落在「游戏根镜像」的可识别目录里。这条校验比早期的
+        // 「必须以 archive/pc/mod 开头」宽，因为 Vortex 口径的候选会带
+        // r6/、bin/、red4ext/ 等其它根；但仍然拦住 ../ 与未知顶层目录。
+        let lower = file.rel.to_ascii_lowercase();
+        let first = lower.split('/').next().unwrap_or_default();
+        if !crate::installer::recognized_root(first) {
             return Err(CommandError::new(
                 "UNSAFE_PATH",
-                format!("收编目标必须在 archive/pc/mod 之下：{}", file.rel),
+                format!("收编目标不在游戏根的可识别目录里：{}", file.rel),
             ));
         }
         let target = safe_join(game_root, &file.rel)?;
@@ -345,8 +481,9 @@ fn stage_and_verify(
                 format!("目标越出了游戏目录：{}", file.rel),
             ));
         }
-        let filename = file.rel.rsplit('/').next().unwrap_or(&file.rel);
-        let staging_file = staging_dir.join(filename);
+        // 暂存保留原始相对结构：一个模组可能同时含 archive/ 与 r6/ 的同名文件，
+        // 早期平铺会让后一个覆盖前一个。
+        let staging_file = staging_dir.join(file.rel.replace('/', "\\"));
         let link = materialize(&target, &staging_file, MaterializeMode::Auto)?;
         verify_copy(&target, &staging_file, link.clone())?;
         staged.push(StagedFile {
@@ -393,6 +530,28 @@ fn build_entry(
             modified_time,
         });
     }
+
+    // 按真实内容判类型：Vortex 的一条 mod 可能同时含 archive / CET / redscript，
+    // 早期一律写死 Archive 会让「按类型筛选」「CET 插件计数」全部失准。
+    let has_archive = staged
+        .iter()
+        .any(|file| file.rel.to_ascii_lowercase().ends_with(".archive"));
+    let has_cet = staged.iter().any(|file| {
+        file.rel
+            .to_ascii_lowercase()
+            .contains("bin/x64/plugins/cyber_engine_tweaks")
+    });
+    let has_redmod = staged.iter().any(|file| {
+        let lower = file.rel.to_ascii_lowercase();
+        lower.starts_with("mods/") || lower.starts_with("v2077/mod/")
+    });
+    // Vortex 存储目录本身就是游戏根镜像，用 GameRoot 才能原样铺回去；
+    // archive 反推的候选仍是老口径（平铺进 archive/pc/mod）。
+    let layout = if candidate.source == "vortex" {
+        InstallLayout::GameRoot
+    } else {
+        InstallLayout::Archive
+    };
     ModEntry {
         id: candidate.id.clone(),
         raw_name: None,
@@ -411,15 +570,15 @@ fn build_entry(
         updated_at: None,
         size_bytes: candidate.size_bytes,
         file_count: staged.len(),
-        layout: InstallLayout::Archive,
+        layout,
         mod_folder: None,
         metadata_source: "adopted".to_string(),
         planned_files: staged.iter().map(|file| file.rel.clone()).collect(),
         warnings,
         deployed_files: deployed,
-        has_archive: true,
-        has_redmod: false,
-        has_cet: false,
+        has_archive,
+        has_redmod,
+        has_cet,
         translated_name: None,
         translated_at: None,
         translated_by: None,
@@ -444,7 +603,12 @@ fn append_archives(state: &mut crate::schema::AppStateData, entry: &ModEntry) {
     let mut archives: Vec<String> = entry
         .deployed_files
         .iter()
-        .filter(|file| file.relative_path.to_ascii_lowercase().ends_with(".archive"))
+        .filter(|file| {
+            let lower = file.relative_path.to_ascii_lowercase();
+            // 只有 archive/pc/mod 下的 archive 进加载顺序；GameRoot 口径的
+            // 候选可能还带 archive/pc/content 这类原版档案，不能混进去。
+            lower.starts_with("archive/pc/mod/") && lower.ends_with(".archive")
+        })
         .map(|file| file.relative_path.clone())
         .collect();
     archives.sort();
@@ -584,6 +748,35 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
     //
     // 只认 `X.archive.xl` / `X.archive.xlp`。`X.xl` 这种独立元数据可能是汉化
     // extend 包（`extend:` 指向别的 archive），没有同名主体也照样生效，绝不能动。
+    // 「幽灵条目」= 部署清单里的文件在磁盘上一个都不存在。
+    //
+    // 典型来源：早期收编把 Vortex 的 mod 存储目录名当成了游戏内目录名，
+    // 于是在 `r6/scripts/DigitalVixenCore 28390 4.9.10 …/` 下记了 655 条，
+    // 而那个目录从来没被创建过。这种条目禁用/卸载必然报错，只能清记录。
+    //
+    // 安全边界：游戏目录必须真实存在才做（盘没挂载/路径临时不可用时不能
+    // 把整库误判成幽灵）；只动 adopted 来源；只要还剩一个文件在，就不算。
+    let mut ghost_names: Vec<String> = Vec::new();
+    let mut ghost_ids: Vec<String> = Vec::new();
+    if let Some(root) = game_root.as_ref().filter(|root| root.is_dir()) {
+        for entry in &state.mods {
+            if entry.origin != "adopted" || entry.deployed_files.is_empty() {
+                continue;
+            }
+            let all_missing = entry
+                .deployed_files
+                .iter()
+                .all(|file| !root.join(file.relative_path.replace('/', "\\")).exists());
+            if all_missing {
+                ghost_names.push(entry.name.clone());
+                ghost_ids.push(entry.id.clone());
+            }
+        }
+    }
+    if !ghost_ids.is_empty() {
+        state.mods.retain(|item| !ghost_ids.contains(&item.id));
+    }
+
     let mut invalids: Vec<String> = Vec::new();
     let mut invalid_ids: Vec<String> = Vec::new();
     for entry in &state.mods {
@@ -632,16 +825,20 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
         .collect();
 
     let merged = merged_names.len();
-    let invalidated = invalid_ids.len();
+    let invalidated = invalid_ids.len() + ghost_ids.len();
     if merged > 0 || invalidated > 0 {
         store.save(&state)?;
     }
     drop(state);
 
+    // 幽灵条目在前（更严重，用户更需要知道），失效元数据在后。
+    let mut removed = ghost_names;
+    removed.extend(invalids);
+
     Ok(LibraryNormalizeReport {
         merged,
         merged_names,
-        removed: invalids,
+        removed,
         empty,
     })
 }
@@ -811,6 +1008,7 @@ fn execute_inner(
 
         // ── 段 2：短锁登记（push + save 是提交点）───────────────
         let entry = build_entry(candidate, &staging_dir, &staged);
+        let absorb_ids = candidate.absorb_entry_ids.clone();
         let register_result = (|| -> AppResult<()> {
             let mut state = store.data.lock().expect("state mutex poisoned");
             if state.mods.iter().any(|item| item.id == entry.id) {
@@ -820,11 +1018,22 @@ fn execute_inner(
                 ));
             }
             let load_order_before = state.load_order.clone();
+            // 被并入的碎片条目：先摘下来留底，save 成功才真的消失。
+            let absorbed_entries: Vec<ModEntry> = state
+                .mods
+                .iter()
+                .filter(|item| absorb_ids.iter().any(|id| id == &item.id))
+                .cloned()
+                .collect();
+            state
+                .mods
+                .retain(|item| !absorb_ids.iter().any(|id| id == &item.id));
             state.mods.push(entry.clone());
             append_archives(&mut state, &entry);
             if let Err(err) = store.save(&state) {
                 // 状态落盘是提交点：失败必须把内存也退回去。
                 state.mods.retain(|item| item.id != entry.id);
+                state.mods.extend(absorbed_entries);
                 state.load_order = load_order_before;
                 return Err(CommandError::new(
                     "ADOPT_STATE_WRITE",
@@ -840,6 +1049,14 @@ fn execute_inner(
                 return Err(err);
             }
             Ok(()) => {
+                // 并入的旧条目暂存目录作废。游戏文件不受影响 —— 收编建的是
+                // 「硬链接」或「副本」，删暂存侧的目录项不等于删游戏文件。
+                for id in &absorb_ids {
+                    let dir = staging_base.join(id);
+                    if is_within(&staging_base, &dir) && dir.exists() {
+                        let _ = fs::remove_dir_all(&dir);
+                    }
+                }
                 adopted += 1;
                 registered.push(entry.clone());
                 outcomes.push(AdoptOutcome {

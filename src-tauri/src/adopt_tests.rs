@@ -16,7 +16,7 @@ use crate::schema::{
 use crate::store::{now_iso, Store};
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -108,10 +108,18 @@ fn candidate(fixture: &Fixture, rel: &str) -> AdoptCandidate {
         size_bytes: size.unwrap_or(0),
         link_type: LinkType::HardLink,
         already_managed: false,
+        source: "archive".to_string(),
+        absorb_entry_ids: Vec::new(),
     }
 }
 
 fn no_progress(_: crate::schema::AdoptProgress) {}
+
+/// 收编暂存现在保留游戏相对结构（同一个模组可能同时含 `archive/` 与 `r6/`
+/// 下的同名文件，平铺会互相覆盖），断言统一走这个辅助函数。
+fn staged_path(staging: &str, rel: &str) -> PathBuf {
+    PathBuf::from(staging).join(rel.replace('/', "\\"))
+}
 
 /// 测试 1：混合目录分组。
 #[test]
@@ -196,7 +204,7 @@ fn adopt_hardlink_same_volume() {
         .iter()
         .any(|item| item.eq_ignore_ascii_case("archive/pc/mod/baz.archive")));
 
-    let staging_file = PathBuf::from(&entry.staging_path).join("baz.archive");
+    let staging_file = staged_path(&entry.staging_path, "archive/pc/mod/baz.archive");
     assert!(staging_file.is_file());
     assert!(same_file_identity(&staging_file, &target));
 
@@ -356,7 +364,7 @@ fn broken_staging_recovers_while_mod_remains_enabled() {
     let report = deploy_mod(&fixture.store, &id, &game).unwrap();
     assert_eq!(report.deployed, 0);
     let state = fixture.store.snapshot_data();
-    assert!(Path::new(&state.mods[0].staging_path).join("in-place.archive").is_file());
+    assert!(staged_path(&state.mods[0].staging_path, "archive/pc/mod/in-place.archive").is_file());
     assert_eq!(fs::read(&target).unwrap(), b"same-game-bytes");
     assert_eq!(fs::metadata(&target).unwrap().len(), before.len());
 }
@@ -501,7 +509,7 @@ fn adopt_then_undeploy() {
     let report = adopt::execute(&fixture.store, &candidates, &mut no_progress).unwrap();
     assert_eq!(report.adopted, 1);
     let id = report.mods[0].id.clone();
-    let staging_file = PathBuf::from(&report.mods[0].staging_path).join("kept.archive");
+    let staging_file = staged_path(&report.mods[0].staging_path, "archive/pc/mod/kept.archive");
 
     let warnings = undeploy_mod(&fixture.store, &id, &fixture.game).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -765,4 +773,172 @@ fn normalize_removes_metadata_only_entries_without_body() {
     let state = fixture.store.snapshot_data();
     assert_eq!(state.mods.len(), 1, "孤儿元数据条目应被清掉");
     assert_eq!(state.mods[0].name, "keep");
+}
+
+/// 构造一条「按文件反推」的碎片条目（模拟 2026-11-06 之前收编留下的记录）。
+fn fragment_entry(id: &str, rel: &str) -> ModEntry {
+    ModEntry {
+        id: id.to_string(),
+        raw_name: None,
+        name: rel.to_string(),
+        version: None,
+        author: None,
+        category: "其他".to_string(),
+        category_locked: false,
+        description: String::new(),
+        source_zip: None,
+        nexus: None,
+        staging_path: String::new(),
+        cover_path: None,
+        enabled: true,
+        installed_at: now_iso(),
+        updated_at: None,
+        size_bytes: 0,
+        file_count: 1,
+        layout: InstallLayout::Archive,
+        mod_folder: None,
+        metadata_source: "adopted".to_string(),
+        planned_files: vec![rel.to_string()],
+        warnings: Vec::new(),
+        deployed_files: vec![DeployedFile {
+            source: String::new(),
+            target: String::new(),
+            link_type: LinkType::HardLink,
+            relative_path: rel.to_string(),
+            size: None,
+            modified_time: None,
+        }],
+        has_archive: true,
+        has_redmod: false,
+        has_cet: false,
+        translated_name: None,
+        translated_at: None,
+        translated_by: None,
+        managed: true,
+        origin: "adopted".to_string(),
+        modpack_id: None,
+        nexus_cover_url: None,
+        is_translation: false,
+        parent_mod_id: None,
+        ai_loc: None,
+        ai_fix: Vec::new(),
+    }
+}
+
+/// Vortex 口径：一个 mod 目录 = 一条候选，且要能吸收按文件反推的碎片条目。
+///
+/// 这正是实机上 82 条对 222 条的根因修复点：旧口径把同一个 mod 拆成多条，
+/// 而 `archive/pc/mod/<子目录>/x.archive` 这种干脆一条都扫不到。
+#[test]
+fn vortex_dir_candidate_absorbs_archive_fragments() {
+    let fixture = Fixture::new();
+    fixture.game_file("top.archive", b"top");
+    let nested = fixture.game.join("archive").join("pc").join("mod").join("skin pack");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("skin.archive"), b"skin").unwrap();
+    let scripts = fixture.game.join("r6").join("scripts").join("mymod");
+    fs::create_dir_all(&scripts).unwrap();
+    fs::write(scripts.join("main.reds"), b"module MyMod").unwrap();
+
+    let vortex_root = fixture.root.join("vortex-mods");
+    let mod_dir = vortex_root.join("My Mod-1234-1-0-1700000000");
+    for rel in [
+        "archive/pc/mod/top.archive",
+        "archive/pc/mod/skin pack/skin.archive",
+        "r6/scripts/mymod/main.reds",
+    ] {
+        let path = mod_dir.join(rel.replace('/', "\\"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"mirror").unwrap();
+    }
+
+    let state = {
+        let mut state = fixture.store.data.lock().unwrap();
+        state
+            .mods
+            .push(fragment_entry("adopt-00000000000000a1", "archive/pc/mod/top.archive"));
+        state.mods.push(fragment_entry(
+            "adopt-00000000000000b2",
+            "archive/pc/mod/skin pack/skin.archive",
+        ));
+        state.clone()
+    };
+
+    let mut candidates = Vec::new();
+    adopt::append_vortex_candidates_from(
+        &vortex_root,
+        &state,
+        &fixture.game,
+        &fixture.root.join("staging"),
+        &mut candidates,
+    );
+
+    assert_eq!(candidates.len(), 1, "一个目录只应产出一条候选");
+    let candidate = &candidates[0];
+    assert_eq!(candidate.source, "vortex");
+    assert_eq!(candidate.name, "My Mod");
+    assert_eq!(candidate.files.len(), 3);
+    assert!(!candidate.already_managed);
+    let mut absorbed = candidate.absorb_entry_ids.clone();
+    absorbed.sort();
+    assert_eq!(
+        absorbed,
+        vec![
+            "adopt-00000000000000a1".to_string(),
+            "adopt-00000000000000b2".to_string()
+        ],
+        "两条碎片记录都应被并入"
+    );
+}
+
+/// 空目录（内容被挪走/隔离过）与纯元数据目录不能产出候选。
+#[test]
+fn vortex_empty_dirs_are_skipped() {
+    let fixture = Fixture::new();
+    let vortex_root = fixture.root.join("vortex-empty");
+    fs::create_dir_all(vortex_root.join("Ghost Mod-1-1-0-1700000000")).unwrap();
+    fs::create_dir_all(vortex_root.join("__vortex_backup")).unwrap();
+    fs::write(vortex_root.join("__vortex_backup").join("x.bin"), b"x").unwrap();
+
+    let state = fixture.store.snapshot_data();
+    let mut candidates = Vec::new();
+    adopt::append_vortex_candidates_from(
+        &vortex_root,
+        &state,
+        &fixture.game,
+        &fixture.root.join("staging"),
+        &mut candidates,
+    );
+    assert!(candidates.is_empty());
+}
+
+/// 幽灵条目：部署清单指向的文件一个都不存在 → 清掉记录（不碰文件）。
+///
+/// 实机样本：早期收编把 Vortex 的存储目录名当成了游戏内目录名，在
+/// `r6/scripts/DigitalVixenCore 28390 4.9.10 …/` 下记了 655 条，而该目录
+/// 从未被创建。这类条目一禁用就报「目标不存在」，必须清掉。
+#[test]
+fn normalize_removes_ghost_entries() {
+    let fixture = Fixture::new();
+    fixture.game_file("alive.archive", b"alive");
+
+    let mut ghost = fragment_entry(
+        "adopt-00000000000000c3",
+        "r6/scripts/DigitalVixenCore 28390 4.9.10 2026-11-02T11-50Z rxs7xRen8/dvcore.reds",
+    );
+    ghost.name = "Ghost Mod".to_string();
+    let keep = fragment_entry("adopt-00000000000000d4", "archive/pc/mod/alive.archive");
+
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        state.mods.push(ghost);
+        state.mods.push(keep);
+        fixture.store.save(&state).unwrap();
+    }
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.removed, vec!["Ghost Mod".to_string()]);
+    let state = fixture.store.snapshot_data();
+    assert_eq!(state.mods.len(), 1);
+    assert_eq!(state.mods[0].id, "adopt-00000000000000d4");
 }

@@ -436,6 +436,13 @@ pub struct AdoptCandidate {
     pub link_type: LinkType,
     /// 任一文件已被库内条目（部署清单或 planned）占有时为 true，前端默认不勾选。
     pub already_managed: bool,
+    /// 候选来源："archive"（从 archive/pc/mod 反推）或 "vortex"（按 Vortex mod 目录）。
+    /// 老前端不带这个字段时按 archive 处理。
+    #[serde(default)]
+    pub source: String,
+    /// 本候选接管后需要并入并删除的既有条目标 id（原按文件反推的碎片条目）。
+    #[serde(default)]
+    pub absorb_entry_ids: Vec<String>,
 }
 
 /// adopt_scan 的返回。copy_bytes 是跨卷收编需要真实复制的字节数，
