@@ -986,6 +986,8 @@ export const zhCN = {
     redscript: "redscript 模组",
   },
   library: {
+    adoptExisting: "收编既有模组",
+    adoptTitle: "扫描游戏目录里未受管的模组（archive / CET / redscript / RED4ext / ASI 等），登记进库后才能禁用、卸载、参与冲突检测",
     bindFolder: "绑定目录",
     checkUpdates: "检查更新",
     applyAll: "全部更新",

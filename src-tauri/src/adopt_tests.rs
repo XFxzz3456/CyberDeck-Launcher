@@ -110,6 +110,7 @@ fn candidate(fixture: &Fixture, rel: &str) -> AdoptCandidate {
         already_managed: false,
         source: "archive".to_string(),
         absorb_entry_ids: Vec::new(),
+        vortex: None,
     }
 }
 
@@ -941,4 +942,102 @@ fn normalize_removes_ghost_entries() {
     let state = fixture.store.snapshot_data();
     assert_eq!(state.mods.len(), 1);
     assert_eq!(state.mods[0].id, "adopt-00000000000000d4");
+}
+
+/// 幽灵条目的判定不看 `origin`。
+///
+/// 实机那条 655 文件的错位记录 `origin` 是 `cyberdeck`（正常安装流程写进去的），
+/// 早期只认 `adopted` 导致它一直清不掉，界面上永远挂着一个 655 文件的假模组。
+#[test]
+fn normalize_removes_ghost_entries_from_any_origin() {
+    let fixture = Fixture::new();
+    fixture.game_file("real.archive", b"real");
+
+    let mut ghost = fragment_entry(
+        "adopt-00000000000000e5",
+        "r6/scripts/DigitalVixenCore 28390 4.9.10 2026-11-02T11-50Z rxs7xRen8/dvcore.reds",
+    );
+    ghost.name = "Installed Ghost".to_string();
+    ghost.origin = "cyberdeck".to_string();
+    let keep = fragment_entry("adopt-00000000000000f6", "archive/pc/mod/real.archive");
+
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        state.mods.push(ghost);
+        state.mods.push(keep);
+        fixture.store.save(&state).unwrap();
+    }
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.removed, vec!["Installed Ghost".to_string()]);
+    let state = fixture.store.snapshot_data();
+    assert_eq!(state.mods.len(), 1);
+    assert_eq!(state.mods[0].id, "adopt-00000000000000f6");
+}
+
+/// 收编时按目录名精确配上 Vortex 记录，分类 / Nexus 编号 / 作者 / 版本一起进候选。
+///
+/// 这是「像 Vortex 一样自动分类」的落地方式：Vortex 的目录名就是它自己的
+/// `installationPath`，分类存在 `attributes.category` 里，不需要拿关键词猜。
+/// 用户看到的列表分类、Nexus 徽标、作者、版本，收编完成那一刻就该是对的。
+#[test]
+fn vortex_record_fills_category_and_nexus_meta() {
+    let fixture = Fixture::new();
+    let script = fixture
+        .game
+        .join("r6")
+        .join("scripts")
+        .join("mymod")
+        .join("main.reds");
+    fs::create_dir_all(script.parent().unwrap()).unwrap();
+    fs::write(&script, b"module MyMod").unwrap();
+
+    let dir_name = "My Mod-1234-1-0-1700000000";
+    let vortex_root = fixture.root.join("vortex-meta");
+    let mirror = vortex_root
+        .join(dir_name)
+        .join("r6")
+        .join("scripts")
+        .join("mymod")
+        .join("main.reds");
+    fs::create_dir_all(mirror.parent().unwrap()).unwrap();
+    fs::write(&mirror, b"module MyMod").unwrap();
+
+    let mut records = std::collections::HashMap::new();
+    records.insert(
+        dir_name.to_ascii_lowercase(),
+        crate::schema::VortexRecord {
+            mod_id: 1234,
+            file_id: Some(5678),
+            name: "My Mod".to_string(),
+            author: "someone".to_string(),
+            version: "1.0".to_string(),
+            picture_url: Some("https://example.com/cover.png".to_string()),
+            category: Some("服装".to_string()),
+            dir_name: dir_name.to_string(),
+        },
+    );
+
+    let state = fixture.store.snapshot_data();
+    let mut candidates = Vec::new();
+    adopt::append_vortex_candidates_with(
+        &vortex_root,
+        &records,
+        &state,
+        &fixture.game,
+        &fixture.root.join("staging"),
+        &mut candidates,
+    );
+
+    assert_eq!(candidates.len(), 1);
+    let meta = candidates[0].vortex.as_ref().expect("应带上 Vortex 元数据");
+    assert_eq!(meta.mod_id, 1234);
+    assert_eq!(meta.file_id, Some(5678));
+    assert_eq!(meta.category.as_deref(), Some("服装"));
+    assert_eq!(meta.author.as_deref(), Some("someone"));
+    assert_eq!(meta.version.as_deref(), Some("1.0"));
+    assert_eq!(
+        meta.picture_url.as_deref(),
+        Some("https://example.com/cover.png")
+    );
 }

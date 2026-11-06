@@ -443,6 +443,43 @@ pub struct AdoptCandidate {
     /// 本候选接管后需要并入并删除的既有条目标 id（原按文件反推的碎片条目）。
     #[serde(default)]
     pub absorb_entry_ids: Vec<String>,
+    /// 在 Vortex 库里精确对上的元数据（Nexus 编号 / 官方分类 / 作者 / 版本 / 封面）。
+    ///
+    /// Vortex 的目录名与它自己的 `installationPath` 是同一个字符串，所以配准是
+    /// 精确的，不需要按名字模糊匹配。收编时把这些一起写进库，用户拿到的条目
+    /// 一开始就带 Nexus 徽标和正确分类，和 Vortex 里看到的一致。
+    #[serde(default)]
+    pub vortex: Option<AdoptVortexMeta>,
+}
+
+/// 收编候选携带的 Vortex 元数据。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoptVortexMeta {
+    pub mod_id: u64,
+    pub file_id: Option<u64>,
+    /// Nexus 页面标题（Vortex 的 `modName`）。比剥掉版本戳的目录名更干净。
+    pub name: Option<String>,
+    pub author: Option<String>,
+    pub version: Option<String>,
+    /// 已翻译成本启动器分类名的结果；None 表示 Nexus 侧就是 Miscellaneous。
+    pub category: Option<String>,
+    pub picture_url: Option<String>,
+}
+
+/// 一条可以脱离 LevelDB 生命周期单独使用的记录（收编扫描要用）。
+#[derive(Debug, Clone, Default)]
+pub struct VortexRecord {
+    pub mod_id: u64,
+    pub file_id: Option<u64>,
+    pub name: String,
+    pub author: String,
+    pub version: String,
+    pub picture_url: Option<String>,
+    /// 已翻译成本启动器分类名的结果（`服装` / `玩法` …）。
+    pub category: Option<String>,
+    /// 模组目录名，和 `vortex_source::scan_dirs` 读到的目录名一一对应。
+    pub dir_name: String,
 }
 
 /// adopt_scan 的返回。copy_bytes 是跨卷收编需要真实复制的字节数，

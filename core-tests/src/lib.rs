@@ -84,3 +84,13 @@ mod game_tests;
 #[cfg(test)]
 #[path = "../../src-tauri/src/nxm_tests.rs"]
 mod nxm_tests;
+
+/// `vortex.rs` depends on LevelDB, which this headless test crate does not pull in.
+/// Adoption tests only need the "no records" path, so provide an empty implementation.
+pub mod vortex {
+    use crate::schema::{AppResult, VortexRecord};
+
+    pub fn load_records() -> AppResult<Vec<VortexRecord>> {
+        Ok(Vec::new())
+    }
+}

@@ -2847,6 +2847,7 @@ export default function App() {
                 onRefreshCovers={() => void runRefreshCovers()}
                 refreshingCovers={refreshingCovers}
                 onVortexImport={() => void runVortexImport()}
+                onAdopt={() => void handleAdoptScan()}
                 onReclassify={() => void handleReclassify()}
                 reclassifying={reclassifying}
                 view={preferences.libraryView}

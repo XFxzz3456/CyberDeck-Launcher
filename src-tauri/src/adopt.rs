@@ -15,7 +15,7 @@ use crate::game::same_volume;
 use crate::installer::file_stamp;
 use crate::schema::{
     AdoptCandidate, AdoptError, AdoptFileRef, AdoptOutcome, AdoptProgress, AdoptReport,
-    AdoptScanReport, AppResult, CommandError, DeployedFile, InstallLayout,
+    AdoptScanReport, AdoptVortexMeta, AppResult, CommandError, DeployedFile, InstallLayout,
     LibraryNormalizeReport, LinkType, ModEntry,
 };
 use crate::store::{is_within, now_iso, safe_join, Store};
@@ -251,6 +251,9 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
             already_managed: already,
             source: "archive".to_string(),
             absorb_entry_ids: Vec::new(),
+            // archive 反推拿不到 Nexus 元数据：这类候选本来就没经过 Vortex，
+            // 交给本地推断 + 之后的「粘贴链接 / 补全信息」补。
+            vortex: None,
         });
     }
 
@@ -277,6 +280,9 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
             already_managed: already,
             source: "archive".to_string(),
             absorb_entry_ids: Vec::new(),
+            // archive 反推拿不到 Nexus 元数据：这类候选本来就没经过 Vortex，
+            // 交给本地推断 + 之后的「粘贴链接 / 补全信息」补。
+            vortex: None,
         });
     }
 
@@ -325,12 +331,49 @@ fn append_vortex_candidates(
     let Some(root) = crate::vortex_source::find_mods_root(crate::vortex_source::GAME_ID) else {
         return;
     };
-    append_vortex_candidates_from(&root, state, game_root, staging_dir, candidates);
+    let records = load_record_map();
+    append_vortex_candidates_with(&root, &records, state, game_root, staging_dir, candidates);
 }
 
-/// 可注入存储根的同体函数，专供测试构造夹具。
+/// 目录名（小写）→ Vortex 记录。Vortex 开着时库被锁，此时返回空表，
+/// 收编仍然可用（只是少了 Nexus 编号与分类），不因为读不到元数据就罢工。
+/// 测试构建下直接给空表：`core-tests` 是独立 crate，不为它拉 LevelDB 依赖。
+#[cfg(not(test))]
+fn load_record_map() -> std::collections::HashMap<String, crate::schema::VortexRecord> {
+    crate::vortex::load_records()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|record| (record.dir_name.to_ascii_lowercase(), record))
+        .collect()
+}
+
+#[cfg(test)]
+fn load_record_map() -> std::collections::HashMap<String, crate::schema::VortexRecord> {
+    std::collections::HashMap::new()
+}
+
+/// 可注入存储根的同体函数，专供测试构造夹具（不读真实 Vortex 库）。
+#[allow(dead_code)]
 pub(crate) fn append_vortex_candidates_from(
     root: &Path,
+    state: &crate::schema::AppStateData,
+    game_root: &Path,
+    staging_dir: &Path,
+    candidates: &mut Vec<AdoptCandidate>,
+) {
+    append_vortex_candidates_with(
+        root,
+        &std::collections::HashMap::new(),
+        state,
+        game_root,
+        staging_dir,
+        candidates,
+    );
+}
+
+pub(crate) fn append_vortex_candidates_with(
+    root: &Path,
+    records: &std::collections::HashMap<String, crate::schema::VortexRecord>,
     state: &crate::schema::AppStateData,
     game_root: &Path,
     staging_dir: &Path,
@@ -386,6 +429,11 @@ pub(crate) fn append_vortex_candidates_from(
         }
         let size_bytes = files.iter().map(|file| file.size_bytes).sum();
         let main_path = game_root.join(dir.files[0].replace('/', "\\"));
+        // Vortex 的目录名 = 它自己的 installationPath，能精确配到元数据。
+        // 读库失败（Vortex 正开着、库被锁）时是空表，收编照常走，只是没有元数据。
+        let meta = records
+            .get(&dir.dir_name.to_ascii_lowercase())
+            .map(meta_of);
 
         if straddles {
             candidates.push(AdoptCandidate {
@@ -402,6 +450,7 @@ pub(crate) fn append_vortex_candidates_from(
                 already_managed: true,
                 source: "vortex".to_string(),
                 absorb_entry_ids: Vec::new(),
+                vortex: meta,
             });
             continue;
         }
@@ -425,7 +474,25 @@ pub(crate) fn append_vortex_candidates_from(
             already_managed: false,
             source: "vortex".to_string(),
             absorb_entry_ids: absorb,
+            vortex: meta,
         });
+    }
+}
+
+/// Vortex 记录 → 收编候选上的元数据。空字符串一律折成 None，免得写进库是空串。
+fn meta_of(record: &crate::schema::VortexRecord) -> AdoptVortexMeta {
+    let non_empty = |value: &str| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    };
+    AdoptVortexMeta {
+        mod_id: record.mod_id,
+        file_id: record.file_id,
+        name: non_empty(&record.name),
+        author: non_empty(&record.author),
+        version: non_empty(&record.version),
+        category: record.category.clone(),
+        picture_url: record.picture_url.clone().filter(|url| !url.trim().is_empty()),
     }
 }
 
@@ -552,17 +619,47 @@ fn build_entry(
     } else {
         InstallLayout::Archive
     };
+    // 收编时能精确对上的 Vortex 元数据直接写进库：Nexus 编号、官方分类、
+    // 作者、版本、封面。这样条目一进库就和 Vortex 里看到的一致，
+    // 也不用再靠「从 Vortex 导入」做名称模糊匹配。
+    let meta = candidate.vortex.clone().unwrap_or_default();
+    let nexus = (meta.mod_id > 0).then(|| crate::schema::NexusRef {
+        mod_id: meta.mod_id,
+        file_id: meta.file_id,
+        url: format!(
+            "https://www.nexusmods.com/cyberpunk2077/mods/{}",
+            meta.mod_id
+        ),
+        version: meta.version.clone(),
+        picture_url: meta.picture_url.clone(),
+        latest_version: None,
+        last_check: None,
+    });
+    // 没有 Nexus 分类时退回本地推断——内容证据仍然比「其他」有用。
+    let category = match meta.category.clone() {
+        Some(value) => value,
+        None => crate::category::infer_with_nexus(
+            &crate::category::Signals {
+                name: &candidate.name,
+                folder: "",
+                layout: &layout,
+                paths: &staged.iter().map(|file| file.rel.clone()).collect::<Vec<_>>(),
+            },
+            None,
+        ),
+    };
     ModEntry {
         id: candidate.id.clone(),
         raw_name: None,
-        name: candidate.name.clone(),
-        version: None,
-        author: None,
-        category: "其他".to_string(),
+        // Vortex 的 modName 是 Nexus 页面标题，比目录名（带版本戳）更适合当显示名。
+        name: meta.name.clone().unwrap_or_else(|| candidate.name.clone()),
+        version: meta.version.clone(),
+        author: meta.author.clone(),
+        category,
         category_locked: false,
         description: "由外部工具（如 Vortex）部署、经「收编」纳入启动器管理。".to_string(),
         source_zip: None,
-        nexus: None,
+        nexus,
         staging_path: staging_dir.to_string_lossy().to_string(),
         cover_path: None,
         enabled: true,
@@ -572,7 +669,7 @@ fn build_entry(
         file_count: staged.len(),
         layout,
         mod_folder: None,
-        metadata_source: "adopted".to_string(),
+        metadata_source: if meta.mod_id > 0 { "vortex" } else { "adopted" }.to_string(),
         planned_files: staged.iter().map(|file| file.rel.clone()).collect(),
         warnings,
         deployed_files: deployed,
@@ -585,7 +682,7 @@ fn build_entry(
         managed: true,
         origin: "adopted".to_string(),
         modpack_id: None,
-        nexus_cover_url: None,
+        nexus_cover_url: meta.picture_url.clone(),
         // 收编来的散装 archive 也要过一遍汉化包识别：很多玩家的汉化就是手动
         // 丢进 archive/pc/mod 的，收编后同样需要挂到父级才能级联禁停。
         is_translation: crate::translation::looks_like_translation([
@@ -754,13 +851,17 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
     // 于是在 `r6/scripts/DigitalVixenCore 28390 4.9.10 …/` 下记了 655 条，
     // 而那个目录从来没被创建过。这种条目禁用/卸载必然报错，只能清记录。
     //
+    // 不按 origin 过滤：实机上那条 655 文件的记录 origin 是 `cyberdeck`
+    // （正常安装流程写进去的），只认 `adopted` 会漏掉它。判据只认事实——
+    // 清单里一个文件都不在磁盘上了，这份部署就不存在了。
+    //
     // 安全边界：游戏目录必须真实存在才做（盘没挂载/路径临时不可用时不能
-    // 把整库误判成幽灵）；只动 adopted 来源；只要还剩一个文件在，就不算。
+    // 把整库误判成幽灵）；只要还剩一个文件在，就不算。
     let mut ghost_names: Vec<String> = Vec::new();
     let mut ghost_ids: Vec<String> = Vec::new();
     if let Some(root) = game_root.as_ref().filter(|root| root.is_dir()) {
         for entry in &state.mods {
-            if entry.origin != "adopted" || entry.deployed_files.is_empty() {
+            if entry.deployed_files.is_empty() {
                 continue;
             }
             let all_missing = entry

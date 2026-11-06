@@ -387,6 +387,52 @@ pub fn infer(signals: &Signals<'_>) -> String {
 ///
 /// 匹配方式：小写 + 去掉非字母数字后再比，兼容 `Visuals and Graphics` /
 /// `visuals-and-graphics` / `Visuals & Graphics` 这几种写法。
+/// Nexus 数字分类 id → 本启动器的分类名（赛博朋克 2077 专用）。
+///
+/// 这张表照抄 Vortex 缓存的官方分类树（`persistent###categories###cyberpunk2077`，
+/// 26 项，数据源是 `api.nexusmods.com/v1/games/cyberpunk2077.json` 的 `categories`）。
+///
+/// 为什么需要它：Vortex 界面上的「自动分类」并不是它本地猜出来的，而是把
+/// Nexus 返回的 `category` 字段原样透传 —— 官方 26 项的分类树比我们的 10 类细，
+/// 只能往粗里合并：`Appearance`(13) / `Armour and Clothing`(3) / `Characters`(5)
+/// 都归「服装」，`Visuals and Graphics`(10) / `User Interface`(8) / `Animations`(15)
+/// 都归「视觉」。
+///
+/// 收编时用这条路径比关键词投票准得多：同一批模组来自 Nexus，元数据现成。
+pub fn from_nexus_id(raw: &str) -> Option<&'static str> {
+    // 多分类是逗号分隔（`7,3333`），取第一个有效 id —— 与 Nexus 网页面包屑一致。
+    let first = raw.split(',').map(str::trim).find(|part| !part.is_empty())?;
+    let mapped = match first {
+        "3" => "服装",  // Armour and Clothing
+        "4" => "音频",  // Audio
+        "5" => "服装",  // Characters
+        "6" => "玩法",  // Crafting
+        "7" => "玩法",  // Gameplay
+        "8" => "视觉",  // User Interface
+        "9" => "工具",  // Utilities
+        "10" => "视觉", // Visuals and Graphics
+        "11" => "武器", // Weapons
+        "12" => "框架", // Modders Resources
+        "13" => "服装", // Appearance
+        "14" => "车辆", // Vehicles
+        "15" => "视觉", // Animations
+        "16" => "视觉", // Locations
+        "17" => "玩法", // Scripts
+        "18" => "视觉", // Add-On Apartment
+        "19" => "音频", // AI Voices
+        "20" => "视觉", // Adverts
+        "21" => "视觉", // Apartment
+        "22" => "服装", // Appearance Change Unlocker Preset
+        "23" => "服装", // Atelier Shop
+        "24" => "视觉", // Props and Decorations
+        "25" => "服装", // Appearance Menu Mod Preset
+        "26" => "音频", // Audio Replacer
+        // 1 = 根节点，2 = Miscellaneous：都不带信息量，交给内容证据。
+        _ => return None,
+    };
+    Some(mapped)
+}
+
 pub fn map_nexus_category(category_name: &str) -> Option<&'static str> {
     // 归一化：字母数字保留，其它字符（`&`、`-`、`/`、全角空格…）一律当分隔符，
     // 再把连词 `and` 去掉 —— 这样 `Visuals and Graphics` / `visuals-&-graphics` /
@@ -491,6 +537,29 @@ mod tests {
 
     fn layout() -> InstallLayout {
         InstallLayout::Archive
+    }
+
+    /// Vortex 透传的 Nexus 分类 id 要能翻成本地分类。
+    ///
+    /// 这就是「收编后自动分类」的判据：Vortex 的目录名与它自己的
+    /// `installationPath` 一一对应，分类就存在 `attributes.category` 里，
+    /// 不用猜关键词。实机 222 条里出现的 id 全部落在 3~26 这一段。
+    #[test]
+    fn nexus_category_ids_map_to_local_categories() {
+        assert_eq!(from_nexus_id("7"), Some("玩法")); // Gameplay，实机最多
+        assert_eq!(from_nexus_id("12"), Some("框架")); // Modders Resources
+        assert_eq!(from_nexus_id("10"), Some("视觉")); // Visuals and Graphics
+        assert_eq!(from_nexus_id("9"), Some("工具")); // Utilities
+        assert_eq!(from_nexus_id("13"), Some("服装")); // Appearance
+        assert_eq!(from_nexus_id("14"), Some("车辆")); // Vehicles
+        // 多分类是逗号分隔，取第一个 —— `7,3333` 这种写法在 Vortex 里很常见。
+        assert_eq!(from_nexus_id("7,3333"), Some("玩法"));
+        assert_eq!(from_nexus_id(" 12 "), Some("框架"));
+        // 1 = 根节点、2 = Miscellaneous：不带信息量，交给内容证据。
+        assert_eq!(from_nexus_id("1"), None);
+        assert_eq!(from_nexus_id("2"), None);
+        assert_eq!(from_nexus_id(""), None);
+        assert_eq!(from_nexus_id("abc"), None);
     }
 
     #[test]

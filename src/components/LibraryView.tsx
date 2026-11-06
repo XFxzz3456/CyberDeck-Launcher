@@ -148,6 +148,7 @@ export function LibraryView({
   onRefreshCovers,
   refreshingCovers = false,
   onVortexImport,
+  onAdopt,
   onRefresh,
   onReclassify,
   reclassifying = false,
@@ -196,6 +197,8 @@ export function LibraryView({
   refreshingCovers?: boolean;
   /** 从 Vortex 本地数据库导入元数据（需关闭 Vortex）。 */
   onVortexImport?: () => void;
+  /** 收编游戏目录里未受管的模组（多布局扫描）；不传则入口不显示。 */
+  onAdopt?: () => void;
   /** 智能归类：默认只动「其他 / 工具」；传 true 时重算全部分类。 */
   onReclassify?: (all: boolean) => void;
   reclassifying?: boolean;
@@ -1155,6 +1158,19 @@ export function LibraryView({
                         {t("library.selectMode")}
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        onAdopt?.();
+                      }}
+                      disabled={!onAdopt}
+                      title={t("library.adoptTitle")}
+                    >
+                      <Layers size={13} />
+                      {t("library.adoptExisting")}
+                    </button>
                     <button
                       type="button"
                       role="menuitem"
