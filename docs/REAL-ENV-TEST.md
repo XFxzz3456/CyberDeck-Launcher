@@ -200,3 +200,30 @@ CET 进游戏后按 `~`，能看到模组列表才算 Lua 加载成功；只看�
 （典型原因：用 `cargo build --release` 而漏了 `--features custom-protocol`，产物退化成 dev 形态，
 去连 `http://localhost:1420`，用户看到的是「localhost 拒绝连接」）。
 注意：exe 里出现 `localhost:1420` **不能**作为 dev 判据——那是被内嵌的配置文本，正常包也有。
+
+## 10. 本地模型（Ollama / 任意 OpenAI 兼容端点）待验项
+
+> 2026-11-07 补回：`PROJECT_HISTORY §3.7` 一直引用「已知差异 6 项，见本文」，此前本文并没有这份清单。
+> 代码层已用 mock HTTP 服务器覆盖同等协议路径；**实机链路仍未跑**（用户 2026-11-07 明确不装 Ollama）。
+
+**静态已确证**
+
+| 项 | 结论 |
+|---|---|
+| 无 `usage` 字段 | 无影响：`ChatResponse` / `AnthropicResponse` 都不解析 `usage` |
+| 流式响应 | 无影响：请求不含 `stream`，响应按完整 JSON 一次性解析 |
+| `/v1/models` 形状 | 已兼容 `data` / `models` / 裸数组 + `name` / `model` 别名 |
+| 无 Key 调用 | 2026-11-07 已修：`resolve_chat_key` 仅对回环地址放行匿名；公网漏填 Key 仍报 `AI_NOT_CONFIGURED`。复盘见 `docs/INCIDENT-2026-11-07-ollama-no-key.md` |
+
+**待实机（装 Ollama 后逐条打勾）**
+
+1. `response_format: {"type":"json_object"}` 是否被 Ollama OpenAI 兼容层接受；不接受则诊断 / 翻译全落 `AI_HTTP` 或空响应。
+2. `max_tokens` 是否映射到 `num_predict`；400–3000 档是否被截断。
+3. `/v1/models` 实际 `id` 是否带 `:latest`，与预设示例名是否对得上。
+4. 错误响应形状（模型未拉取 / 上下文超限）能否被 `error_body_message` 抠出 `message`。
+5. 代理劫持：`NO_PROXY=127.0.0.1,localhost` 是铁律；`build_client` 静态未见 `.no_proxy()`，需实测 `http://localhost:11434` 是否被系统代理拦。
+6. 75s 总超时 / 15s 连接超时：7B 小模型首次冷启动是否够。
+7. 三条链路双端：列模型 / 翻译一条 Mod 名 / AI 诊断，DeepSeek 云端 + Ollama 本地都跑通。
+8. Key 隐私：只出现在 `<data>/secrets/ai-api.key`，`launcher-state.json` 无明文。
+
+配置步骤：设置 → AI 配置 → 选 Ollama 预设（Base URL `http://localhost:11434/v1`）→ **Key 留空** → 模型名以 `ollama list` 为准 → 勾选同意后运行。帮助中心 FAQ `ai-setup` 同源。

@@ -45,6 +45,45 @@
 
 ---
 
+## [未发布] - 2026-11-07（#8 无 Key 兼容修复 · #6 标签本地化 M1）
+
+> 本批只改代码与文档：**未升版、未构建 exe、未打便携 ZIP**。三处 `version` 仍为 `1.2.1`；
+> 待 localhost 验收 + 用户确认后由 `npm run release` 判定版本级别（新增 `ailabel` 模块属 MINOR）。
+
+### 新增
+
+- **`src-tauri/src/ailabel.rs`（#6 M1，范围 ①）**：启动器内配置项标签本地化覆盖层。
+  - 产物 `data_dir/ai-labels/<modId>.json`，独立于 `launcher-state.json`，**不动 schema、不写游戏目录**。
+  - 词表优先 → 未命中走 `ai::translate_locale_strings`；译文按 `mod_id + FNV-1a(原文)` 记回词表，`user` 条目永不覆盖。
+  - 指纹基于「来源 + section + key + 标签」，不含 `value`：改玩家设置不会让译文失效；模组结构变化则自动失效，**只提示重做、不自动重跑 AI**。
+  - `config_resolver::raw_mod_sources` 提供未套覆盖层的原文（避免把中文当原文重翻）；`mod_config` 返回前套用，过期提示进 `warnings`。
+  - `ailoc::apply` / `ailoc::revert` 挂接生成与撤销：best-effort，失败只进 `warnings`。
+  - 范围裁决：只做启动器渲染的标签；游戏内 CET / Mod Settings 菜单文案在 Lua / inkwidget，需框架级支持，本批不做。
+- **`docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`**：#6 架构评审结论归档（10-29 三条路线裁决 + 本轮范围签字）。
+- **`docs/INCIDENT-2026-11-07-ollama-no-key.md`**：#8 缺陷复盘（现象 → 真因 → 错误假设 → 代价 → 下次第一步）。
+
+### 修复
+
+- **#8 P0：本地 Ollama / LM Studio「Key 留空」实际不可用**（`ai.rs`）：
+  - `chat_completion` / `request_once` 的 `key` 改 `Option<&str>`，无 Key 不发任何鉴权头。
+  - 新增 `resolve_chat_key` + `is_loopback_base_url`：无 Key **仅对回环地址放行**；公网漏填 Key 仍在请求前报 `AI_NOT_CONFIGURED`。
+  - 四条业务链路（诊断 / 名称翻译 / 本地化 / Redscript 补丁）统一取 Key；5 个 `chat_completion` 调用点显式 `key.as_deref()`。
+  - `src/i18n/zh-CN.ts` 的 ollama / lmStudio 提示从「随便填」改为「留空即可」。
+- **文档口径**：`PROJECT_HISTORY §3.7` 引用的「已知差异 6 项」在 `REAL-ENV-TEST.md` 里并不存在，现补回 §10 静态/待验清单；`SESSION-START §3` 的腾讯文档 `no_token` 快照改为已同步；`HANDOFF §0` 把 release exe 从「1.1.1 的包」更正为「1.2.0 审计修复批次」；`AGENTS §1.4`「不是 git 仓库」、`§1.5` 与 `HANDOFF §13` 的网盘/资料库双同步均已改为以 GitHub 仓库为准。
+
+### 验证结果
+
+- `cargo test --lib`（core-tests）：**256 passed / 0 failed / 2 ignored**（基线 251 + 新增 5 条）。
+- `npm run gate`：**42/42 全绿**（命令契约 / core-tests / tsc / vite build + 38 项 UI 检查，合计 340s 工时）。
+- `npx tsc --noEmit` 0 错误、`vite build` 通过；版本号一致性检查通过（三处仍 `1.2.1`）。
+- 新增单测：回环无 Key 匿名成功（断言无 `Authorization` 头）、公网无 Key 在网络前拦截、指纹忽略 `value` / 检测 label 变化、覆盖层套用与过期、路径穿越防护。
+
+### 已知边界
+
+- **未装 Ollama、未做实机双端验收**（用户本轮明确不装）。`response_format: json_object` / `max_tokens` / 错误体 / 代理劫持 / 冷启动超时仍待实机，见 `REAL-ENV-TEST.md §10`；**#8 保持 open**。
+- #6 M1 依附现有「AI 汉化」入口，暂无独立 UI 按钮；游戏内框架菜单（范围 ②）未做。
+- exe 未构建、便携 ZIP 未打、release 未替换；按交付顺序等 localhost 验收 + 用户确认。
+
 ## [1.2.1] - 2026-11-06（收编自动分类 · 入口收进模组库 · 幽灵条目清理）
 
 > 用户反馈两件事：① 模组库右上角找不到「收编」入口（实际只在诊断页与命令面板）；② 收编进来的模组不像

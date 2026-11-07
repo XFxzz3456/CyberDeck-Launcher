@@ -258,8 +258,9 @@ P2 七项保持记录在案、暂不动。修复后：`cargo test` 105 passed、
 ### 3.7 本地模型（Ollama / 任意 OpenAI 兼容端点）<a id="ollama"></a>
 
 - **代码层**：双协议（OpenAI / Anthropic）+ 任意 Base URL，已用本地 mock HTTP 服务器在单元测试中覆盖同等协议路径（`src-tauri/src/ai.rs` 的 `ai::tests`）
-- **实机**：本机未安装 Ollama，**实机链路未跑**
-- **已知差异 6 项**（含模型名/路径约定、`/v1` 前缀处理等），见 `docs/REAL-ENV-TEST.md` 排查习惯
+- **实机**：本机未安装 Ollama，**实机链路未跑**；用户 2026-11-07 明确不装，故 `REAL-ENV-TEST.md` §10 的 8 项仍待验
+- **已知差异 / 待验项清单**：2026-11-07 补回，见 `docs/REAL-ENV-TEST.md` §10（此前本文引用了一份并不存在的清单）
+- **无 Key 缺陷已修**（2026-11-07）：帮助中心 / 预设承诺「Key 留空」，后端四条业务链路却强制 Key；现仅对回环地址放行匿名，公网漏填仍报错。复盘见 `docs/INCIDENT-2026-11-07-ollama-no-key.md`
 - **回环请求必带** `NO_PROXY=127.0.0.1,localhost`：系统设了 `HTTP_PROXY` 时会劫持本机请求（启动器内部已做处理，手动 curl 复现时需自带）
 - 帮助中心已收录「接本地 Ollama」条目，用户可自助配置
 

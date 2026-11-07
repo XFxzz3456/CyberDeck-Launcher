@@ -79,7 +79,7 @@ grep -rn '"v\?[0-9]\+\.[0-9]\+\.[0-9]\+"' src/ --include="*.ts" --include="*.tsx
 ### 1.4 Git 标签
 
 - 提交后打标签：`git tag v0.8.0`，并 `git push --tags`。
-- ⚠️ **本仓库当前不是 git 仓库**（无 `.git` 目录）。在 `git init` + 首次提交完成前，版本追踪依赖 `CHANGELOG.md`。建立仓库后，本条转为强制执行。
+- 仓库已建立并公开（`XFxzz3456/CyberDeck-Launcher`）：提交后 `git tag vX.Y.Z` 并 `git push --tags`；tag 与 `发布产物` 里的便携 ZIP 版本号一致。
 
 ### 1.5 版本发布收尾 checklist
 
@@ -93,7 +93,7 @@ grep -rn '"v\?[0-9]\+\.[0-9]\+\.[0-9]\+"' src/ --include="*.ts" --include="*.tsx
 - [ ] `CHANGELOG.md` 追加版本段（时间 / 标号 / 模块 / 新增·变更·修复 / 验证 / 边界）
 - [ ] `HANDOFF.md` 更新版本状态段
 - [ ] `docs/MEMORY-CANON.md` 第 4 节「当前版本状态」更新
-- [ ] 资料库 + 项目网盘双同步
+- [ ] 文档以 GitHub 仓库 `CHANGELOG.md` / `HANDOFF.md` / `docs/` 为准（**2026-11-07 起不再同步项目网盘与资料库**）
 - [ ] `git tag vX.Y.Z`（仓库建立后强制执行）
 
 ---
