@@ -34,6 +34,7 @@
 | `1.1.1` | 2026-11-04 | 前端缺陷审查 15 条：状态文件原子落盘、卸载凭据保留、Esc 分层、焦点陷阱 |
 | `1.2.0` | 2026-11-06 | 模组库表格化三项；ASI / RED4ext 安装器；Vortex 差距审计落地（3 条 P0 全修 + 11 条 P1）；收编数量修正（碎片合并 + 失效条目清理） |
 | `1.2.1` | 2026-11-06 | 收编入口收进模组库「更多」；收编自动带 Nexus 元数据与官方分类（照 Vortex 透传做法）；幽灵条目清理不再按 origin 过滤 |
+| `1.3.0` | 2026-11-07 | #8 本地模型无 Key 兼容修复；#6 启动器内配置项标签本地化覆盖层（M1 范围①）；文档口径修正 |
 
 ### 版本号规则
 
@@ -45,10 +46,11 @@
 
 ---
 
-## [未发布] - 2026-11-07（#8 无 Key 兼容修复 · #6 标签本地化 M1）
+## [1.3.0] - 2026-11-07（#8 无 Key 兼容修复 · #6 标签本地化 M1）
 
-> 本批只改代码与文档：**未升版、未构建 exe、未打便携 ZIP**。三处 `version` 仍为 `1.2.1`；
-> 待 localhost 验收 + 用户确认后由 `npm run release` 判定版本级别（新增 `ailabel` 模块属 MINOR）。
+> 用户 localhost 验收确认「没问题」后发布。**MINOR**（新增 Rust 模块 `ailabel.rs`）：1.2.1 → 1.3.0，
+> 三处 `version` 已同步、tag `v1.3.0`。exe 已构建并替换 `release/CyberDeck Launcher.exe`；
+> **便携 ZIP 未打**（对外分发需单独确认）。
 
 ### 新增
 
@@ -75,14 +77,16 @@
 
 - `cargo test --lib`（core-tests）：**256 passed / 0 failed / 2 ignored**（基线 251 + 新增 5 条）。
 - `npm run gate`：**42/42 全绿**（命令契约 / core-tests / tsc / vite build + 38 项 UI 检查，合计 340s 工时）。
-- `npx tsc --noEmit` 0 错误、`vite build` 通过；版本号一致性检查通过（三处仍 `1.2.1`）。
+- `npx tsc --noEmit` 0 错误、`vite build` 通过；`check-version-sync.mjs` 通过（三处 `1.3.0`）。
+- 发版链路二次门禁 **42/42 全绿**，release profile 3m45s、总耗时 439s；产物 **10,432,000 B（9.95 MB）/ md5 `b03b751af1b874ddd84c10f2c8e515f4`**，已替换 release，旧版备份 `CyberDeck Launcher.prev.exe`（10,359,808 B / `b0aa89dc…`）。
+- 冒烟：`startup.log` 有 `stage=frontend mods=81`（2026-11-07T14:40:00Z），PE `ProductVersion` / `FileVersion` 均为 `1.3.0`；冒烟进程已结束。
 - 新增单测：回环无 Key 匿名成功（断言无 `Authorization` 头）、公网无 Key 在网络前拦截、指纹忽略 `value` / 检测 label 变化、覆盖层套用与过期、路径穿越防护。
 
 ### 已知边界
 
 - **未装 Ollama、未做实机双端验收**（用户本轮明确不装）。`response_format: json_object` / `max_tokens` / 错误体 / 代理劫持 / 冷启动超时仍待实机，见 `REAL-ENV-TEST.md §10`；**#8 保持 open**。
 - #6 M1 依附现有「AI 汉化」入口，暂无独立 UI 按钮；游戏内框架菜单（范围 ②）未做。
-- exe 未构建、便携 ZIP 未打、release 未替换；按交付顺序等 localhost 验收 + 用户确认。
+- 便携 ZIP 未打（需单独确认）；#8 实机双端验收与 #6 范围②仍为开放项。
 
 ## [1.2.1] - 2026-11-06（收编自动分类 · 入口收进模组库 · 幽灵条目清理）
 
@@ -756,6 +760,7 @@
 
 | 时间 | 版本 | exe 大小 | md5 | 备注 |
 | --- | --- | --- | --- | --- |
+| 2026-11-07 22:37 | 1.3.0 | 10,432,000 | `b03b751af1b874ddd84c10f2c8e515f4` | 替换 release；冒烟 stage=frontend；便携 ZIP 未打 |
 | 2026-11-06 02:33 | 1.1.1 | 10,359,808 | `b0aa89dc3977d203f690e954894221b7` | 审计落地批次；替换 release；便携 ZIP 未打 |
 | 2026-11-06 01:53 | 1.1.1 | 10,353,152 | `edcb21a93d735a9362d9dc6bbccad570` | 审计 P0 两条；已被上一行备份为 prev |
 | 2026-11-04 23:42 | 1.1.1 | 10,323,456 | `15ded55a497c9e1b6ba7a1c0b0dfd354` | 替换 release；便携 ZIP 未打 |
@@ -824,4 +829,4 @@
 - 这一版**没解决**什么，以及为什么不解决。
 ```
 
-**收尾清单**：本文件追加 / 合并 → `HANDOFF.md` 对应段同步 → 事故类另写 `docs/INCIDENT-*.md` → 网盘「CyberDeck Launcher 项目文档」与资料库同名文档同步。
+**收尾清单**：本文件追加 / 合并 → `HANDOFF.md` 对应段同步 → 事故类另写 `docs/INCIDENT-*.md` → 提交并推送 GitHub 仓库（**2026-11-07 起不再同步项目网盘 / 资料库**）。

@@ -6,9 +6,9 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.2.1`（2026-11-06）。** 1.2.1 代码已提交但**未构建 exe**；`release/CyberDeck Launcher.exe` 停在 1.2.0 审计修复批次（10,359,808 B / md5 `b0aa89dc3977d203f690e954894221b7`）——此处旧稿曾误标为「1.1.1 的包」，1.1.1 实为 10,323,456 B / `15ded55a…`，2026-11-07 更正。等用户验收后再重出。
+**本仓库的实际版本是 `1.3.0`（2026-11-07）。** 三处 `version` 一致、tag `v1.3.0`；`release/CyberDeck Launcher.exe` 已是 1.3.0 包（10,432,000 B / md5 `b03b751af1b874ddd84c10f2c8e515f4`），旧版备份 `.prev.exe`（10,359,808 B / `b0aa89dc…`）。冒烟 `startup.log` 有 `stage=frontend mods=81`，PE 版本资源 `1.3.0`。旧稿曾把 11-06 的 exe 误标为「1.1.1 的包」（1.1.1 实为 10,323,456 B / `15ded55a…`），2026-11-07 更正。
 
-- **2026-11-07（未升版、未构建）**：#8 修复本地 Ollama「Key 留空」实际不可用（`ai.rs` 四条业务链路改可选 Key，仅回环地址放行匿名）；#6 按架构评审签字落地 M1（新增 `ailabel.rs` 启动器内配置项标签覆盖层：独立 JSON、源文件指纹、可撤销、不写游戏目录）。评审结论 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`，复盘 `docs/INCIDENT-2026-11-07-ollama-no-key.md`。用户明确**不装 Ollama** → 实机双端验收未做，#8 保持 open。三处 `version` 仍 `1.2.1`；exe 未构建、便携 ZIP 未打，等 localhost 验收 + 用户确认。
+- **2026-11-07 发布 1.3.0**：#8 修复本地 Ollama「Key 留空」实际不可用（`ai.rs` 四条业务链路改可选 Key，仅回环地址放行匿名）；#6 按架构评审签字落地 M1（新增 `ailabel.rs` 启动器内配置项标签覆盖层：独立 JSON、源文件指纹、可撤销、不写游戏目录）。用户 localhost 验收确认「没问题」后跑 `npm run release`：二次门禁 42/42 全绿、release profile 3m45s、总耗时 439s。评审结论 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`，复盘 `docs/INCIDENT-2026-11-07-ollama-no-key.md`。**便携 ZIP 未打**（对外分发需单独确认）。用户明确**不装 Ollama** → 实机双端验收未做，#8 保持 open。
 
 以下三处互相一致（`node scripts/check-version-sync.mjs` 把关）：
 
