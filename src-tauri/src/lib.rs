@@ -5,6 +5,7 @@ mod aiact;
 mod aiprofile;
 mod aifix;
 mod ailoc;
+mod ailabel;
 mod backup;
 mod category;
 mod collection;

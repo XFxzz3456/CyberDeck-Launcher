@@ -717,6 +717,18 @@ pub fn apply(
         ));
     }
     warnings.push("覆盖层由 AI 生成，非原作者发布；如介意请在模组卡片上撤销。".to_string());
+    // #6 M1 范围 ①：启动器内配置项标签一并本地化（独立覆盖层、不写游戏目录）。
+    // Best-effort：失败只记 warning，不影响汉化主流程；不自动重跑 AI。
+    match crate::ailabel::generate(store, mod_id) {
+        Ok(count) if count > 0 => warnings.push(format!(
+            "已本地化 {count} 条配置项标签，可在模组详情页查看。"
+        )),
+        Ok(_) => {}
+        Err(err) => warnings.push(format!(
+            "配置项标签本地化未完成（不影响汉化）：{}",
+            err.message
+        )),
+    }
     Ok(AiLocReport {
         mod_id: mod_id.to_string(),
         planned: entries.len(),
@@ -777,6 +789,10 @@ pub fn revert(store: &Store, mod_id: &str) -> AppResult<AiLocReport> {
             slot.updated_at = Some(now_iso());
         }
         store.save(&data)?;
+    }
+    // 标签覆盖层一并撤销（独立文件，删不掉也要在 warning 里可见）。
+    if let Err(err) = crate::ailabel::remove(store, mod_id) {
+        warnings.push(format!("配置项标签覆盖层删除失败：{}", err.message));
     }
     Ok(AiLocReport {
         mod_id: mod_id.to_string(),

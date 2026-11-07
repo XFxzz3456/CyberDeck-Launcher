@@ -1014,14 +1014,28 @@ fn target_of(store: &Store, mod_id: &str) -> AppResult<(PathBuf, ModEntry)> {
     Ok((PathBuf::from(game.root), entry))
 }
 
+/// 未套本地化覆盖层的原始配置来源，供 `ailabel::generate` 取标签原文。
+/// 走 `mod_config` 会拿到译文，再拿去翻译会把中文当原文重翻一遍。
+pub fn raw_mod_sources(store: &Store, mod_id: &str) -> AppResult<Vec<ConfigSource>> {
+    let (game_root, entry) = target_of(store, mod_id)?;
+    let resolver = ConfigResolver::new(game_root);
+    let (sources, _) = resolver.resolve_for_mod(&entry);
+    Ok(sources)
+}
+
 pub fn mod_config(store: &Store, mod_id: &str) -> AppResult<ModConfigView> {
     let (game_root, entry) = target_of(store, mod_id)?;
     let resolver = ConfigResolver::new(game_root);
     let mut warnings = Vec::new();
     // 解析失败不该让整个抽屉打不开：有问题就退回「没有可调配置」并留下 warning，
     // 详情页会显示「这个 Mod 的配置文件读不出来」而不是一个弹窗错误。
-    let (sources, problems) = resolver.resolve_for_mod(&entry);
+    let (mut sources, problems) = resolver.resolve_for_mod(&entry);
     warnings.extend(problems);
+    // #6 范围 ①：只替换启动器渲染的标签，不碰 value / 不写游戏目录。
+    // 覆盖层过期只提示重做，绝不自动重跑 AI。
+    if let Some(note) = crate::ailabel::apply_overlay(store, mod_id, &mut sources) {
+        warnings.push(note);
+    }
     Ok(ModConfigView {
         mod_id: entry.id,
         sources,
