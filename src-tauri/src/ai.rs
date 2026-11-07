@@ -903,11 +903,57 @@ fn http_error_message(status: u16, body: &str, context: ErrorContext) -> String 
 /// - Anthropic 原生：`POST <base>/v1/messages`，`x-api-key` + `anthropic-version`，
 ///   **不支持 `response_format`**（JSON 纯靠提示词约束 + 上层剥围栏），
 ///   `max_tokens` 是必填字段；system 提到顶层，回复在 `content[0].text`。
+/// 只有本机回环地址允许「无 Key 匿名调用」。
+///
+/// Ollama / LM Studio 这类本地服务没有鉴权，帮助中心与预设都告诉用户「Key 留空」；
+/// 但公网服务漏填 Key 时必须明确报错，不能静默打出去（也不该让用户误以为配好了）。
+/// 用 `IpAddr::is_loopback` 判 IP，避免 `localhost.evil.com` / `127.evil.com`
+/// 这类「看起来像本机」的域名被误放行。
+fn is_loopback_base_url(base_url: &str) -> bool {
+    let authority = base_url
+        .trim()
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| base_url.trim())
+        .split('/')
+        .next()
+        .unwrap_or("");
+    // 剥 userinfo 与端口；IPv6 的 [::1]:11434 单独处理。
+    let host = authority.rsplit_once('@').map(|(_, h)| h).unwrap_or(authority);
+    let host = if host.starts_with('[') {
+        host.split(']').next().unwrap_or("").trim_start_matches('[')
+    } else {
+        host.split(':').next().unwrap_or("")
+    };
+    let host = host.to_ascii_lowercase();
+    host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false)
+}
+
+/// 对话类链路统一取 Key：有就用；没有则只对回环服务放行匿名调用。
+fn resolve_chat_key(store: &Store, base_url: &str) -> AppResult<Option<String>> {
+    let key = load_key(store)?;
+    if key.is_some() {
+        return Ok(key);
+    }
+    if is_loopback_base_url(base_url) {
+        return Ok(None);
+    }
+    Err(CommandError::new(
+        "AI_NOT_CONFIGURED",
+        "还没有配置 AI API Key。请先在「AI 助手配置」里填写（本地 Ollama / LM Studio 可不填）。",
+    ))
+}
+
 /// Key 只进鉴权头，任何错误文案都不拼接它。
+/// `key` 为 None 表示本地回环服务匿名调用：不发任何鉴权头。
 fn chat_completion(
     client: &Client,
     url: &str,
-    key: &str,
+    key: Option<&str>,
     protocol: ApiProtocol,
     request: &ChatRequest,
 ) -> AppResult<String> {
@@ -967,17 +1013,20 @@ const LOG_RAW_BODY_CHARS: usize = 2000;
 fn request_once(
     client: &Client,
     url: &str,
-    key: &str,
+    key: Option<&str>,
     protocol: ApiProtocol,
     request: &ChatRequest,
 ) -> AppResult<(String, String)> {
     let response = match protocol {
-        ApiProtocol::OpenAi => client
-            .post(url)
-            .bearer_auth(key)
-            .json(request)
-            .send()
-            .map_err(|e| CommandError::new("AI_NETWORK", format!("连接 AI 服务失败：{e}")))?,
+        ApiProtocol::OpenAi => {
+            let mut pending = client.post(url).json(request);
+            if let Some(key) = key {
+                pending = pending.bearer_auth(key);
+            }
+            pending
+                .send()
+                .map_err(|e| CommandError::new("AI_NETWORK", format!("连接 AI 服务失败：{e}")))?
+        }
         ApiProtocol::Anthropic => {
             let body = serde_json::json!({
                 "model": request.model,
@@ -989,11 +1038,14 @@ fn request_once(
                 // messages 只放 user/assistant，且 user 开头、严格交替。
                 "messages": sanitize_anthropic_messages(&request.messages),
             });
-            client
+            let mut pending = client
                 .post(url)
-                .header("x-api-key", key)
                 .header("anthropic-version", ANTHROPIC_VERSION)
-                .json(&body)
+                .json(&body);
+            if let Some(key) = key {
+                pending = pending.header("x-api-key", key);
+            }
+            pending
                 .send()
                 .map_err(|e| CommandError::new("AI_NETWORK", format!("连接 AI 服务失败：{e}")))?
         }
@@ -1213,13 +1265,8 @@ pub fn diagnose(
             "需要你明确同意后才会把脱敏诊断摘要发送到 AI 服务。",
         ));
     }
-    let key = load_key(store)?.ok_or_else(|| {
-        CommandError::new(
-            "AI_NOT_CONFIGURED",
-            "还没有配置 AI API Key。请先在「AI 助手配置」里填写。",
-        )
-    })?;
     let settings = data.settings.clone();
+    let key = resolve_chat_key(store, &settings.ai_base_url)?;
     let game_root = report.game.as_ref().map(|game| PathBuf::from(&game.root));
     let (context, redactions) =
         build_context(report, data, game_root.as_deref(), include_logs, focus);
@@ -1254,7 +1301,7 @@ pub fn diagnose(
         ApiProtocol::Anthropic => anthropic_messages_endpoint(&settings.ai_base_url),
     };
     // 发送、状态码映射、JSON 解析都走 chat_completion，与翻译共用同一份实现。
-    let content = chat_completion(&client, &url, &key, protocol, &request)?;
+    let content = chat_completion(&client, &url, key.as_deref(), protocol, &request)?;
     let cleaned = strip_code_fence(&content);
     let payload: AiPayload = serde_json::from_str(&cleaned).map_err(|e| {
         let snippet: String = cleaned.chars().take(500).collect();
@@ -1704,12 +1751,7 @@ pub fn translate_mod_names(
         return Ok(report);
     }
 
-    let key = load_key(store)?.ok_or_else(|| {
-        CommandError::new(
-            "AI_NOT_CONFIGURED",
-            "还没有配置 AI API Key。请先在「AI 助手配置」里填写。",
-        )
-    })?;
+    let key = resolve_chat_key(store, &settings.ai_base_url)?;
 
     // 客户端建一次、整轮复用：reqwest 会自动复用连接，比每批新建省掉一次 TLS 握手。
     let client = build_client("AI-Translate")?;
@@ -1738,7 +1780,7 @@ pub fn translate_mod_names(
 
         // 单批失败不中断整轮：后面的批次照常跑，前端拿到的是「部分成功」，
         // 比整轮回滚更贴合用户预期（已经花钱翻译成功的部分不会白费）。
-        let content = match chat_completion(&client, &url, &key, protocol, &request) {
+        let content = match chat_completion(&client, &url, key.as_deref(), protocol, &request) {
             Ok(content) => content,
             Err(err) => {
                 report.failed += batch.len();
@@ -1848,12 +1890,7 @@ pub(crate) fn propose_redscript_patch(
 ) -> AppResult<(String, String, Vec<String>)> {
     let settings = store.snapshot_data().settings.clone();
     let model = settings.ai_model.clone();
-    let key = load_key(store)?.ok_or_else(|| {
-        CommandError::new(
-            "AI_NOT_CONFIGURED",
-            "还没有配置 AI API Key。请先在「AI 助手配置」里填写。",
-        )
-    })?;
+    let key = resolve_chat_key(store, &settings.ai_base_url)?;
     let client = build_client("AI-Redscript")?;
     let protocol = resolve_protocol(&settings.ai_protocol);
     let url = match protocol {
@@ -1878,14 +1915,14 @@ pub(crate) fn propose_redscript_patch(
         response_format: ResponseFormat { kind: "json_object" },
     };
     // 部分服务商对 json_object 与代码输出兼容不好：先用普通请求，失败再退回无格式约束。
-    let content = match chat_completion(&client, &url, &key, protocol, &request) {
+    let content = match chat_completion(&client, &url, key.as_deref(), protocol, &request) {
         Ok(content) => content,
         Err(err) if err.code == "AI_HTTP" => {
             let fallback = ChatRequest {
                 response_format: ResponseFormat { kind: "text" },
                 ..request
             };
-            chat_completion(&client, &url, &key, protocol, &fallback)?
+            chat_completion(&client, &url, key.as_deref(), protocol, &fallback)?
         }
         Err(err) => return Err(err),
     };
@@ -1965,12 +2002,7 @@ pub(crate) fn translate_locale_strings(
     if items.is_empty() {
         return Ok(out);
     }
-    let key = load_key(store)?.ok_or_else(|| {
-        CommandError::new(
-            "AI_NOT_CONFIGURED",
-            "还没有配置 AI API Key。请先在「AI 助手配置」里填写。",
-        )
-    })?;
+    let key = resolve_chat_key(store, &settings.ai_base_url)?;
     let client = build_client("AI-Localize")?;
     let protocol = resolve_protocol(&settings.ai_protocol);
     let url = match protocol {
@@ -2016,7 +2048,7 @@ pub(crate) fn translate_locale_strings(
             max_tokens: 800 + chunk.iter().map(|text| text.chars().count() as u32).sum::<u32>(),
             response_format: ResponseFormat { kind: "json_object" },
         };
-        match chat_completion(&client, &url, &key, protocol, &request) {
+        match chat_completion(&client, &url, key.as_deref(), protocol, &request) {
             Ok(content) => match extract_json_value(&content) {
                 Some(value) => {
                     let parsed = parse_loc_translations(&value);
@@ -2396,6 +2428,73 @@ mod tests {
         let result = diagnose(&store, &report, &data, false, true, None).expect("重试后应成功");
         assert_eq!(result.summary, "重试成功");
         server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #8：本地回环服务（Ollama / LM Studio）「Key 留空」必须真的能跑通，
+    /// 且不能发出任何鉴权头；公网服务漏填 Key 仍要明确报错。
+    #[test]
+    fn loopback_services_can_call_chat_without_api_key() {
+        assert!(is_loopback_base_url("http://localhost:11434/v1"));
+        assert!(is_loopback_base_url("http://127.0.0.1:1234/v1"));
+        assert!(is_loopback_base_url("http://[::1]:11434/v1"));
+        assert!(!is_loopback_base_url("https://api.deepseek.com/v1"));
+        assert!(!is_loopback_base_url("http://localhost.evil.com/v1"));
+        assert!(!is_loopback_base_url("http://127.evil.com/v1"));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request_text = read_http_request(&mut stream);
+            assert!(request_text.contains("POST /v1/chat/completions"));
+            // 无 Key 时一个鉴权头都不能有；否则会给本地服务发一个无意义的 Bearer。
+            assert!(!request_text.to_ascii_lowercase().contains("authorization:"));
+            assert!(!request_text.to_ascii_lowercase().contains("x-api-key:"));
+            let content =
+                serde_json::json!({"summary":"本地模型可用","confidence":"high"}).to_string();
+            let reply = serde_json::json!({
+                "choices": [{ "message": { "content": content } }]
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                reply.len(),
+                reply
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        });
+
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".test-tmp")
+            .join(format!("ai-no-key-{}", uuid::Uuid::new_v4().simple()));
+        let store = Store::load(root.join("data")).unwrap();
+        // 刻意不写任何 key 文件：模拟用户在 Ollama 预设下把 Key 留空。
+        let mut data = AppStateData::new(store.staging_dir().to_string_lossy().to_string());
+        data.settings.ai_base_url = format!("http://{address}/v1");
+        data.settings.ai_model = "qwen-local".to_string();
+        let report = make_minimal_report();
+
+        let result = diagnose(&store, &report, &data, false, true, None)
+            .expect("回环服务无 Key 应匿名成功");
+        assert_eq!(result.summary, "本地模型可用");
+        server.join().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn public_endpoint_without_key_is_rejected_before_network() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".test-tmp")
+            .join(format!("ai-public-no-key-{}", uuid::Uuid::new_v4().simple()));
+        let store = Store::load(root.join("data")).unwrap();
+        let mut data = AppStateData::new(store.staging_dir().to_string_lossy().to_string());
+        data.settings.ai_base_url = "https://api.deepseek.com/v1".to_string();
+        data.settings.ai_model = "deepseek-chat".to_string();
+        let err = diagnose(&store, &make_minimal_report(), &data, false, true, None)
+            .expect_err("公网服务漏填 Key 必须在发请求前拦截");
+        assert_eq!(err.code, "AI_NOT_CONFIGURED");
         let _ = std::fs::remove_dir_all(&root);
     }
 

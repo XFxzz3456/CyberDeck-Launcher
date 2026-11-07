@@ -155,7 +155,7 @@ export const zhCN = {
       local: "本地部署",
     },
     lmStudio: {
-      keyHint: "LM Studio 无需密钥，API Key 随便填（如 lm-studio）；模型名以已加载的模型为准",
+      keyHint: "LM Studio 无需密钥，API Key 留空即可；模型名以已加载的模型为准",
       label: "LM Studio（本地）",
     },
     meta: {
@@ -175,7 +175,7 @@ export const zhCN = {
       label: "Moonshot（Kimi）",
     },
     ollama: {
-      keyHint: "本地服务无需密钥，API Key 随便填（如 ollama）；模型名以 `ollama list` 为准",
+      keyHint: "本地服务无需密钥，API Key 留空即可；模型名以 `ollama list` 为准",
       label: "Ollama（本地）",
     },
     openai: {
