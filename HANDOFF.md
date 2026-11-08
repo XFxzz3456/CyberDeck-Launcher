@@ -6,10 +6,10 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.3.0`（2026-11-07）。** 三处 `version` 一致、tag `v1.3.0`；`release/CyberDeck Launcher.exe` 已是 1.3.0 包（10,432,000 B / md5 `b03b751af1b874ddd84c10f2c8e515f4`），旧版备份 `.prev.exe`（10,359,808 B / `b0aa89dc…`）。冒烟 `startup.log` 有 `stage=frontend mods=81`，PE 版本资源 `1.3.0`。旧稿曾把 11-06 的 exe 误标为「1.1.1 的包」（1.1.1 实为 10,323,456 B / `15ded55a…`），2026-11-07 更正。
+**本仓库的实际版本是 `1.3.1`（2026-11-08）。** 三处 `version` 一致、tag `v1.3.1`；`release/CyberDeck Launcher.exe` 已是 1.3.1 包（10,433,536 B / md5 `c3d14a46e5d79c9b3be63acf68493360`），旧版备份 `.prev.exe`（10,432,000 B / `b03b751a…`）。冒烟 `startup.log` 有 `stage=frontend mods=81`，PE 版本资源 `1.3.1`。旧稿曾把 11-06 的 exe 误标为「1.1.1 的包」（1.1.1 实为 10,323,456 B / `15ded55a…`），2026-11-07 更正。
 
 - **2026-11-07 发布 1.3.0**：#8 修复本地 Ollama「Key 留空」实际不可用（`ai.rs` 四条业务链路改可选 Key，仅回环地址放行匿名）；#6 按架构评审签字落地 M1（新增 `ailabel.rs` 启动器内配置项标签覆盖层：独立 JSON、源文件指纹、可撤销、不写游戏目录）。用户 localhost 验收确认「没问题」后跑 `npm run release`：二次门禁 42/42 全绿、release profile 3m45s、总耗时 439s。评审结论 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`，复盘 `docs/INCIDENT-2026-11-07-ollama-no-key.md`。**便携 ZIP 未打**（对外分发需单独确认）。用户明确**不装 Ollama** → 实机双端验收未做，#8 保持 open。
-- **2026-11-08（P0，未升版、未构建）**：用户确认**放宽 P1 红线**（允许覆盖型汉化层，**必须备份原文档**），并明确 AI 由用户自接 API、启动器不内置模型。全类型汉化方案定稿 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`（含 §5.1 备份规范、§5.2 AI 通道口径）。本轮只落 P0：`ailoc.rs` 按载体分类扫描 + 真实 `blocked` 原因（`RESOURCE_TEXT` / `SCRIPT_TEXT` / `CONFIG_TEXT` / `UNSUPPORTED_FORMAT`）+ 单测；**不写游戏目录、不做覆盖**。P1（归档解包）/ P2（覆盖 + 备份恢复）需真机样本，另起一轮。设计判断：能力平台化可做，但过程必须可审计，不做隐形 agent 平台。
+- **2026-11-08（P0，未升版、未构建）**：用户确认**放宽 P1 红线**（允许覆盖型汉化层，**必须备份原文档**），并明确 AI 由用户自接 API、启动器不内置模型。全类型汉化方案定稿 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`（含 §5.1 备份规范、§5.2 AI 通道口径）。本轮只落 P0：`ailoc.rs` 按载体分类扫描 + 真实 `blocked` 原因（`RESOURCE_TEXT` / `SCRIPT_TEXT` / `CONFIG_TEXT` / `UNSUPPORTED_FORMAT`）+ 单测；**不写游戏目录、不做覆盖**。P1（归档解包）/ P2（覆盖 + 备份恢复）需真机样本，另起一轮。设计判断：能力平台化可做，但过程必须可审计，不做隐形 agent 平台。用户 22:55 确认「没问题」后跑 `npm run release`：判定 **PATCH**（只改既有文件）→ 1.3.1，二次门禁 42/42 全绿、总耗时 350s，exe 已构建并替换 release。**便携 ZIP 未打**（需单独确认）。
 
 以下三处互相一致（`node scripts/check-version-sync.mjs` 把关）：
 

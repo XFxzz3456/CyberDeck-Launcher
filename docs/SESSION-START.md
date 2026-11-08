@@ -47,12 +47,12 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.3.0**（tag `v1.3.0`；localhost 验收通过，exe 已构建并替换 release） |
-| 远端 | `main` 含 1.3.0 发版提交；tag 最新 **`v1.3.0`** |
+| 版本 | **1.3.1**（tag `v1.3.1`；localhost 验收通过，exe 已构建并替换 release） |
+| 远端 | `main` 含 1.3.1 发版提交；tag 最新 **`v1.3.1`** |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**，标签 `P0` / `P1` / `P2` / `migrated` |
-| 门禁基线 | `cargo test --lib` **256 passed / 2 ignored**（2026-11-07 +5 条）；`npm run gate` **42/42 全绿**；`tsc --noEmit` 0 错误 |
-| 腾讯文档进度表 | **已同步**（2026-11-07）：https://docs.qq.com/sheet/DR0dWckhvcmRTRUxY?_fid=GGVrHordSELX ，3 个子表（进度看板 / 近期进展 / 项目状态） |
-| 未做 | 便携 ZIP（需单独确认）；#8 实机双端验收（用户决定不装 Ollama）；#6 范围② |
+| 门禁基线 | `cargo test --lib` **257 passed / 2 ignored**（2026-11-08 +1 条）；`npm run gate` **42/42 全绿**；`tsc --noEmit` 0 错误 |
+| 腾讯文档进度表 | **已同步**（2026-11-08）：https://docs.qq.com/sheet/DR0dWckhvcmRTRUxY?_fid=GGVrHordSELX ，3 个子表（进度看板 / 近期进展 / 项目状态） |
+| 未做 | 便携 ZIP（需单独确认）；#8 实机双端验收（用户决定不装 Ollama）；全类型汉化 P1/P2（需真机样本） |
 
 ---
 
