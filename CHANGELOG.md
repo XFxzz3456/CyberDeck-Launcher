@@ -46,6 +46,34 @@
 
 ---
 
+## [未发布] - 2026-11-08（全类型汉化 P0 · 载体分类扫描）
+
+> 决策：用户确认**放宽 P1 红线**（允许覆盖型汉化层，但必须备份原文档）；AI 由用户自接 API。
+> 方案定稿 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`。本轮只做 P0：**不写游戏目录、不做覆盖、不做备份写入**。
+
+### 新增
+
+- `ailoc.rs::scan_entries` 从「只扫 `.json`」改为**按载体分类只读扫描**，为 P1（归档解包）/ P2（覆盖型汉化层）留同一套入口。
+- 新增 `classify_carrier`：`.archive` / `.inkwidget` / `.inktext` / `.csv` / `.journal` → `RESOURCE_TEXT`（P1）；`.lua` / `.reds` / `.redscript` → `SCRIPT_TEXT`（P2）；`.ini` / `.toml` / `.xl` / `.yaml` → `CONFIG_TEXT`（值文件，不是菜单文案）；形状不认识的 JSON → `UNSUPPORTED_FORMAT`。
+- 每条 blocked 带真实文件路径与中文说明；按扩展名去重、上限 24 条；纯美术 / 二进制资源不记。
+- 新增单测 `scan_classifies_carriers_and_still_extracts_onscreens`：验证四类 reason 齐全、原有 onscreens 提取不受影响、`.mesh` 不刷屏。
+
+### 修复
+
+- 对齐 `schema.rs::AiLocBlocked` 注释与实际实现：`RESOURCE_TEXT` / `UNSUPPORTED_FORMAT` 此前从未产生，不支持的 Mod 只回一句 `AI_LOC_NO_CONTENT`。
+- 汉化报告 warning 文案改为「含暂不支持的文本载体，详见计划页」。
+
+### 验证结果
+
+- `cargo test --lib`（core-tests）：**257 passed / 0 failed / 2 ignored**（基线 256 + 1）。
+- `npm run gate`：**42/42 全绿**（命令契约 / core-tests / tsc / vite build + 38 项 UI 检查，合计 362s 工时）。
+
+### 已知边界
+
+- 仍**只生成** `.archive` + `.archive.xl` 覆盖层；P1（WolvenKit 解包归档内文本）、P2（覆盖型汉化层 + 备份恢复）未做。
+- 备份规范（白名单 / 先备份再写 / 独立清单 / 恢复校验 / 显式确认）已定稿，P2 落地。
+- 未升版（三处仍 `1.3.0`）、未构建 exe、未打便携 ZIP；等 localhost 验收 + 用户确认。
+
 ## [1.3.0] - 2026-11-07（#8 无 Key 兼容修复 · #6 标签本地化 M1）
 
 > 用户 localhost 验收确认「没问题」后发布。**MINOR**（新增 Rust 模块 `ailabel.rs`）：1.2.1 → 1.3.0，
