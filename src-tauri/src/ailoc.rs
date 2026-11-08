@@ -13,6 +13,7 @@
 //!
 //! 锁纪律沿用 `adopt.rs`：不持 `store.data` 锁做磁盘 IO 和网络请求。
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,6 +37,35 @@ const MAX_TEXT_CHARS: usize = 1200;
 const MAX_ENTRIES: usize = 400;
 /// 扫描时单个 JSON 的上限；超过就不读，避免把几 MB 的资源表当本地化。
 const MAX_JSON_BYTES: u64 = 4 * 1024 * 1024;
+/// blocked 列表上限：按载体去重后仍留余量，避免计划页被刷屏。
+const MAX_BLOCKED: usize = 24;
+
+/// 把「看得到但暂时翻不了」的文本载体归类，给计划页一个明确交代。
+///
+/// 纯美术 / 二进制资源返回 None——它们不含可翻文本，记进 blocked 只会刷屏。
+/// reason 与 `schema.rs::AiLocBlocked` 的注释对齐，P1/P2 会逐类接管。
+fn classify_carrier(name: &str) -> Option<(&'static str, &'static str)> {
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "archive" | "inkwidget" | "inktext" | "csv" | "journal" => Some((
+            "RESOURCE_TEXT",
+            "文本在归档 / CR2W 资源里，需 WolvenKit 解包后由 ArchiveXL 合并（P1 支持）",
+        )),
+        "lua" | "reds" | "redscript" => Some((
+            "SCRIPT_TEXT",
+            "菜单 / 通知文本在脚本里，需覆盖型汉化层并先备份原文件（P2 支持）",
+        )),
+        "ini" | "toml" | "xl" | "yaml" | "yml" | "cfg" => Some((
+            "CONFIG_TEXT",
+            "这是玩家设置值文件，不是菜单文案；改它不会改变菜单文字",
+        )),
+        _ => None,
+    }
+}
 
 fn sanitize_folder(raw: &str) -> String {
     let cleaned: String = raw
@@ -209,7 +239,11 @@ pub(crate) fn entries_from_json(file_label: &str, raw: &str) -> (Vec<(String, St
     (Vec::new(), false)
 }
 
-/// 只读扫描：把 Mod 暂存目录里可翻译的条目收集出来。
+/// 只读扫描：收集可翻译条目，并把「看得到但暂时翻不了」的载体逐类记进 blocked。
+///
+/// P0（2026-11-08）：此前只扫 `.json`，纯 archive / Lua / redscript 类 Mod 连一条
+/// blocked 都没有，用户只看到「没有可直接翻译的本地化 JSON」。现在按载体分类回显，
+/// 为 P1（归档解包）/ P2（覆盖型汉化层，需先备份原文件）留出同一套扫描入口。
 pub fn scan_entries(staging: &Path) -> (Vec<AiLocEntry>, Vec<AiLocBlocked>) {
     let mut entries: Vec<AiLocEntry> = Vec::new();
     let mut blocked: Vec<AiLocBlocked> = Vec::new();
@@ -222,41 +256,73 @@ pub fn scan_entries(staging: &Path) -> (Vec<AiLocEntry>, Vec<AiLocBlocked>) {
         .into_iter()
         .filter_map(Result::ok)
         .filter(|item| item.file_type().is_file())
-        .filter(|item| {
-            item.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("json"))
-                .unwrap_or(false)
-        })
-        .filter(|item| {
-            let name = item
-                .file_name()
-                .to_string_lossy()
-                .to_ascii_lowercase();
-            !skip_names.contains(&name.as_str())
-        })
         .map(|item| item.path().to_path_buf())
         .collect();
     files.sort();
 
+    // 同一扩展名只记一次：整合包里几十个 .archive 不该刷出几十行。
+    let mut seen_carriers: BTreeSet<String> = BTreeSet::new();
+
     for file in files {
-        if entries.len() >= MAX_ENTRIES {
+        if entries.len() >= MAX_ENTRIES || blocked.len() >= MAX_BLOCKED {
             break;
         }
+        let name = file
+            .file_name()
+            .and_then(|item| item.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if skip_names.contains(&name.as_str()) {
+            continue;
+        }
+        let label = file
+            .strip_prefix(staging)
+            .unwrap_or(&file)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let is_json = file
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+
+        if !is_json {
+            let Some((reason, note)) = classify_carrier(&name) else {
+                continue;
+            };
+            let ext = Path::new(&name)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if !seen_carriers.insert(format!("{ext}:{reason}")) {
+                continue;
+            }
+            blocked.push(AiLocBlocked {
+                source_file: label,
+                reason: reason.to_string(),
+                sample: note.to_string(),
+            });
+            continue;
+        }
+
         if fs::metadata(&file).map(|meta| meta.len()).unwrap_or(0) > MAX_JSON_BYTES {
             continue;
         }
         let Ok(raw) = fs::read_to_string(&file) else {
             continue;
         };
-        let label = file
-            .strip_prefix(staging)
-            .unwrap_or(&file)
-            .to_string_lossy()
-            .replace('\\', "/");
         let (found, recognised) = entries_from_json(&label, &raw);
         if !recognised || found.is_empty() {
+            // 以前直接 continue：用户看不出「有 JSON，但不是本地化格式」。
+            if seen_carriers.insert("json:UNSUPPORTED_FORMAT".to_string()) {
+                blocked.push(AiLocBlocked {
+                    source_file: label,
+                    reason: "UNSUPPORTED_FORMAT".to_string(),
+                    sample: "这个 JSON 不是 onscreens 条目或扁平 key→text 形状，无法作为本地化源"
+                        .to_string(),
+                });
+            }
             continue;
         }
         for (key, text) in found {
@@ -712,7 +778,7 @@ pub fn apply(
     let mut warnings = Vec::new();
     if !blocked.is_empty() {
         warnings.push(format!(
-            "有 {} 条内容无法自动处理（已中文 / 超长 / 无入口），未写入覆盖层。",
+            "有 {} 条内容未处理（含暂不支持的文本载体，详见计划页），未写入覆盖层。",
             blocked.len()
         ));
     }
@@ -806,4 +872,61 @@ pub fn revert(store: &Store, mod_id: &str) -> AppResult<AiLocReport> {
         warnings,
         errors: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(dir: &Path, rel: &str, content: &str) {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    /// P0：每种文本载体都要有明确回显，且原有 JSON 提取不能被破坏。
+    #[test]
+    fn scan_classifies_carriers_and_still_extracts_onscreens() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".test-tmp")
+            .join(format!("ailoc-scan-{}", uuid::Uuid::new_v4().simple()));
+        let staging = root.join("staging");
+        fs::create_dir_all(&staging).unwrap();
+        write(
+            &staging,
+            "localization/en-us.json",
+            r#"{"entries":[{"secondaryKey":"MyMod-Item","femaleVariant":"Samurai Mask"}]}"#,
+        );
+        write(&staging, "unknown.json", r#"{"foo":1}"#);
+        write(&staging, "mod.archive", "binary");
+        write(&staging, "mod.archive.xl", "localization:");
+        write(&staging, "mods/demo/init.lua", "print('hello')");
+        write(&staging, "r6/scripts/demo.reds", "// code");
+        write(&staging, "settings.ini", "[General]\na=1");
+        write(&staging, "mesh/x.mesh", "binary");
+
+        let (entries, blocked) = scan_entries(&staging);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].secondary_key, "MyMod-Item");
+
+        let reasons: std::collections::BTreeSet<String> =
+            blocked.iter().map(|item| item.reason.clone()).collect();
+        assert!(reasons.contains("RESOURCE_TEXT"), "{reasons:?}");
+        assert!(reasons.contains("SCRIPT_TEXT"), "{reasons:?}");
+        assert!(reasons.contains("CONFIG_TEXT"), "{reasons:?}");
+        assert!(reasons.contains("UNSUPPORTED_FORMAT"), "{reasons:?}");
+        assert!(blocked.iter().all(|item| !item.sample.is_empty()));
+        assert!(blocked.iter().all(|item| !item.source_file.contains("x.mesh")));
+        // 同一扩展名去重：两个 .archive / .xl 不该刷出多行 RESOURCE_TEXT。
+        assert_eq!(
+            blocked
+                .iter()
+                .filter(|item| item.reason == "RESOURCE_TEXT")
+                .count(),
+            1
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 }
