@@ -6,6 +6,7 @@ import {
   ChevronUp,
   LoaderCircle,
   RotateCcw,
+  Square,
   Trash2,
   X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export function TaskCenter({
   onClearActivities,
   onDismiss,
   onRetry,
+  onCancel,
 }: {
   tasks: TaskItem[];
   activities?: ActivityItem[];
@@ -37,6 +39,8 @@ export function TaskCenter({
   onClearActivities?: () => void;
   onDismiss: (id: number) => void;
   onRetry?: (paths: string[]) => void;
+  /** 停止「可协作取消」的批量任务：后端单次调用不可中断，只保证后续批次不再开始。 */
+  onCancel?: (id: number) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const active = tasks.filter((task) => task.status === "running" || task.status === "queued");
@@ -59,7 +63,11 @@ export function TaskCenter({
     return () => window.clearTimeout(timer);
   }, [active.length, failed, activityOnly]);
 
-  const visible = useMemo(() => tasks.slice(-7).reverse(), [tasks]);
+  const [showAll, setShowAll] = useState(false);
+  const visible = useMemo(
+    () => (showAll ? tasks : tasks.slice(-7)).slice().reverse(),
+    [tasks, showAll],
+  );
   const feed = useMemo(() => activities.slice(-10).reverse(), [activities]);
   if (tasks.length === 0 && activities.length === 0) return null;
 
@@ -73,7 +81,7 @@ export function TaskCenter({
         <div className="task-center-title">
           <span className={`task-pulse ${active.length > 0 ? "is-live" : ""}`} />
           <div>
-            <strong>{activityOnly ? "RECENT ACTIVITY" : "TASK QUEUE"}</strong>
+            <strong>{activityOnly ? t("taskCenter.titleRecent") : t("taskCenter.titleQueue")}</strong>
             <span>
               {activityOnly
                 ? t("taskCenter.recentFeedCount", { count: feed.length })
@@ -122,14 +130,14 @@ export function TaskCenter({
         <div className="task-center-collapsed">
           <span>
             {active.length > 0
-              ? `${active.length} RUNNING`
+              ? t("taskCenter.shortRunning", { count: active.length })
               : done > 0
-                ? `${done} DONE`
+                ? t("taskCenter.shortDone", { count: done })
                 : feed.length > 0
-                  ? `${feed.length} LOGGED`
-                  : "IDLE"}
+                  ? t("taskCenter.shortLogged", { count: feed.length })
+                  : t("taskCenter.shortIdle")}
           </span>
-          {failed > 0 ? <b>{failed} FAILED</b> : null}
+          {failed > 0 ? <b>{t("taskCenter.shortFailed", { count: failed })}</b> : null}
         </div>
       ) : (
         <>
@@ -159,7 +167,14 @@ export function TaskCenter({
                       ) : task.detail ? (
                         <p>{task.detail}</p>
                       ) : null}
-                      <div className={`task-progress ${task.status === "running" ? "is-live" : ""}`}>
+                      <div
+                        className={`task-progress ${task.status === "running" ? "is-live" : ""}`}
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(task.progress)}
+                        aria-valuetext={t("taskCenter.progressAria", { value: Math.round(task.progress) })}
+                      >
                         <i style={{ width: `${Math.max(4, task.progress)}%` }} />
                       </div>
                     </div>
@@ -172,6 +187,16 @@ export function TaskCenter({
                           aria-label={t("taskCenter.retryAria", { title: task.title })}
                         >
                           <RotateCcw size={12} />
+                        </button>
+                      ) : null}
+                      {onCancel && (task.status === "running" || task.status === "queued") ? (
+                        <button
+                          className="mini-btn"
+                          onClick={() => onCancel(task.id)}
+                          title={t("taskCenter.stop")}
+                          aria-label={t("taskCenter.stopAria", { title: task.title })}
+                        >
+                          <Square size={11} />
                         </button>
                       ) : null}
                       {task.status !== "running" && task.status !== "queued" ? (
@@ -188,6 +213,13 @@ export function TaskCenter({
                   </div>
                 ))}
               </div>
+              {tasks.length > 7 ? (
+                <div className="task-center-foot">
+                  <button className="link-btn" onClick={() => setShowAll((value) => !value)}>
+                    {showAll ? t("taskCenter.collapseAll") : t("taskCenter.expandAll")}
+                  </button>
+                </div>
+              ) : null}
               <footer className="task-center-foot">
                 <span>{t("taskCenter.failedRetained")}</span>
                 <button className="link-btn" onClick={onClearFinished} disabled={done + failed === 0}>

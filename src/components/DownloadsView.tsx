@@ -82,7 +82,7 @@ export function DownloadsView({
   dataDir,
 }: {
   onNavigateDiscover?: () => void;
-  /** Nexus 鉴权失败时的一键出口：跳到「设置 → 游戏与路径 → Nexus Mods」。 */
+  /** Nexus 鉴权失败时的一键出口：跳到「设置 → 工具插件 → Nexus Mods」。 */
   onOpenNexusSettings?: () => void;
   /** 数据目录根路径（打开"默认下载目录"时拼 downloads 子目录用）。 */
   dataDir?: string | null;

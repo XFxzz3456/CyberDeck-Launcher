@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useIsPresent, type Variants } from "framer-motion";
 import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-react";
 import { t } from "../i18n";
@@ -118,6 +118,8 @@ function ModalShell({
   // 焦点陷阱：Tab 不跑到背后的主界面上，关窗后焦点回到原处。
   const dialogRef = useRef<HTMLElement>(null);
   useFocusTrap(dialogRef, true);
+  // 每个弹窗一个稳定且唯一的 body id，供 role="dialog" 的 aria-describedby 指向。
+  const bodyId = useId();
   return (
     <div
       className="modal-portal"
@@ -141,6 +143,7 @@ function ModalShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        aria-describedby={bodyId}
         variants={modalVariants}
         initial="hidden"
         animate="visible"
@@ -155,7 +158,7 @@ function ModalShell({
             <X size={17} />
           </button>
         </header>
-        <div className="modal-body">{children}</div>
+        <div className="modal-body" id={bodyId}>{children}</div>
         {footer ? <footer className="modal-foot">{footer}</footer> : null}
       </motion.section>
     </div>
@@ -278,9 +281,25 @@ export interface ToastItem {
   nonce?: number;
   /** 同类合并计数：>1 时标题后追加「（已发生 N 次）」。 */
   count?: number;
+  /** 行内动作按钮（如「查看冲突」）；点击只回调，是否关闭由调用方决定。 */
+  action?: { label: string; onClick: () => void };
 }
 
-/** 单条 Toast：倒计时放在组件里做，悬停暂停、移出续跑（2026-11-01 通知重构）。 */
+/**
+ * 同类合并判定（供 App 的 toast() 复用）。error 类不参与合并：
+ * 缺前置 / 跨盘 / 权限不足等不同原因的错误标题可能相同，合并会把先前的
+ * 具体原因覆盖掉，反而丢了排查线索；其余 tone+title 相同仍按旧逻辑合并。
+ */
+export function shouldMergeToast(
+  existing: Pick<ToastItem, "tone" | "title">,
+  tone: ToastItem["tone"],
+  title: string,
+): boolean {
+  if (tone === "error" || existing.tone === "error") return false;
+  return existing.tone === tone && existing.title === title;
+}
+
+/** 单条 Toast：倒计时放在组件里做，悬停/聚焦暂停、移出/失焦续跑（2026-11-01 通知重构）。 */
 function ToastEntry({
   toast,
   onDismiss,
@@ -295,6 +314,7 @@ function ToastEntry({
     warn: <AlertTriangle size={17} />,
   };
   const auto = !toast.sticky && toast.ttl !== undefined && Number.isFinite(toast.ttl);
+  const assertive = toast.tone === "error" || toast.tone === "warn";
   const [paused, setPaused] = useState(false);
   const remainingRef = useRef(toast.ttl ?? 0);
   const startRef = useRef(0);
@@ -322,8 +342,13 @@ function ToastEntry({
     <div
       className={`toast toast-${toast.tone}${toast.sticky ? " toast-sticky" : ""}`}
       data-sticky={toast.sticky ? "1" : "0"}
+      role={assertive ? "alert" : undefined}
+      aria-live={assertive ? "assertive" : "polite"}
+      tabIndex={0}
       onMouseEnter={() => auto && setPaused(true)}
       onMouseLeave={() => auto && setPaused(false)}
+      onFocus={() => auto && setPaused(true)}
+      onBlur={() => auto && setPaused(false)}
     >
       <span className="toast-icon">{icons[toast.tone]}</span>
       <div className="toast-copy">
@@ -332,6 +357,11 @@ function ToastEntry({
           {suffix}
         </div>
         {toast.message ? <div className="toast-message">{toast.message}</div> : null}
+        {toast.action ? (
+          <button className="toast-action" type="button" onClick={toast.action.onClick}>
+            {toast.action.label}
+          </button>
+        ) : null}
       </div>
       {toast.sticky ? (
         <span className="toast-pin" title={t("common.stickyToast")} aria-label={t("common.stickyToast")}>
@@ -352,8 +382,10 @@ export function ToastHost({
   toasts: ToastItem[];
   onDismiss: (id: number) => void;
 }) {
+  // aria-live / role 下沉到每条 ToastEntry：error/warn 需要 assertive+alert，
+  // ok/info 保持 polite；容器若再挂 aria-live 会和子级重复播报。
   return (
-    <div className="toast-host" aria-live="polite">
+    <div className="toast-host">
       {toasts.map((toast) => (
         <ToastEntry key={toast.id} toast={toast} onDismiss={onDismiss} />
       ))}

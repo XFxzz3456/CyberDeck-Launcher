@@ -100,6 +100,13 @@ import {
   type ToastCategory,
 } from "./lib/notify";
 import { t } from "./i18n";
+import { OverlayProvider, useOverlay } from "./lib/overlay";
+
+/** Toast 上的可选动作按钮（由 toast() / showError() 透传到 ToastItem.action）。 */
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
 
 /** 协议遮罩淡出时长（ms），必须与 styles.css 里 .eula-portal 的 transition 一致。 */
 const EULA_FADE_MS = 260;
@@ -144,7 +151,7 @@ function ViewFallback() {
   );
 }
 
-export default function App() {
+function AppShell() {
   const {
     preferences,
     selectTheme,
@@ -170,6 +177,17 @@ export default function App() {
   const motionFactor = useMotionFactor();
   // 侧栏纵向档位：按「窗口高度 ÷ 缩放」算，让矮窗口 / 大缩放时逐级让位（见 viewportTier.ts）。
   useViewportTier(preferences.scale);
+
+  // 全局浮层栈（lib/overlay.tsx）：useOverlay 必须在 OverlayProvider 内调用，
+  // 所以本组件 AppShell 由文件末尾默认导出的 App 包在 <OverlayProvider> 里。
+  const overlay = useOverlay();
+  // 全局快捷键走 window 监听、effect 只挂一次，用 ref 读最新浮层状态，
+  // 避免把不稳定的 context value 塞进依赖导致每次渲染重新订阅。
+  const hasOverlayRef = useRef<() => boolean>(() => false);
+  hasOverlayRef.current = () => overlay.hasOverlay();
+  // 任务中心「取消」：后端单次调用不可中断，只保证后续批次不再开始。
+  const aiLocCancelRef = useRef(false);
+  const importCancelRef = useRef(false);
 
   // T8 快捷键：Ctrl + 滚轮快速缩放（步进 5%，与滑块共用同一区间）。
   // 不按 deltaY 大小连乘——触控板一次滑动会连发几十个事件，缩放会一路冲到底。
@@ -220,6 +238,16 @@ export default function App() {
   const [hiddenViews, setHiddenViews] = useState<HiddenViewsMap>(() => loadHiddenViews());
   // 「去配置」类入口：跳到设置页的指定 Tab（如存档页 → 工具组件）。
   const [settingsTabRequest, setSettingsTabRequest] = useState<SettingsTabId>("appearance");
+  // 每次「带 tab 跳转」自增，SettingsView 的 effect 依赖 [initialTab, tabRequestSeq]，
+  // 这样即便当前已经在设置页、或重复跳同一个 tab，也能重新定位到目标分区。
+  const [settingsTabSeq, setSettingsTabSeq] = useState(0);
+  const handleNavigate = useCallback((next: View, tab?: SettingsTabId) => {
+    if (tab) {
+      setSettingsTabRequest(tab);
+      setSettingsTabSeq((value) => value + 1);
+    }
+    setView(next);
+  }, []);
   const toggleHiddenView = useCallback((key: HideableView, hidden: boolean) => {
     setHiddenViews((current) => {
       const next = { ...current };
@@ -404,12 +432,14 @@ export default function App() {
       title: string,
       message?: string,
       category: ToastCategory = "system",
-      /** ttl 覆盖一切时长规则；sticky = 常驻，只能手动关（冲突 / 权限不足 / 缺前置）。 */
-      options?: { ttl?: number; sticky?: boolean },
+      /** ttl 覆盖一切时长规则；sticky = 常驻，只能手动关（冲突 / 权限不足 / 缺前置）。
+       *  action：可选动作按钮（如「查看日志」），新建与同类合并两条分支都要带上。 */
+      options?: { ttl?: number; sticky?: boolean; action?: ToastAction },
     ) => {
       if (!canNotify(category, notifyPrefsRef.current)) return;
       const ttl = toastTtl(notifyDurationRef.current, tone, options?.ttl);
       const sticky = options?.sticky || ttl === Infinity;
+      const action = options?.action;
       setToasts((items) => {
         // 同类合并：找同 tone 且同标题的条目，更新而不是追加。
         const existing = items.find((item) => item.tone === tone && item.title === title);
@@ -421,6 +451,7 @@ export default function App() {
                   message,
                   sticky,
                   ttl,
+                  action,
                   count: (item.count ?? 1) + 1,
                   // nonce 变化让 ToastEntry 的倒计时从头重跑。
                   nonce: (item.nonce ?? item.id) + 1,
@@ -430,7 +461,7 @@ export default function App() {
         }
         toastCounter.current += 1;
         const id = toastCounter.current;
-        return [...items.slice(-3), { id, tone, title, message, sticky, ttl, nonce: id }];
+        return [...items.slice(-3), { id, tone, title, message, sticky, ttl, nonce: id, action }];
       });
     },
     [],
@@ -544,7 +575,11 @@ export default function App() {
   useEffect(() => () => toggleBatches.current?.dispose(), []);
 
   const showError = useCallback(
-    (error: unknown, title = t("err.generic"), options?: { ttl?: number; sticky?: boolean }) => {
+    (
+      error: unknown,
+      title = t("err.generic"),
+      options?: { ttl?: number; sticky?: boolean; action?: ToastAction },
+    ) => {
       const parsed = normalizeError(error);
       const suffix =
         parsed.conflicts.length > 0
@@ -555,7 +590,20 @@ export default function App() {
                 .join(t("common.listSeparator")),
             })
           : "";
-      toast("error", title, `${parsed.message}${suffix}`, "system", options);
+      // 错误出口：默认给一条「查看日志」动作，跳到诊断页并打开日志查看器。
+      // 调用方可用 options.action 覆盖（或传自定义动作）来替换这个默认行为。
+      const action = options?.action ?? {
+        label: t("err.viewLogsAction"),
+        onClick: () => {
+          setView("diagnostics");
+          setLogViewerRequest((value) => value + 1);
+        },
+      };
+      toast("error", title, `${parsed.message}${suffix}`, "system", {
+        ttl: options?.ttl,
+        sticky: options?.sticky,
+        action,
+      });
     },
     [toast],
   );
@@ -673,8 +721,17 @@ export default function App() {
       );
       let ok = 0;
       let failed = 0;
+      // 失败原因不再吞掉：收集「模组名 + 人话原因」，写进任务 error 与部分失败 toast。
+      const failures: string[] = [];
+      let cancelled = false;
       try {
+        aiLocCancelRef.current = false;
         for (let index = 0; index < targets.length; index += 1) {
+          // 每轮边界检查取消标记：跳出后保留已完成项，不再开始后续批次。
+          if (aiLocCancelRef.current) {
+            cancelled = true;
+            break;
+          }
           const mod = targets[index];
           patchTask(taskId, {
             status: "running",
@@ -688,21 +745,37 @@ export default function App() {
           try {
             await api.aiLocApply(mod.id, true, true);
             ok += 1;
-          } catch {
+          } catch (err) {
             failed += 1;
+            const parsed = normalizeError(err);
+            failures.push(t("job.aiLocFailItem", { name: mod.name, message: parsed.message }));
           }
         }
-        patchTask(taskId, {
-          status: failed > 0 ? "error" : "success",
-          progress: 100,
-          detail: t("job.aiLocDone", { ok, failed }),
-        });
+        if (cancelled) {
+          patchTask(taskId, {
+            status: "error",
+            progress: Math.round((ok / targets.length) * 100),
+            detail: t("job.aiLocStopped", { ok }),
+            error: t("job.cancelledByUser"),
+          });
+        } else {
+          const reasonSummary = failures.slice(0, 3).join(t("common.listSeparator"));
+          patchTask(taskId, {
+            status: failed > 0 ? "error" : "success",
+            progress: 100,
+            detail: t("job.aiLocDone", { ok, failed }),
+            error: failed > 0 ? t("job.aiLocFailSummary", { failed, reasons: reasonSummary }) : undefined,
+          });
+        }
         await refresh();
-        if (failed > 0) {
+        if (cancelled) {
+          toast("warn", t("toast.aiLoc.cancelledTitle"), t("job.aiLocStopped", { ok }), "update");
+        } else if (failed > 0) {
+          const brief = failures.slice(0, 2).join(t("common.listSeparator"));
           toast(
             "warn",
             t("toast.aiLoc.partialTitle", { ok, failed }),
-            t("toast.aiLoc.partialDetail"),
+            t("toast.aiLoc.partialDetailWithReasons", { reasons: brief }),
             "update",
           );
         } else {
@@ -1179,22 +1252,34 @@ export default function App() {
     if (importRunning.current) return;
     importRunning.current = true;
     setImporting(true);
+    // 每次排水开始重置取消标记：只影响本批次，下次队列启动不会被上次的取消拖住。
+    importCancelRef.current = false;
     const outcomes: InstallOutcome[] = [];
 
     try {
       while (pendingImports.current.length > 0) {
+        // 取消边界：后端单次 installMods 不可中断，这里只保证「后续批次不再开始」，
+        // 剩余队列逐条标注取消后跳出。
+        if (importCancelRef.current) {
+          const rest = pendingImports.current.splice(0);
+          for (const item of rest) {
+            patchTask(item.taskId, {
+              status: "error",
+              progress: 0,
+              detail: t("job.importCancelled"),
+              error: t("job.cancelledByUser"),
+            });
+          }
+          break;
+        }
         const item = pendingImports.current.shift();
         if (!item) break;
-        let simulated = 16;
+        // 真实耗时未知：进行中保持 0（无百分比），不再跑与真实进度无关的假进度。
         patchTask(item.taskId, {
           status: "running",
-          progress: simulated,
+          progress: 0,
           detail: t("job.extract"),
         });
-        const timer = window.setInterval(() => {
-          simulated = Math.min(88, simulated + 6);
-          patchTask(item.taskId, { progress: simulated });
-        }, 420);
 
         try {
           const result = await api.installMods([item.path]);
@@ -1238,8 +1323,6 @@ export default function App() {
             detail: undefined,
             error: parsed.message,
           });
-        } finally {
-          window.clearInterval(timer);
         }
       }
     } finally {
@@ -1401,6 +1484,46 @@ export default function App() {
     [addTask, drainImports, toast],
   );
 
+  /** 导入 → 启用闭环：ImportDialog「一键启用」把新导入的 id 批量启用后回到模组库。 */
+  const handleEnableImported = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      if (!snapshot?.game) {
+        // 没挂游戏目录时启用必然失败：给常驻提示并把用户送到「游戏与路径」。
+        toast(
+          "warn",
+          t("toast.game.notLinkedTitle"),
+          t("toast.game.notLinkedSettingsDetail"),
+          "system",
+          { sticky: true },
+        );
+        handleNavigate("settings", "game");
+        return;
+      }
+      try {
+        const report = await api.setModsEnabled(ids, true);
+        await refresh();
+        setView("library");
+        if (report.failed.length > 0) {
+          toast(
+            "warn",
+            t("toast.import.enabledTitle", { count: report.changed }),
+            t("toast.import.enabledPartialDetail", { failed: report.failed.length }),
+          );
+        } else {
+          toast(
+            "ok",
+            t("toast.import.enabledTitle", { count: report.changed }),
+            t("toast.import.enabledDetail"),
+          );
+        }
+      } catch (error) {
+        showError(error, t("err.enableImported"));
+      }
+    },
+    [handleNavigate, refresh, showError, snapshot?.game, toast],
+  );
+
   /** 拖拽导入：Tauri 原生 drag-drop 事件（WebView 模式下 HTML5 拖拽被禁用）。
    *  enter/over 显示全屏落点层，drop 把文件路径分流：.nxm 进收件箱
    *  （deepseek 任务·模块二），其余喂给既有导入队列。 */
@@ -1469,7 +1592,7 @@ export default function App() {
         toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedSettingsDetail"), "system", {
           sticky: true,
         });
-        setView("settings");
+        handleNavigate("settings", "game");
         return;
       }
       // 级联：汉化子包不能脱离父级单独存在。
@@ -1584,7 +1707,7 @@ export default function App() {
         setBusyId(null);
       }
     },
-    [refresh, showError, recordActivity, snapshot?.game, toast],
+    [handleNavigate, refresh, showError, recordActivity, snapshot?.game, toast],
   );
 
   /**
@@ -1871,7 +1994,7 @@ export default function App() {
         toast("warn", t("toast.game.notLinkedTitle"), t("toast.modlist.noGameDetail"), "system", {
           sticky: true,
         });
-        setView("settings");
+        handleNavigate("settings", "game");
         return;
       }
       if (enabled && snapshot.loadOrder.modlistExists && !snapshot.loadOrder.managedModlist) {
@@ -1909,13 +2032,13 @@ export default function App() {
         }
       })();
     },
-    [showError, snapshot, takeoverModlist, toast],
+    [handleNavigate, showError, snapshot, takeoverModlist, toast],
   );
 
   const handleExport = useCallback(() => {
     if (!snapshot?.game) {
       toast("warn", t("toast.game.notLinkedTitle"));
-      setView("settings");
+      handleNavigate("settings", "game");
       return;
     }
     if (snapshot.loadOrder.archives.length === 0) {
@@ -1939,7 +2062,7 @@ export default function App() {
         else showError(error, t("err.exportModlist"));
       }
     })();
-  }, [refresh, showError, snapshot, takeoverModlist, toast]);
+  }, [handleNavigate, refresh, showError, snapshot, takeoverModlist, toast]);
 
   const handleRemoveModlist = useCallback(() => {
     setConfirm({
@@ -2388,7 +2511,7 @@ export default function App() {
       toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedDetail"), "system", {
         sticky: true,
       });
-      setView("settings");
+      handleNavigate("settings", "game");
       return;
     }
     if (launching) return;
@@ -2409,12 +2532,15 @@ export default function App() {
     } finally {
       setLaunching(false);
     }
-  }, [launching, refresh, showError, snapshot?.game, toast]);
+  }, [handleNavigate, launching, refresh, showError, snapshot?.game, toast]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       // 协议门开着时，全局快捷键一律不响应（window 监听不会被 inert 挡住，只能自己拦）。
       if (!eulaAccepted) return;
+      // 浮层（Modal / Drawer / Dialog …）开着时，底层快捷键一律不响应，
+      // 否则弹层里按 Ctrl+K / Ctrl+Enter 会穿透到命令面板 / 启动游戏。
+      if (hasOverlayRef.current()) return;
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         void handleLaunch();
@@ -2684,7 +2810,7 @@ export default function App() {
       <div className="app-body">
         <Sidebar
           view={view}
-          onNavigate={setView}
+          onNavigate={handleNavigate}
           snapshot={snapshot}
           stagingBytes={stagingBytes}
           collapsed={preferences.sidebarCollapsed}
@@ -2889,10 +3015,7 @@ export default function App() {
             {view === "downloads" ? (
               <DownloadsView
                 onNavigateDiscover={() => setView("discover")}
-                onOpenNexusSettings={() => {
-                  setSettingsTabRequest("game");
-                  setView("settings");
-                }}
+                onOpenNexusSettings={() => handleNavigate("settings", "tools")}
                 dataDir={appData || null}
               />
             ) : null}
@@ -2913,11 +3036,7 @@ export default function App() {
                     void api.openPath(path).catch((error) => showError(error, t("err.openPath")));
                   }}
                 onAdopt={() => void handleAdoptScan()}
-                onOpenAiSettings={() => {
-                  // 诊断空响应时的「前往 AI 配置」落点：设置页 → AI 分区。
-                  setSettingsTabRequest("ai");
-                  setView("settings");
-                }}
+                onOpenAiSettings={() => handleNavigate("settings", "ai")}
                 onOpenUrl={(url) => {
                   void api.openUrl(url).catch((error) => showError(error, t("err.openRelease")));
                 }}
@@ -2933,11 +3052,7 @@ export default function App() {
               <Suspense fallback={<ViewFallback />}>
                 <SavesView
                   saveEditorPath={snapshot.state.settings.saveEditorPath ?? ""}
-                  onOpenSettings={() => {
-                    // 编辑器路径在「设置 → 工具组件」里配置。
-                    setSettingsTabRequest("tools");
-                    setView("settings");
-                  }}
+                  onOpenSettings={() => handleNavigate("settings", "tools")}
                   onError={showError}
                 />
               </Suspense>
@@ -2947,6 +3062,7 @@ export default function App() {
               <Suspense fallback={<ViewFallback />}>
                 <SettingsView
                 initialTab={settingsTabRequest}
+                tabRequestSeq={settingsTabSeq}
                 snapshot={snapshot}
                 backgroundLoading={bgLoading}
                 appData={appData}
@@ -3096,6 +3212,7 @@ export default function App() {
         }}
         onImport={queueImports}
         onSaveCategories={saveImportCategories}
+        onEnableImported={(ids) => void handleEnableImported(ids)}
       />
 
       <ConfirmDialog
@@ -3256,6 +3373,18 @@ export default function App() {
           onClearActivities={clearActivities}
           onDismiss={dismissTask}
           onRetry={(paths) => void queueImports(paths)}
+          onCancel={(id) => {
+            const target = tasks.find((task) => task.id === id);
+            if (!target || (target.status !== "running" && target.status !== "queued")) return;
+            // 后端单次调用不可中断：这里只置标记，让循环在边界停下、后续批次不再开始。
+            if (target.kind === "translate") aiLocCancelRef.current = true;
+            else if (target.kind === "import") importCancelRef.current = true;
+            patchTask(id, {
+              status: "error",
+              detail: t("job.cancelledByUser"),
+              error: t("job.cancelledByUser"),
+            });
+          }}
         />
       </div>
 
@@ -3388,5 +3517,19 @@ export default function App() {
     <SplashScreen enabled={!splashDone && preferences.splash} onDone={() => setSplashDone(true)} />
     </>
     </MotionConfig>
+  );
+}
+
+/**
+ * 默认导出：把整个界面（AppShell）包在 OverlayProvider 里。
+ * useOverlay() 必须在 Provider 内调用，因此 AppShell 是 Provider 的子级——
+ * 全局快捷键守护、浮层组件的注册都由这层 context 驱动。
+ * main.tsx 里仍然是默认导入 <App />，调用签名不变。
+ */
+export default function App() {
+  return (
+    <OverlayProvider>
+      <AppShell />
+    </OverlayProvider>
   );
 }

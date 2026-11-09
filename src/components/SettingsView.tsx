@@ -219,6 +219,7 @@ export function SettingsView({
   onTestNotification,
   onShowEula,
   initialTab = "appearance",
+  tabRequestSeq = 0,
   onTabChange,
   hiddenViews = {},
   onToggleHiddenView,
@@ -270,6 +271,8 @@ export function SettingsView({
   onShowEula: () => void;
   /** 打开时默认选中的分区。 */
   initialTab?: SettingsTabId;
+  /** 外部「去配置」跳转序号：即使目标 tab 与当前相同也触发切换 effect。 */
+  tabRequestSeq?: number;
   /** 分区切换回调（可选，用于外部联动）。 */
   onTabChange?: (tab: SettingsTabId) => void;
   /** 界面显示管理（deepseek 任务·模块四）。 */
@@ -402,7 +405,7 @@ export function SettingsView({
   // initialTab 只决定首次渲染，后续请求靠这个 effect 跟上。
   useEffect(() => {
     setActiveTab(initialTab);
-  }, [initialTab]);
+  }, [initialTab, tabRequestSeq]);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

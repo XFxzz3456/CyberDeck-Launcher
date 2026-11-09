@@ -20,7 +20,7 @@ import type {
 } from "../types";
 import { api } from "../lib/api";
 import { t } from "../i18n";
-import { Badge, Modal, Spinner } from "./ui";
+import { Badge, ConfirmDialog, Modal, Spinner } from "./ui";
 
 interface Group {
   target: string;
@@ -89,6 +89,12 @@ export function ConflictCenter({
   const live = conflicts.length - pending;
 
   const [deepScans, setDeepScans] = useState<Record<string, DeepScanState>>({});
+  /** 待确认的禁用目标：用户确认前不真正改动任何模组的启用状态。 */
+  const [pendingDisable, setPendingDisable] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    if (!open) setPendingDisable(null);
+  }, [open]);
 
   /**
    * 资源级深度扫描：同名 .archive 内部到底改了同一批资源没有。
@@ -167,7 +173,7 @@ export function ConflictCenter({
     }
   };
 
-  return (
+  const dialog = (
     <Modal
       open={open}
       title={targets > 0 ? t("conflict.titleCount", { count: targets }) : t("conflict.title")}
@@ -379,7 +385,9 @@ export function ConflictCenter({
                       {!group.pending && candidate?.enabled ? (
                         <button
                           className="btn btn-ghost btn-sm danger-text"
-                          onClick={() => onDisable(candidate.id)}
+                          onClick={() =>
+                            setPendingDisable({ id: candidate.id, name: candidate.name })
+                          }
                           disabled={busyId === candidate.id}
                           title={t("conflict.disableTitle")}
                         >
@@ -390,7 +398,9 @@ export function ConflictCenter({
                       {!group.pending && other?.enabled ? (
                         <button
                           className="btn btn-ghost btn-sm danger-text"
-                          onClick={() => onDisable(other.id)}
+                          onClick={() =>
+                            setPendingDisable({ id: other.id, name: other.name })
+                          }
                           disabled={busyId === other.id}
                           title={t("conflict.disableTitle")}
                         >
@@ -417,6 +427,24 @@ export function ConflictCenter({
 
       <ConflictAiAdvice open={open} onOpenDiagnostics={onOpenDiagnostics} onError={onError} />
     </Modal>
+  );
+
+  return (
+    <>
+      {dialog}
+      <ConfirmDialog
+        open={pendingDisable !== null}
+        title={t("conflict.disableConfirmTitle")}
+        detail={t("conflict.disableConfirmDetail", { name: pendingDisable?.name ?? "" })}
+        confirmLabel={t("conflict.disableConfirmAction")}
+        danger
+        onConfirm={() => {
+          if (pendingDisable) onDisable(pendingDisable.id);
+          setPendingDisable(null);
+        }}
+        onClose={() => setPendingDisable(null)}
+      />
+    </>
   );
 }
 

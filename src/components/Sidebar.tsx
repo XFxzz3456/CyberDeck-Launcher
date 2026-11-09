@@ -18,6 +18,7 @@ import { useAppVersion } from "../lib/appVersion";
 import { t } from "../i18n";
 import type { HiddenViewsMap } from "../lib/uiPrefs";
 import { LogoMark } from "./LogoMark";
+import type { SettingsTabId } from "./SettingsTabs";
 
 export type View =
   | "library"
@@ -74,7 +75,7 @@ export function Sidebar({
   onLaunchTool,
 }: {
   view: View;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, tab?: SettingsTabId) => void;
   snapshot: Snapshot;
   stagingBytes: number;
   conflictCount: number;
@@ -151,6 +152,36 @@ export function Sidebar({
         <nav className="sidebar-nav" aria-label={t("sidebar.sectionOperations")}>
           {PRIMARY_NAV.filter((item) => !hiddenViews[item.id as keyof HiddenViewsMap]).map(renderNav)}
         </nav>
+        {/* 快捷任务区：独立 class，不计入 check-sidebar 的「主操作区 5 项」断言。
+            两个入口按任务命名，分别落到加载顺序/冲突与设置·工具。 */}
+        <div className="sidebar-section-label">{t("sidebar.sectionQuick")}</div>
+        <nav className="sidebar-tools-nav" aria-label={t("sidebar.sectionQuick")}>
+          <button
+            className="tool-nav-item quick-nav-item"
+            onClick={() => onNavigate("loadorder")}
+            title={t("sidebar.conflictsTip")}
+            aria-label={t("sidebar.conflictsTip")}
+          >
+            <span className="nav-tool-icon" aria-hidden="true">!</span>
+            <span className="nav-copy">
+              <span className="nav-label">{t("sidebar.conflicts")}</span>
+              <span className="nav-en">{t("sidebar.conflictsEn")}</span>
+            </span>
+            {conflictCount > 0 ? <span className="nav-alert">{conflictCount}</span> : null}
+          </button>
+          <button
+            className="tool-nav-item quick-nav-item"
+            onClick={() => onNavigate("settings", "tools")}
+            title={t("sidebar.migrationTip")}
+            aria-label={t("sidebar.migrationTip")}
+          >
+            <span className="nav-tool-icon" aria-hidden="true">&#8646;</span>
+            <span className="nav-copy">
+              <span className="nav-label">{t("sidebar.migration")}</span>
+              <span className="nav-en">{t("sidebar.migrationEn")}</span>
+            </span>
+          </button>
+        </nav>
         {pinnedTools.length > 0 ? (
           <>
             <div className="sidebar-section-label">{t("sidebar.sectionTools")}</div>
@@ -213,7 +244,7 @@ export function Sidebar({
         <div className="game-path" title={game?.root ?? ""}>
           {compactPath(game?.root, 34)}
         </div>
-        <button className="game-link-btn" onClick={() => onNavigate("settings")}>
+        <button className="game-link-btn" onClick={() => onNavigate("settings", "game")}>
           {t("sidebar.gamePathButton")} <ChevronRight size={12} />
         </button>
       </div>

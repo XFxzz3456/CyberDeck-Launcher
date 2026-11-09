@@ -81,6 +81,7 @@ export function ImportDialog({
   onClose,
   onImport,
   onSaveCategories,
+  onEnableImported,
 }: {
   open: boolean;
   busy: boolean;
@@ -91,6 +92,8 @@ export function ImportDialog({
   onClose: () => void;
   onImport: (paths: string[]) => Promise<void>;
   onSaveCategories: (updates: Array<{ id: string; category: string }>) => Promise<void>;
+  /** 导入结果页一键启用回调；不传时不渲染该主按钮（兼容旧调用点）。 */
+  onEnableImported?: (ids: string[]) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [categories, setCategories] = useState<Record<string, string>>({});
@@ -117,7 +120,8 @@ export function ImportDialog({
     setCategories(next);
   }, [outcomes]);
 
-  const saveCategories = async () => {
+  /** 把结果页里改过的分类写回库；失败时把异常抛给调用方决定。 */
+  const persistCategories = async () => {
     if (!outcomes) return;
     const updates = outcomes
       .filter((outcome) => outcome.success && outcome.modEntry)
@@ -128,14 +132,32 @@ export function ImportDialog({
       }))
       .filter((item) => item.category !== item.original)
       .map(({ id, category }) => ({ id, category }));
+    if (updates.length > 0) {
+      await onSaveCategories(updates);
+    }
+  };
+
+  const saveCategories = async () => {
     try {
-      if (updates.length > 0) {
-        await onSaveCategories(updates);
-      }
+      await persistCategories();
       onClose();
     } catch {
       // App has already surfaced the structured error; keep the dialog open so
       // the user can retry without re-importing the archives.
+    }
+  };
+
+  /** 一键启用：先落盘分类，再把成功导入的 id 交给 App 批量启用，最后关窗。 */
+  const enableImported = async () => {
+    try {
+      await persistCategories();
+      const ids = (outcomes ?? [])
+        .filter((outcome) => outcome.success && outcome.modEntry)
+        .map((outcome) => outcome.modEntry!.id);
+      onEnableImported?.(ids);
+      onClose();
+    } catch {
+      // 分类没保存成功时不启用也不关窗，用户可就地重试。
     }
   };
 
@@ -196,13 +218,23 @@ export function ImportDialog({
               {t("importDialog.skip")}
             </button>
             <button
-              className="btn btn-primary"
+              className="btn btn-ghost"
               onClick={() => void saveCategories()}
               disabled={savingCategories}
             >
               {savingCategories ? <Spinner /> : <Save size={14} />}
               {savingCategories ? t("importDialog.saving") : t("importDialog.saveCategories")}
             </button>
+            {onEnableImported ? (
+              <button
+                className="btn btn-primary"
+                onClick={() => void enableImported()}
+                disabled={savingCategories || successCount === 0}
+              >
+                {savingCategories ? <Spinner /> : <CheckCircle2 size={14} />}
+                {t("importDialog.enableImported", { count: successCount })}
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -287,7 +319,7 @@ export function ImportDialog({
               <strong>
                 {t("importDialog.summaryOk", { count: successCount })}{failureCount ? t("importDialog.summaryFailed", { count: failureCount }) : ""}
               </strong>
-              <span>{t("importDialog.summaryHint")}</span>
+              <span>{t("importDialog.summaryHintEnable")}</span>
             </div>
           </div>
           <div className="result-list import-review-list">
