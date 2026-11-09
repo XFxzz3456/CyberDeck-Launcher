@@ -409,6 +409,16 @@ export function NexusView({
             >
               <ExternalLink size={12} /> {t("nexus.siteSearch")}
             </button>
+            {/* 内置 Nexus 窗口：登录后点 Mod Manager Download，nxm:// 由主进程接管。 */}
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                void api.openNexusBrowser().catch((error) => onError(error, t("nexus.browseFailed")));
+              }}
+              title={t("nexus.browseInAppTitle")}
+            >
+              <Compass size={13} /> {t("nexus.browseInApp")}
+            </button>
           </div>
 
           {!status.user?.isPremium ? (

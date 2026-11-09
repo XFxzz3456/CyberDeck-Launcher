@@ -2059,6 +2059,12 @@ export const mockApi = {
     console.info("[demo] open_url", url);
   },
 
+  /** 演示模式没有多窗口能力，只打日志。 */
+  async openNexusBrowser(): Promise<void> {
+    await sleep(60);
+    console.info("[demo] open_nexus_browser");
+  },
+
   async revealMod(): Promise<void> {
     await sleep(80);
   },

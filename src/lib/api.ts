@@ -832,6 +832,15 @@ export const api = {
     return call<void>("open_url", { url });
   },
 
+  /** 打开内置 Nexus 浏览窗口（独立 WebView；窗口内 nxm:// 由主进程接管）。 */
+  async openNexusBrowser(): Promise<void> {
+    if (!isTauri) {
+      window.open("https://www.nexusmods.com/cyberpunk2077", "_blank", "noopener,noreferrer");
+      return;
+    }
+    return call<void>("open_nexus_browser");
+  },
+
   async getModSettings(): Promise<ModSettingsView> {
     if (!isTauri) return mockApi.getModSettings();
     return call<ModSettingsView>("get_mod_settings");

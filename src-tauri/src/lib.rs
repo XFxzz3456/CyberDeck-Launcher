@@ -32,6 +32,7 @@ mod safemode;
 mod modname;
 mod modsettings;
 mod nexus;
+mod nexus_browser;
 mod nxm;
 mod saves;
 mod schema;
@@ -2999,7 +3000,7 @@ fn is_process_elevated() -> bool {
 ///
 /// explorer 对 URL 的退出码不可信（成功也可能返回 1），因此只校验「进程是否成功
 /// 拉起」；拉起失败再回退 ShellExecute，避免静默失败。
-fn open_via_explorer(url: &str) -> AppResult<()> {
+pub(crate) fn open_via_explorer(url: &str) -> AppResult<()> {
     #[cfg(windows)]
     {
         // 用绝对路径，避免 PATH 异常导致起错程序或找不到 DLL。
@@ -3253,6 +3254,13 @@ fn log_startup(data_dir: &Path, note: &str) {
     {
         let _ = file.write_all(line.as_bytes());
     }
+}
+
+/// 打开内置 Nexus 浏览窗口：独立 WebView，登录态与主窗口共享。
+/// 窗口内 `nxm://` 交既有收件箱，外部站点交系统浏览器。
+#[tauri::command]
+fn open_nexus_browser(app: AppHandle, store: State<'_, Store>) -> AppResult<()> {
+    nexus_browser::open(&app, &store.data_dir)
 }
 
 #[tauri::command]
@@ -3810,7 +3818,7 @@ impl NxmInbox {
 
 /// 把命令行里的 nxm 链接塞进收件箱并推给前端。两个入口共用：
 /// 首次协议拉起（setup 里的 argv）与已运行时的单实例转交（第二进程的 argv）。
-fn intake_nxm(app: &AppHandle, args: &[String]) {
+pub(crate) fn intake_nxm(app: &AppHandle, args: &[String]) {
     let links = nxm::links_from_args(args);
     if links.is_empty() {
         return;
@@ -4377,6 +4385,7 @@ pub fn run() {
             scan_archive_deep,
             resolve_deep_scan_paths,
             open_url,
+            open_nexus_browser,
             get_mod_settings,
             save_mod_setting,
             restore_mod_settings,
