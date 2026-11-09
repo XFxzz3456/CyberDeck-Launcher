@@ -342,7 +342,7 @@ pub fn preflight(store: &Store) -> AppResult<VortexTakeoverPreflight> {
 /// 一个 Vortex mod 目录就是游戏根镜像；同一个 rel 只可能属于一个目录。
 /// 禁用中的 mod 文件已不在游戏目录，scan_dirs 看不到它，因此会落在 unmapped——
 /// 这是保守但正确的结果，不会误把改动写到别的模组头上。
-fn build_mapping(
+pub fn build_mapping(
     data: &crate::schema::AppStateData,
     game_root: &std::path::Path,
 ) -> HashMap<String, String> {
@@ -406,6 +406,20 @@ pub fn staging_health(store: &Store) -> AppResult<AdoptStagingHealth> {
     let data = store.snapshot_data();
     let base = store.staging_dir();
     let registered: HashSet<String> = data.mods.iter().map(|entry| entry.id.clone()).collect();
+    // 目录名不一定等于 mod id：历史收编把 `deployed_files[].source` 指向旧 id
+    // 目录，后来条目被合并/重建，id 变了但部署源没变。只按 id 判孤儿会把
+    // 仍在使用的暂存目录误报成垃圾（2026-11-09 现场 44 个里有 18 个属于此类）。
+    let mut in_use = registered.clone();
+    for entry in &data.mods {
+        if let Some(name) = staging_child(&base, &entry.staging_path) {
+            in_use.insert(name);
+        }
+        for file in &entry.deployed_files {
+            if let Some(name) = staging_child(&base, &file.source) {
+                in_use.insert(name);
+            }
+        }
+    }
     let mut health = AdoptStagingHealth {
         staging_dir: base.to_string_lossy().to_string(),
         registered_total: registered.len(),
@@ -420,7 +434,7 @@ pub fn staging_health(store: &Store) -> AppResult<AdoptStagingHealth> {
     let entries = fs_read_dir(&base)?;
     for (name, path) in entries {
         health.dirs_total += 1;
-        if !registered.contains(&name) {
+        if !in_use.contains(&name) {
             health.orphan_bytes += dir_size(&path);
             health.orphan_dirs.push(name);
         }
@@ -448,6 +462,18 @@ pub fn staging_health(store: &Store) -> AppResult<AdoptStagingHealth> {
         .warnings
         .push("体检只读：未删除、未移动、未改写任何文件。".to_string());
     Ok(health)
+}
+
+/// 从绝对路径里取出「暂存区下第一层目录名」。路径不在暂存区就返回 None。
+fn staging_child(base: &std::path::Path, raw: &str) -> Option<String> {
+    if raw.is_empty() {
+        return None;
+    }
+    let path = std::path::Path::new(raw);
+    let rel = path.strip_prefix(base).ok()?;
+    rel.components()
+        .next()
+        .map(|part| part.as_os_str().to_string_lossy().to_string())
 }
 
 fn fs_read_dir(base: &std::path::Path) -> AppResult<Vec<(String, PathBuf)>> {
@@ -607,11 +633,15 @@ mod tests {
         let base = store.staging_dir();
         let known = base.join("adopt-known");
         let orphan = base.join("adopt-orphan");
+        // 目录名是旧收编 id，与 mod id 不同，但部署清单仍指向它 —— 不能算孤儿。
+        let legacy = base.join("adopt-legacy");
         std::fs::create_dir_all(&known).unwrap();
         std::fs::write(known.join("x.txt"), b"abc").unwrap();
         std::fs::create_dir_all(&orphan).unwrap();
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("y.archive.xl"), b"xl").unwrap();
 
-        let entry: crate::schema::ModEntry = serde_json::from_value(serde_json::json!({
+        let mut entry: crate::schema::ModEntry = serde_json::from_value(serde_json::json!({
             "id": "adopt-known",
             "name": "known",
             "category": "misc",
@@ -623,6 +653,14 @@ mod tests {
             "layout": "archive",
         }))
         .expect("最小 ModEntry 应能反序列化");
+        entry.deployed_files.push(crate::schema::DeployedFile {
+            source: legacy.join("y.archive.xl").to_string_lossy().to_string(),
+            target: "D:/game/archive/pc/mod/y.archive.xl".to_string(),
+            link_type: crate::schema::LinkType::HardLink,
+            relative_path: "archive/pc/mod/y.archive.xl".to_string(),
+            size: Some(2),
+            modified_time: None,
+        });
         // Store::save 只落盘、不回写内存；体检读的是内存快照，所以这里直接改
         // 内存状态（也更贴合「体检只读、不改任何文件」的语义）。
         store.data.lock().expect("state mutex poisoned").mods.push(entry);
@@ -631,6 +669,10 @@ mod tests {
         assert_eq!(health.registered_total, 1);
         assert!(health.orphan_dirs.contains(&"adopt-orphan".to_string()));
         assert!(!health.orphan_dirs.contains(&"adopt-known".to_string()));
+        assert!(
+            !health.orphan_dirs.contains(&"adopt-legacy".to_string()),
+            "被 deployedFiles.source 引用的旧 id 目录不能算孤儿"
+        );
         assert!(health.missing_dirs.is_empty());
         assert!(orphan.is_dir(), "体检绝不能删除孤儿目录");
         assert_eq!(health.orphan_bytes, 0);

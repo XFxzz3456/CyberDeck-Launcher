@@ -12,6 +12,8 @@ pub mod adopt;
 pub mod vortex_source;
 #[path = "../../src-tauri/src/vortex_mirror.rs"]
 pub mod vortex_mirror;
+#[path = "../../src-tauri/src/vortex_sync.rs"]
+pub mod vortex_sync;
 #[path = "../../src-tauri/src/deps.rs"]
 pub mod deps;
 #[path = "../../src-tauri/src/translation.rs"]

@@ -5,6 +5,8 @@ import type {
   AdoptStagingHealth,
   LibraryNormalizeReport,
   VortexTakeoverPreflight,
+  VortexSyncReport,
+  VortexSyncStatus,
   AiDiagnosis,
   AiStatus,
   AiFixProposal,
@@ -1502,6 +1504,31 @@ export const mockApi = {
       orphanBytes: 0,
       warnings: [],
     };
+  },
+
+  async vortexTakeoverSetEnabled(enabled: boolean): Promise<boolean> {
+    await sleep(80);
+    return enabled;
+  },
+
+  async vortexSyncStatus(): Promise<VortexSyncStatus> {
+    await sleep(80);
+    return {
+      takeoverEnabled: false,
+      pendingCount: 0,
+      backups: [],
+      lastSync: { ok: false, written: 0, backup: "", reason: "演示模式未同步", warnings: [] },
+    };
+  },
+
+  async vortexSyncRetry(): Promise<VortexSyncReport> {
+    await sleep(80);
+    return { ok: true, written: 0, backup: "", reason: "", warnings: ["演示模式无待同步变更"] };
+  },
+
+  async vortexSyncRestore(_name: string): Promise<number> {
+    await sleep(80);
+    return 0;
   },
 
   /** 演示数据是手工构造的，不存在历史遗留的碎片条目。 */

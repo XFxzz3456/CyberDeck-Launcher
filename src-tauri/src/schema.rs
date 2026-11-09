@@ -582,6 +582,11 @@ pub struct Settings {
     /// Off by default: the game's native modlist.txt is powerful and easy to get wrong.
     #[serde(default)]
     pub write_modlist: bool,
+    /// Vortex 接管开关（默认关闭）。开启后启用/禁用与加载顺序会双写到 Vortex
+    /// 状态库；Vortex 运行中或 profile 不符时，本地变更也会被一并拒绝，保证
+    /// 两侧不会各改一半。旧状态文件没有这个字段，serde default 兜底为 false。
+    #[serde(default)]
+    pub vortex_takeover: bool,
     #[serde(default = "default_true")]
     pub auto_backup: bool,
     #[serde(default = "default_true")]
@@ -780,6 +785,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             write_modlist: false,
+            vortex_takeover: false,
             auto_backup: true,
             confirm_uninstall: true,
             close_behavior: default_close_behavior(),
@@ -1686,4 +1692,29 @@ pub struct AdoptStagingHealth {
     pub missing_dirs: Vec<String>,
     pub orphan_bytes: u64,
     pub warnings: Vec<String>,
+}
+
+// ── Vortex 状态双写（接管 P1/P2）──────────────────────────────────────
+// 报告只读化：mirror 的失败不抛给本地事务，而是落 pending + 界面可见，
+// 避免「本地改了、Vortex 没跟上」被当成成功。
+
+/// 一次双写的结果。ok=false 时 reason 必须展示给用户。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexSyncReport {
+    pub ok: bool,
+    pub written: usize,
+    /// 写前快照的绝对路径，可用于一键还原。
+    pub backup: String,
+    pub reason: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexSyncStatus {
+    pub takeover_enabled: bool,
+    pub pending_count: usize,
+    pub backups: Vec<String>,
+    pub last_sync: VortexSyncReport,
 }

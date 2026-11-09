@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, RefreshCw } from "lucide-react";
+import { Activity, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
 import { api } from "../lib/api";
-import type { AdoptStagingHealth, VortexTakeoverPreflight } from "../types";
+import type {
+  AdoptStagingHealth,
+  VortexTakeoverPreflight,
+  VortexSyncStatus,
+} from "../types";
 import { t } from "../i18n";
 import { Spinner } from "./ui";
 import "./VortexTakeoverCard.css";
 
 /**
- * 设置页「Vortex 接管体检」卡片（方案 P0）。
+ * 设置页「Vortex 接管」卡片（方案 P0 取证 + P1/P2 双写）。
  *
- * 这一层只有取证：读 Vortex 状态库、算指纹、列出启用状态漂移，同时体检暂存区。
- * 刻意不提供任何「同步 / 清理」按钮——写入与删除都要等 P1 单独授权，且必须在
- * Vortex 已退出、profile 校验通过、写前备份之后才允许（见
- * docs/ARCH-VORTEX-TAKEOVER-2026-11-09.md）。
+ * 取证永远只读；写入只由「接管开关」放行，且开关本身要先过前置校验
+ * （Vortex 已退出、profile 正确）。所有双写失败都落在待同步队列与
+ * 「同步状态」里，不静默；还原需二次确认。见
+ * docs/ARCH-VORTEX-TAKEOVER-2026-11-09.md。
  */
 export function VortexTakeoverCard({
   onError,
@@ -22,16 +26,22 @@ export function VortexTakeoverCard({
   const [busy, setBusy] = useState(false);
   const [preflight, setPreflight] = useState<VortexTakeoverPreflight | null>(null);
   const [health, setHealth] = useState<AdoptStagingHealth | null>(null);
+  const [status, setStatus] = useState<VortexSyncStatus | null>(null);
+  const [action, setAction] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [confirmName, setConfirmName] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setBusy(true);
     try {
-      const [nextPreflight, nextHealth] = await Promise.all([
+      const [nextPreflight, nextHealth, nextStatus] = await Promise.all([
         api.vortexTakeoverPreflight(),
         api.adoptStagingHealth(),
+        api.vortexSyncStatus(),
       ]);
       setPreflight(nextPreflight);
       setHealth(nextHealth);
+      setStatus(nextStatus);
     } catch (error) {
       onError(error, t("vortexTakeover.error"));
     } finally {
@@ -43,11 +53,57 @@ export function VortexTakeoverCard({
     void run();
   }, [run]);
 
+  const toggle = async () => {
+    if (!status) return;
+    setAction("toggle");
+    setNote("");
+    try {
+      await api.vortexTakeoverSetEnabled(!status.takeoverEnabled);
+      await run();
+    } catch (error) {
+      onError(error, t("vortexTakeover.toggleError"));
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const retry = async () => {
+    setAction("retry");
+    setNote("");
+    try {
+      await api.vortexSyncRetry();
+      setNote(t("vortexTakeover.retryDone"));
+      await run();
+    } catch (error) {
+      onError(error, t("vortexTakeover.syncError"));
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const restore = async (name: string) => {
+    setAction("restore");
+    setNote("");
+    setConfirmName(null);
+    try {
+      const count = await api.vortexSyncRestore(name);
+      setNote(t("vortexTakeover.restored", { count }));
+      await run();
+    } catch (error) {
+      onError(error, t("vortexTakeover.syncError"));
+    } finally {
+      setAction(null);
+    }
+  };
+
   const label = (enabled: boolean) =>
     enabled ? t("vortexTakeover.enabledOn") : t("vortexTakeover.enabledOff");
   const drift = preflight?.drift ?? [];
   const warnings = [...(preflight?.warnings ?? []), ...(health?.warnings ?? [])];
   const orphanMb = ((health?.orphanBytes ?? 0) / 1024 / 1024).toFixed(1);
+  const hasLastSync =
+    !!status &&
+    (status.lastSync.ok || status.lastSync.written > 0 || !!status.lastSync.reason);
 
   return (
     <section className="panel vortex-takeover-card">
@@ -67,6 +123,84 @@ export function VortexTakeoverCard({
       </header>
 
       <p className="vortex-takeover-subtitle">{t("vortexTakeover.subtitle")}</p>
+
+      {status ? (
+        <div className="vortex-takeover-control">
+          <label className="vortex-takeover-switch">
+            <ShieldCheck size={14} />
+            <input
+              type="checkbox"
+              checked={status.takeoverEnabled}
+              onChange={() => void toggle()}
+              disabled={action !== null}
+            />
+            <span>{t("vortexTakeover.toggleLabel")}</span>
+          </label>
+          <span className={status.takeoverEnabled ? "is-ok" : "is-muted"}>
+            {status.takeoverEnabled
+              ? t("vortexTakeover.toggleOn")
+              : t("vortexTakeover.toggleOff")}
+          </span>
+          <p>{t("vortexTakeover.scopeNote")}</p>
+        </div>
+      ) : null}
+
+      {status ? (
+        <div className="vortex-takeover-section">
+          <h3>{t("vortexTakeover.syncTitle")}</h3>
+          <p>
+            {status.pendingCount > 0
+              ? t("vortexTakeover.pending", { count: status.pendingCount })
+              : t("vortexTakeover.pendingNone")}
+          </p>
+          <p>{t("vortexTakeover.backups", { count: status.backups.length })}</p>
+          {hasLastSync ? (
+            <p className={status?.lastSync.ok ? "is-ok" : "is-bad"}>
+              {status?.lastSync.ok
+                ? t("vortexTakeover.lastOk", { count: status.lastSync.written })
+                : t("vortexTakeover.lastBad", { reason: status?.lastSync.reason ?? "" })}
+            </p>
+          ) : (
+            <p>{t("vortexTakeover.lastNone")}</p>
+          )}
+          <div className="vortex-takeover-actions">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => void retry()}
+              disabled={action !== null}
+            >
+              <RotateCcw size={13} />
+              {t("vortexTakeover.retry")}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setConfirmName(status.backups[0] ?? null)}
+              disabled={status.backups.length === 0 || action !== null}
+            >
+              {t("vortexTakeover.restore")}
+            </button>
+          </div>
+          {confirmName ? (
+            <div className="vortex-takeover-confirm">
+              <span>{t("vortexTakeover.restoreConfirm", { name: confirmName })}</span>
+              <button
+                className="btn btn-sm"
+                onClick={() => void restore(confirmName)}
+                disabled={action !== null}
+              >
+                {t("vortexTakeover.restoreYes")}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setConfirmName(null)}
+              >
+                {t("vortexTakeover.restoreCancel")}
+              </button>
+            </div>
+          ) : null}
+          {note ? <p className="is-ok">{note}</p> : null}
+        </div>
+      ) : null}
 
       {preflight && !preflight.available ? (
         <div className="vortex-takeover-blocked">

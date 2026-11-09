@@ -1237,3 +1237,21 @@ export interface AdoptStagingHealth {
   orphanBytes: number;
   warnings: string[];
 }
+
+// ── Vortex 状态双写（接管 P1/P2）──────────────────────────────────────
+/** 一次双写的结果。ok=false 时 reason 必须展示给用户，不允许静默。 */
+export interface VortexSyncReport {
+  ok: boolean;
+  written: number;
+  /** 写前快照的绝对路径，可用于一键还原。 */
+  backup: string;
+  reason: string;
+  warnings: string[];
+}
+
+export interface VortexSyncStatus {
+  takeoverEnabled: boolean;
+  pendingCount: number;
+  backups: string[];
+  lastSync: VortexSyncReport;
+}

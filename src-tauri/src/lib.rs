@@ -1,6 +1,7 @@
 mod adopt;
 mod vortex_source;
 mod vortex_mirror;
+mod vortex_sync;
 mod ai;
 mod aiact;
 mod aiprofile;
@@ -47,7 +48,8 @@ use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
     AiProfileList,
     AdoptCandidate, AdoptReport, AdoptScanReport, AdoptStagingHealth,
-    LibraryNormalizeReport, VortexTakeoverPreflight,
+    LibraryNormalizeReport, VortexTakeoverPreflight, VortexSyncReport,
+    VortexSyncStatus,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
     ProfileList, SwitchProfileReport,
@@ -504,6 +506,112 @@ async fn adopt_execute(
     .map_err(|err| CommandError::new("ADOPT_TASK", format!("收编执行线程异常：{err}")))?
 }
 
+
+// ── Vortex 接管双写辅助（P1/P2）───────────────────────────────────────
+// 所有会改启用状态 / 加载顺序的命令都必须：
+//   ① 本地事务之前先过守卫（Vortex 开着 / profile 错 → 直接拒绝，零改动）；
+//   ② 本地成功后做双写，失败只记可见告警 + pending 队列，不抛给本地事务。
+
+fn vortex_guard(store: &Store) -> AppResult<Option<PathBuf>> {
+    let Some(dir) = vortex_sync::state_dir() else {
+        if store.snapshot_data().settings.vortex_takeover {
+            return Err(CommandError::new(
+                "VORTEX_NOT_FOUND",
+                "接管已开启，但找不到 Vortex 状态库（%APPDATA%\\Vortex\\state.v2）。",
+            ));
+        }
+        return Ok(None);
+    };
+    vortex_sync::guard(store, &dir)?;
+    Ok(Some(dir))
+}
+
+fn vortex_apply(store: &Store, dir: Option<PathBuf>, changes: vortex_sync::SyncChanges) -> Vec<String> {
+    let Some(dir) = dir else {
+        return Vec::new();
+    };
+    if changes.is_empty() {
+        return Vec::new();
+    }
+    let report = vortex_sync::mirror(store, &dir, &changes);
+    let mut out = report.warnings.clone();
+    if !report.ok {
+        out.push(format!(
+            "Vortex 未同步：{}（可在设置 → 工具 → Vortex 接管体检里重试或还原）",
+            report.reason
+        ));
+    }
+    out
+}
+
+fn enabled_changes(store: &Store, ids: &[String], enabled: bool) -> vortex_sync::SyncChanges {
+    let data = store.snapshot_data();
+    let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
+    let mapping = vortex_mirror::build_mapping(&data, &root);
+    vortex_sync::changes_for_enabled(&mapping, ids, enabled)
+}
+
+fn redmod_changes(store: &Store, order: &[String]) -> vortex_sync::SyncChanges {
+    let data = store.snapshot_data();
+    let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
+    let mapping = vortex_mirror::build_mapping(&data, &root);
+    vortex_sync::changes_for_redmod_order(&mapping, order)
+}
+
+/// 开启接管时先做一次与开关无关的前置校验：Vortex 必须已退出、profile 必须正确。
+#[tauri::command]
+fn vortex_takeover_set_enabled(store: State<'_, Store>, enabled: bool) -> AppResult<bool> {
+    if enabled {
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new(
+                "VORTEX_NOT_FOUND",
+                "找不到 Vortex 状态库（%APPDATA%\\Vortex\\state.v2），无法开启接管。",
+            )
+        })?;
+        vortex_sync::precheck(&dir)?;
+    }
+    let mut data = store.data.lock().expect("state mutex poisoned");
+    data.settings.vortex_takeover = enabled;
+    store.save(&data)?;
+    Ok(enabled)
+}
+
+#[tauri::command]
+fn vortex_sync_status(store: State<'_, Store>) -> VortexSyncStatus {
+    VortexSyncStatus {
+        takeover_enabled: store.snapshot_data().settings.vortex_takeover,
+        pending_count: vortex_sync::pending_count(store.inner()),
+        backups: vortex_sync::list_backups(store.inner()),
+        last_sync: vortex_sync::load_last(store.inner()),
+    }
+}
+
+#[tauri::command]
+async fn vortex_sync_retry(app: tauri::AppHandle) -> AppResult<VortexSyncReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new("VORTEX_NOT_FOUND", "找不到 Vortex 状态库，无法重试同步。")
+        })?;
+        Ok(vortex_sync::retry_pending(store.inner(), &dir))
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("重试线程异常：{err}")))?
+}
+
+#[tauri::command]
+async fn vortex_sync_restore(app: tauri::AppHandle, name: String) -> AppResult<usize> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new("VORTEX_NOT_FOUND", "找不到 Vortex 状态库，无法还原。")
+        })?;
+        vortex_sync::restore(store.inner(), &dir, &name)
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("还原线程异常：{err}")))?
+}
+
 #[tauri::command]
 fn adopt_cancel() -> bool {
     adopt::request_cancel()
@@ -760,6 +868,7 @@ async fn set_mods_enabled(
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let store = handle.state::<Store>();
+        let vdir = vortex_guard(store.inner())?;
         let mut report = BatchEnableReport {
             changed: 0,
             failed: Vec::new(),
@@ -839,6 +948,11 @@ async fn set_mods_enabled(
         // 批量循环里只有打标记，这里是唯一一次真跑 redMod 的地方。
         let snapshot = store.snapshot_data();
         redmod::flush_into(&store, snapshot.game_dir.as_deref(), &mut report.warnings);
+        report.warnings.extend(vortex_apply(
+            store.inner(),
+            vdir,
+            enabled_changes(store.inner(), &ids, enabled),
+        ));
         Ok(report)
     })
     .await
@@ -925,6 +1039,8 @@ fn repair_mod(
 
 #[tauri::command]
 fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppResult<DeployReport> {
+    // 接管开启时先过守卫：Vortex 运行中 / profile 不符 → 本地状态零改动。
+    let vdir = vortex_guard(&store)?;
     if enabled {
         let data = store.snapshot_data();
         let game = current_game(&data)?;
@@ -945,6 +1061,9 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
         snapshots::auto_snapshot_pre_deploy(&store, &data, Some(&game));
         let mut report = installer::deploy_mod(&store, &id, &game)?;
         redmod::flush_into(&store, data.game_dir.as_deref(), &mut report.warnings);
+        report
+            .warnings
+            .extend(vortex_apply(&store, vdir, enabled_changes(&store, &[id.clone()], true)));
         return Ok(report);
     }
 
@@ -980,6 +1099,11 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
         .into_iter()
         .find(|item| item.id == id)
         .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
+    warnings.extend(vortex_apply(
+        &store,
+        vdir,
+        enabled_changes(&store, &[id.clone()], false),
+    ));
     Ok(DeployReport {
         mod_entry: entry,
         deployed: 0,
@@ -1053,6 +1177,7 @@ fn get_load_order(store: State<'_, Store>) -> AppResult<LoadOrderView> {
 
 #[tauri::command]
 fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
+    let vdir = vortex_guard(store.inner())?;
     let mut data = store.data.lock().expect("state mutex poisoned");
     let valid: std::collections::HashSet<String> = loadorder::deployed_archives(&data)
         .into_iter()
@@ -1095,6 +1220,13 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
             warnings.join("\n"),
         ));
     }
+    let synced_order = data.load_order.clone();
+    drop(data);
+    let _ = vortex_apply(
+        store.inner(),
+        vdir,
+        vortex_sync::changes_for_archive_order(&synced_order),
+    );
     Ok(view)
 }
 
@@ -1108,6 +1240,7 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
 /// 的话游戏读到的还是旧产物（redMod 察觉不到纯重排，见 `redmod::needs_rebuild`）。
 #[tauri::command]
 fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
+    let vdir = vortex_guard(store.inner())?;
     let mut data = store.data.lock().expect("state mutex poisoned");
     let valid: std::collections::HashSet<String> = data
         .mods
@@ -1148,6 +1281,8 @@ fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<L
         // 前端能看到「顺序已保存但部署失败」，而不是以为顺序丢了。
         return Err(CommandError::new("REDMOD_DEPLOY_FAILED", first));
     }
+
+    let _ = vortex_apply(store.inner(), vdir, redmod_changes(store.inner(), &requested));
     Ok(view)
 }
 
@@ -3912,6 +4047,10 @@ pub fn run() {
             adopt_normalize,
             adopt_staging_health,
             vortex_takeover_preflight,
+            vortex_takeover_set_enabled,
+            vortex_sync_status,
+            vortex_sync_retry,
+            vortex_sync_restore,
             switch_profile,
             export_profile_modlist,
             import_profile_modlist,

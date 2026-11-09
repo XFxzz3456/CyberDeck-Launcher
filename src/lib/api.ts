@@ -6,6 +6,8 @@ import type {
   AdoptStagingHealth,
   LibraryNormalizeReport,
   VortexTakeoverPreflight,
+  VortexSyncReport,
+  VortexSyncStatus,
   EnvSnapshot,
   SaveScanReport,
   AiDiagnosis,
@@ -252,6 +254,30 @@ export const api = {
   async adoptStagingHealth(): Promise<AdoptStagingHealth> {
     if (!isTauri) return mockApi.adoptStagingHealth();
     return call<AdoptStagingHealth>("adopt_staging_health");
+  },
+
+  /** 开关 Vortex 接管。开启时会做一次前置校验（Vortex 必须已退出、profile 正确）。 */
+  async vortexTakeoverSetEnabled(enabled: boolean): Promise<boolean> {
+    if (!isTauri) return mockApi.vortexTakeoverSetEnabled(enabled);
+    return call<boolean>("vortex_takeover_set_enabled", { enabled });
+  },
+
+  /** 最近一次双写结果、待同步队列与备份清单。 */
+  async vortexSyncStatus(): Promise<VortexSyncStatus> {
+    if (!isTauri) return mockApi.vortexSyncStatus();
+    return call<VortexSyncStatus>("vortex_sync_status");
+  },
+
+  /** 重试所有待同步变更。 */
+  async vortexSyncRetry(): Promise<VortexSyncReport> {
+    if (!isTauri) return mockApi.vortexSyncRetry();
+    return call<VortexSyncReport>("vortex_sync_retry");
+  },
+
+  /** 用写前快照还原 Vortex 状态库（Vortex 必须已退出）。 */
+  async vortexSyncRestore(name: string): Promise<number> {
+    if (!isTauri) return mockApi.vortexSyncRestore(name);
+    return call<number>("vortex_sync_restore", { name });
   },
 
   /**
