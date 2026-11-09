@@ -204,3 +204,39 @@ CyberDeck UI（唯一入口）
 - P3 全库批量 / 播放集切换的镜像、Mod 更新重做提示。
 - Vortex 侧手改后的「以 Vortex 反向同步」方向选择（当前默认只告警，不自动覆盖）。
 - 缺失暂存目录的重建（需单独确认）。
+
+---
+
+## 11. P3 落地与「直接使用 Vortex 暂存区」的答复（2026-11-09 第五批次）
+
+用户问「Perkware 已删除，现在可以直接使用 Vortex 的暂存区吗」并要求开工 P3。
+
+### 结论：不能直接把 `stagingDir` 指过去
+
+| 障碍 | 说明 |
+| --- | --- |
+| 目录名契约不同 | 启动器用 `staging/<modId>`（`adopt-xxx` 哈希），Vortex 用 `installationPath`（`- 0 SP0 - BODY MOD 2.0-1424-…`）。指过去后现有条目的 `stagingPath` / `deployedFiles[].source` 全失效，要全量重写 state |
+| 双写冲突 | Vortex 安装 / 卸载 / 更新会增删该目录，启动器也把它当暂存，两边都是 owner，违反 §3.7「单一部署引擎」 |
+| 全局单根 | `Store` 只有一个 staging 根，没有 per-mod 根映射 |
+
+同卷硬链接、映射率接近 100% 这两个好处，需要的是**以 Vortex 为准重建启动器库的数据迁移**，不是改一个路径。迁移会动用户库数据，须单独授权。
+
+### 实测：为什么配准率上不去
+
+P3 把配准从「游戏侧文件交集」升级为「Vortex 存储根全量文件 + 文件名唯一归属兜底」，并在真实数据上模拟：
+
+- Vortex 存储根 **225 个目录 / 5345 条相对路径**；AppData 库 **84 条模组**（全部 `origin=adopted`、`layout=archive`，都有 `deployedFiles`）。
+- 结果 **14/84（16.7%）可配准**（旧算法 11/83）：11 条按完整相对路径、3 条按文件名唯一兜底。
+- **70 条无法配准的原因不是算法**：它们的 archive 文件名在 Vortex 存储根里根本不存在。这两批模组来源不同，不是同一批东西的两份记录。
+
+所以要让「完全接管」覆盖全库，只有两条路：① 以 Vortex 为准重建启动器库（迁移）；② 保持两批并存，把无法配准的明确标为「仅本地」，接管只作用于可配准部分。目前实现的是 ② 的能力 + 如实报告。
+
+### P3 已实现
+
+- `AppStateData.vortexModIds` 持久化映射 + `vortex_mapping_rebuild` 全库重配准命令（放 state 级，避免改 26 处 `ModEntry` 字面量）。
+- `vortex_sync_full` 全库启用状态 + archive/redmod 顺序一次性镜像；`switch_profile` 播放集切换成功后自动全量同步，失败进 pending 且界面可见。
+- `vortex_reconcile`：`report` / `cyberdeck` / `vortex` 三种策略（前端只暴露只读的 `report`）。
+- `vortex_prelaunch_check`：切到 Vortex 前的一致性预检，检查接管开关 / DB 锁 / 待同步数 / 漂移数。
+- 前端卡片新增四个入口与结果 Badge；3 条新单测（`cargo test --lib` 275 passed / 2 ignored）。
+- 按等级验证：Rust 全量单测 + 生产 crate `cargo check` + `gate --fast` + tsc / i18n 双向 / 字重 / 命令契约 158/158，未跑与本次改动无关的 38 个 UI 脚本。
+- **未升版、未构建 exe、未打便携 ZIP**；A1–A10 真机验收仍待做。

@@ -101,6 +101,22 @@
   - **修假成功**：「重试同步」原先无条件显示「重试完成」，接管未开 / 队列空也报成功；改为按 `VortexSyncReport.ok / written` 显示真实结果。
   - **门禁按等级执行**：纯前端改动只跑 `tsc / i18n 双向 / 字重 / 命令契约 + gate --fast`（约 10s），不再跑全量 38 个 UI 脚本（此前误跑 344s，已纠正）。
 
+### 新增（第五批次：Vortex 接管 P3）
+
+- **持久化配准**：`AppStateData.vortexModIds`（启动器 mod id → Vortex 安装目录名）落盘，避免每次按游戏侧文件现算；新增 `vortex_mapping_rebuild` 全库重配准命令。映射放 state 级而不是 `ModEntry` 上，避免改动 26 处结构体字面量。
+- **配准算法升级**：从 `scan_dirs`（只保留游戏目录里真实存在的文件）改为直接遍历 Vortex mod 存储根全量文件，加「文件名唯一归属」兜底，禁用 / 未部署的 Vortex mod 也能配准。
+- **全库批量**：新增 `vortex_sync_full`（所有可配准模组的启用状态 + archive/redmod 顺序一次性镜像）；`switch_profile` 播放集切换成功后自动全量同步，失败进 pending 队列且界面可见。
+- **漂移对账**：`vortex_reconcile`，策略 `report`（只读）/ `cyberdeck`（以启动器为准覆盖）/ `vortex`（反向只改启用标记，明确提示需重新部署）。
+- **切 Vortex 前预检**：`vortex_prelaunch_check` 只读检查接管开关 / DB 锁 / 待同步数 / 漂移数，`ready=false` 时不建议交还控制权。
+- **前端**：卡片新增「重新配准 / 全量同步 / 对账（只看）/ 切 Vortex 前检查」入口与结果 Badge。
+- **3 条新单测**：modState 解析只认当前 profile、全量顺序不依赖映射、report 策略零写入 + 预检不放行。
+
+### 实测与结论（配准率）
+
+- `cargo test --lib` **275 passed / 2 ignored**（+3）；`cargo check` 生产 crate 通过；`tsc` 0 错；i18n 双向通过（13 条新文案全引用）；命令契约 **158/158**；`gate --fast` 全绿。Rust + 新增命令改动按等级跑了 Rust 全量单测与静态门禁，未跑与本次改动无关的 38 个 UI 脚本。
+- **实测配准率 14/84（16.7%）**，比旧的 11/83 只多 3 条：70 个模组的 archive 文件名在 Vortex 存储根 225 个目录里**根本不存在**。这份 AppData 库（84 条全是 adopted/archive）与 Vortex 的 mod 目录是两批不同来源，不是算法漏配。
+- 因此「直接把 `stagingDir` 指向 Vortex mod 根」不是改路径，而是**以 Vortex 为准重建启动器库的数据迁移**：目录名契约不同（`adopt-xxx` vs `installationPath`）、Vortex 会增删该目录形成双写冲突、`Store` 只有全局单根。要让覆盖率接近 100%，需单独授权这次重建。
+
 ### 验证结果
 
 - `cargo test --lib`（core-tests）：**272 passed / 0 failed / 2 ignored**（基线 266 + 6 条双写单测）。
