@@ -12267,6 +12267,11 @@ body::before {
   font-style: normal;
   font-size: 10px;
   color: var(--danger);
+  max-width: 260px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: right;
+  line-height: 1.35;
 }
 
 .adopt-note {

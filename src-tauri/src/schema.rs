@@ -1628,3 +1628,62 @@ mod modpacks_cleared_on_load {
         assert!(state.modpacks.is_empty(), "modpacks 必须被清空");
     }
 }
+
+// ── Vortex 接管体检（P0，只读）────────────────────────────────────────
+// 这些结构只承载「取证结果」，不承载写入动作。P1 的双写会复用同一份指纹口径，
+// 但写入必须另立命令、另立守卫，不能借体检命令顺手改状态。
+
+/// 一条启用状态漂移：启动器与 Vortex 记的不一样，或 Vortex 根本没这条记录。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexDriftItem {
+    /// 启动器侧模组 id。
+    pub mod_id: String,
+    pub name: String,
+    /// 精确配准到的 Vortex 目录名（= modState 键段）。
+    pub vortex_mod_id: String,
+    pub cyberdeck_enabled: bool,
+    /// None 表示 Vortex 侧没有这个模组的 enabled 记录。
+    pub vortex_enabled: Option<bool>,
+    /// "enabledMismatch" | "vortexMissing"
+    pub kind: String,
+}
+
+/// 接管体检报告。available=false 时其余字段是空值，界面应先展示 reason。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexTakeoverPreflight {
+    pub available: bool,
+    /// Vortex 运行时状态库被独占锁住；这是 P1 写入的硬门槛。
+    pub db_locked: bool,
+    pub reason: String,
+    pub state_dir: String,
+    pub active_profile_id: String,
+    pub profile_game_id: String,
+    pub profile_ok: bool,
+    pub vortex_mod_count: usize,
+    pub vortex_enabled_count: usize,
+    pub vortex_disabled_count: usize,
+    pub archive_order: Vec<String>,
+    pub redmod_order: Vec<String>,
+    /// 两侧加载顺序交集按各自顺序是否一致。
+    pub archive_order_same: bool,
+    pub mapped_mod_count: usize,
+    pub unmapped_mod_count: usize,
+    pub drift: Vec<VortexDriftItem>,
+    pub fingerprint: String,
+    pub warnings: Vec<String>,
+}
+
+/// 暂存区体检：只列目录名与体积，绝不删除。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoptStagingHealth {
+    pub staging_dir: String,
+    pub dirs_total: usize,
+    pub registered_total: usize,
+    pub orphan_dirs: Vec<String>,
+    pub missing_dirs: Vec<String>,
+    pub orphan_bytes: u64,
+    pub warnings: Vec<String>,
+}

@@ -293,6 +293,16 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
         &mut candidates,
     );
 
+    // 已登记且暂存目录还在的候选直接标「已托管」：重扫时不再送进执行批次，
+    // 避免 materialize 撞上残留文件后整批报 ADOPT_STAGING_FAILED。
+    let registered: HashSet<String> =
+        state.mods.iter().map(|item| item.id.clone()).collect();
+    for candidate in &mut candidates {
+        if registered.contains(&candidate.id) && staging_dir.join(&candidate.id).is_dir() {
+            candidate.already_managed = true;
+        }
+    }
+
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     let total_bytes = candidates.iter().map(|item| item.size_bytes).sum();
     let cross_volume = !same_volume(&archive_dir, &staging_dir);
@@ -564,10 +574,22 @@ fn stage_and_verify(
 }
 
 /// 暂存回滚。防线：目录必须真的在暂存区内才允许删除。
-fn rollback_staging(staging_base: &Path, staging_dir: &Path) {
-    if is_within(staging_base, staging_dir) {
-        let _ = fs::remove_dir_all(staging_dir);
+fn rollback_staging(staging_base: &Path, staging_dir: &Path, protected: &HashSet<String>) {
+    if !is_within(staging_base, staging_dir) {
+        return;
     }
+    let name = staging_dir
+        .file_name()
+        .map(|part| part.to_string_lossy().to_string())
+        .unwrap_or_default();
+    // 2026-11-09：早期版本无条件删整个目录。若候选 id 恰好属于一个已登记模组
+    // （重跑收编 / 残留目录撞车），这次「回滚」会把库内模组的暂存删掉，于是出现
+    // 「条目在库里、暂存目录没了」。已登记目录一律不动，宁可留几个多余硬链接。
+    if protected.contains(&name) {
+        eprintln!("adopt: 跳过删除已登记模组的暂存目录 {name}");
+        return;
+    }
+    let _ = fs::remove_dir_all(staging_dir);
 }
 
 /// 按收编语义构造 ModEntry：enabled=true（收编后立即生效）、
@@ -982,6 +1004,9 @@ fn execute_inner(
     }
     let staging_base = store.staging_dir();
     fs::create_dir_all(&staging_base)?;
+    // 批次开始时已在库里的 id 全程受保护：失败回滚不得删它们的暂存目录。
+    let protected: HashSet<String> =
+        snapshot.mods.iter().map(|item| item.id.clone()).collect();
 
     let selected: Vec<&AdoptCandidate> = candidates
         .iter()
@@ -1037,6 +1062,22 @@ fn execute_inner(
 
         let staging_dir = staging_base.join(&candidate.id);
 
+        // 双保险：即便前端把已登记候选勾进来了，也在这里拦住，绝不进入
+        // materialize（它会撞上已存在的暂存文件，进而触发回滚删目录）。
+        if protected.contains(&candidate.id) {
+            skipped += 1;
+            outcomes.push(AdoptOutcome {
+                id: candidate.id.clone(),
+                name: name.clone(),
+                adopted: false,
+                error: Some(AdoptError {
+                    code: "ADOPT_ALREADY_MANAGED".to_string(),
+                    message: "这个模组已经登记入库，无需重复收编。".to_string(),
+                }),
+            });
+            continue;
+        }
+
         if candidate.already_managed {
             // 前端默认不勾选；即便送进来也只跳过，绝不重复登记。
             skipped += 1;
@@ -1063,7 +1104,7 @@ fn execute_inner(
         let staged = match stage_and_verify(candidate, &game_root, &staging_dir) {
             Ok(staged) => staged,
             Err(err) => {
-                rollback_staging(&staging_base, &staging_dir);
+                rollback_staging(&staging_base, &staging_dir, &protected);
                 failed += 1;
                 outcomes.push(AdoptOutcome {
                     id: candidate.id.clone(),
@@ -1095,7 +1136,7 @@ fn execute_inner(
 
         // ── 验证段之后检查取消：当前模组回滚暂存 ────────────────
         if cancelled() {
-            rollback_staging(&staging_base, &staging_dir);
+            rollback_staging(&staging_base, &staging_dir, &protected);
             was_cancelled = true;
             progress(AdoptProgress {
                 phase: "cancelled".to_string(),
@@ -1146,7 +1187,7 @@ fn execute_inner(
 
         match register_result {
             Err(err) => {
-                rollback_staging(&staging_base, &staging_dir);
+                rollback_staging(&staging_base, &staging_dir, &protected);
                 return Err(err);
             }
             Ok(()) => {

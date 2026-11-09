@@ -1187,3 +1187,53 @@ export interface BackgroundImage {
   /** 原图被缩过或转码过。 */
   compressed: boolean;
 }
+
+// ── Vortex 接管体检（P0，只读）────────────────────────────────────────
+// 体检命令只回报告，不写 Vortex 状态库、不删暂存文件。P1 的双写会另立命令。
+
+/** 一条启用状态漂移：两边记的不一样，或 Vortex 没有这条记录。 */
+export interface VortexDriftItem {
+  modId: string;
+  name: string;
+  /** 精确配准到的 Vortex 目录名（= modState 键段）。 */
+  vortexModId: string;
+  cyberdeckEnabled: boolean;
+  /** null 表示 Vortex 侧没有这个模组的 enabled 记录。 */
+  vortexEnabled: boolean | null;
+  kind: "enabledMismatch" | "vortexMissing" | string;
+}
+
+export interface VortexTakeoverPreflight {
+  /** 状态库是否可读。false 时其余字段为空值，界面要先显示 reason。 */
+  available: boolean;
+  /** Vortex 运行时状态库被独占锁住；这是 P1 写入的硬门槛。 */
+  dbLocked: boolean;
+  reason: string;
+  stateDir: string;
+  activeProfileId: string;
+  profileGameId: string;
+  profileOk: boolean;
+  vortexModCount: number;
+  vortexEnabledCount: number;
+  vortexDisabledCount: number;
+  archiveOrder: string[];
+  redmodOrder: string[];
+  /** 两侧 archive 顺序交集按各自顺序是否一致。 */
+  archiveOrderSame: boolean;
+  mappedModCount: number;
+  unmappedModCount: number;
+  drift: VortexDriftItem[];
+  fingerprint: string;
+  warnings: string[];
+}
+
+/** 暂存区体检：只列目录与体积，绝不删除。 */
+export interface AdoptStagingHealth {
+  stagingDir: string;
+  dirsTotal: number;
+  registeredTotal: number;
+  orphanDirs: string[];
+  missingDirs: string[];
+  orphanBytes: number;
+  warnings: string[];
+}

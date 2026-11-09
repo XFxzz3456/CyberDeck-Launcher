@@ -41,6 +41,7 @@ import { ConfigPackCard } from "./ConfigPackCard";
 import { GlossaryShareCard } from "./GlossaryShareCard";
 import { HelpCenterView } from "./HelpCenterView";
 import { SafeModeCard } from "./SafeModeCard";
+import { VortexTakeoverCard } from "./VortexTakeoverCard";
 import { gameVersionText } from "../lib/gameVersion";
 import { SettingsTabs, type SettingsTabId } from "./SettingsTabs";
 import type { Preferences, ThemeId } from "../lib/preferences";
@@ -1176,6 +1177,9 @@ export function SettingsView({
           aria-labelledby="settings-tab-tools"
           hidden={activeTab !== "tools"}
         >
+          {/* Vortex 接管体检：P0 只读取证，不写状态库、不删文件 */}
+          <VortexTakeoverCard onError={onError} />
+
           {/* ── 播放集 / PROFILES ─────────────────────────── */}
           <section className="panel profile-panel">
             <header className="panel-head">

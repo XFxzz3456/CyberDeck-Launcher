@@ -3,7 +3,9 @@ import type {
   AdoptCandidate,
   AdoptReport,
   AdoptScanReport,
+  AdoptStagingHealth,
   LibraryNormalizeReport,
+  VortexTakeoverPreflight,
   EnvSnapshot,
   SaveScanReport,
   AiDiagnosis,
@@ -238,6 +240,18 @@ export const api = {
   async adoptCancel(): Promise<boolean> {
     if (!isTauri) return mockApi.adoptCancel();
     return call<boolean>("adopt_cancel");
+  },
+
+  /** Vortex 接管体检（P0 只读）：读状态库、算指纹、列出漂移，绝不写盘。 */
+  async vortexTakeoverPreflight(): Promise<VortexTakeoverPreflight> {
+    if (!isTauri) return mockApi.vortexTakeoverPreflight();
+    return call<VortexTakeoverPreflight>("vortex_takeover_preflight");
+  },
+
+  /** 暂存区体检（只读）：只列孤儿目录与缺失目录，绝不删除。 */
+  async adoptStagingHealth(): Promise<AdoptStagingHealth> {
+    if (!isTauri) return mockApi.adoptStagingHealth();
+    return call<AdoptStagingHealth>("adopt_staging_health");
   },
 
   /**

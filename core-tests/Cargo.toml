@@ -39,3 +39,6 @@ rust-ini = { version = "0.21.3", features = ["inline-comment"] }
 # config_resolver 要解析 RED4ext 的 config.ini（实际是 TOML），
 # 这里必须和 src-tauri 侧保持同一份依赖。
 toml = "0.8"
+# vortex_mirror.rs 的 LevelDB 读取在普通 lib 编译（cfg(test)=false）下也要能解析；
+# 测试构建走 cfg(test) 的空实现，不访问真实状态库。
+rusty-leveldb = "3"

@@ -1,5 +1,6 @@
 mod adopt;
 mod vortex_source;
+mod vortex_mirror;
 mod ai;
 mod aiact;
 mod aiprofile;
@@ -45,7 +46,8 @@ mod wolvenkit;
 use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
     AiProfileList,
-    AdoptCandidate, AdoptReport, AdoptScanReport, LibraryNormalizeReport,
+    AdoptCandidate, AdoptReport, AdoptScanReport, AdoptStagingHealth,
+    LibraryNormalizeReport, VortexTakeoverPreflight,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
     ProfileList, SwitchProfileReport,
@@ -469,12 +471,19 @@ fn clear_update_lock(store: State<'_, Store>) -> AppResult<Snapshot> {
 }
 
 // ── 既有模组收编（Adopt）─────────────────────────────────────────────
-// 扫描是纯只读操作，同步即可；执行会做真实 IO，必须丢进阻塞线程池，
-// 进度通过 adopt-progress 事件推送。
+// 扫描同样是真实磁盘 IO：遍历 Vortex 目录树 + 数千次 metadata + 开 LevelDB。
+// 2026-11-09 之前它是同步命令跑在主线程，库一大就把窗口冻成「未响应」
+// （复盘见 docs/INCIDENT-2026-11-09-adopt-freeze.md）。与 adopt_execute 一样
+// 丢进阻塞线程池；执行期的进度仍通过 adopt-progress 事件推送。
 
 #[tauri::command]
-fn adopt_scan(store: State<'_, Store>) -> AppResult<AdoptScanReport> {
-    adopt::scan(store.inner())
+async fn adopt_scan(app: tauri::AppHandle) -> AppResult<AdoptScanReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        adopt::scan(store.inner())
+    })
+    .await
+    .map_err(|err| CommandError::new("ADOPT_SCAN_TASK", format!("收编扫描线程异常：{err}")))?
 }
 
 #[tauri::command]
@@ -498,6 +507,35 @@ async fn adopt_execute(
 #[tauri::command]
 fn adopt_cancel() -> bool {
     adopt::request_cancel()
+}
+
+/// Vortex 接管体检（P0，纯只读）：读状态库、算指纹、列出漂移。
+/// 不写 LevelDB、不删文件、不改游戏目录；Vortex 运行中回一份带原因的报告。
+#[tauri::command]
+async fn vortex_takeover_preflight(
+    app: tauri::AppHandle,
+) -> AppResult<VortexTakeoverPreflight> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_mirror::preflight(store.inner())
+    })
+    .await
+    .map_err(|err| {
+        CommandError::new("VORTEX_PREFLIGHT_TASK", format!("体检线程异常：{err}"))
+    })?
+}
+
+/// 暂存区体检（纯只读）：只列孤儿目录与缺失目录，绝不删除、绝不移动。
+#[tauri::command]
+async fn adopt_staging_health(app: tauri::AppHandle) -> AppResult<AdoptStagingHealth> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_mirror::staging_health(store.inner())
+    })
+    .await
+    .map_err(|err| {
+        CommandError::new("STAGING_HEALTH_TASK", format!("体检线程异常：{err}"))
+    })?
 }
 
 /// 库整理：把历史收编留下的「伴生 .xl 独立成条」并回它的 archive 主体。
@@ -3872,6 +3910,8 @@ pub fn run() {
             adopt_execute,
             adopt_cancel,
             adopt_normalize,
+            adopt_staging_health,
+            vortex_takeover_preflight,
             switch_profile,
             export_profile_modlist,
             import_profile_modlist,

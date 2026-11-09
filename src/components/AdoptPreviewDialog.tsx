@@ -253,7 +253,12 @@ export function AdoptPreviewDialog({
                   <span className="adopt-row-state">
                     {stateView(state)}
                     {state === "failed" && outcome?.error ? (
-                      <em title={outcome.error.message}>{outcome.error.code}</em>
+                      // 2026-11-09：错误码放 tooltip、界面只看得到 ADOPT_STAGING_FAILED，
+                      // 159 条失败排成一模一样的一列，等于静默失败。改成直接显示原因，
+                      // 错误码降级为 title（悬停仍可复制）。
+                      <em title={outcome.error.code}>
+                        {outcome.error.message || outcome.error.code}
+                      </em>
                     ) : null}
                   </span>
                 </label>

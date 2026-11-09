@@ -1,0 +1,96 @@
+.vortex-takeover-card {
+  grid-column: 1 / -1;
+}
+
+.vortex-takeover-subtitle {
+  margin: 4px 0 14px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.vortex-takeover-blocked {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--danger-rgb), 0.3);
+  border-radius: var(--radius-md, 8px);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.vortex-takeover-blocked code {
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.vortex-takeover-blocked small {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vortex-takeover-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+.vortex-takeover-facts dt {
+  font-size: 11.5px;
+  color: var(--text, var(--fg));
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.vortex-takeover-facts dd {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.vortex-takeover-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+}
+
+.vortex-takeover-section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: var(--fw-title, 500);
+}
+
+.vortex-takeover-section p,
+.vortex-takeover-section li {
+  margin: 3px 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.vortex-takeover-section ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.vortex-takeover-section .is-ok,
+.vortex-takeover-facts .is-ok {
+  color: var(--ok);
+}
+
+.vortex-takeover-section .is-bad,
+.vortex-takeover-facts .is-bad {
+  color: var(--danger);
+}
+
+.vortex-takeover-note {
+  margin: 14px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}

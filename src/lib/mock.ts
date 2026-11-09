@@ -2,7 +2,9 @@ import type {
   AdoptCandidate,
   AdoptReport,
   AdoptScanReport,
+  AdoptStagingHealth,
   LibraryNormalizeReport,
+  VortexTakeoverPreflight,
   AiDiagnosis,
   AiStatus,
   AiFixProposal,
@@ -1462,6 +1464,44 @@ export const mockApi = {
   async adoptCancel(): Promise<boolean> {
     await sleep(80);
     return false;
+  },
+
+  /** 演示模式不读取真实 Vortex 状态库。 */
+  async vortexTakeoverPreflight(): Promise<VortexTakeoverPreflight> {
+    await sleep(120);
+    return {
+      available: false,
+      dbLocked: false,
+      reason: "演示模式不读取真实 Vortex 状态库",
+      stateDir: "",
+      activeProfileId: "",
+      profileGameId: "",
+      profileOk: false,
+      vortexModCount: 0,
+      vortexEnabledCount: 0,
+      vortexDisabledCount: 0,
+      archiveOrder: [],
+      redmodOrder: [],
+      archiveOrderSame: true,
+      mappedModCount: 0,
+      unmappedModCount: 0,
+      drift: [],
+      fingerprint: "",
+      warnings: [],
+    };
+  },
+
+  async adoptStagingHealth(): Promise<AdoptStagingHealth> {
+    await sleep(80);
+    return {
+      stagingDir: "",
+      dirsTotal: 0,
+      registeredTotal: 0,
+      orphanDirs: [],
+      missingDirs: [],
+      orphanBytes: 0,
+      warnings: [],
+    };
   },
 
   /** 演示数据是手工构造的，不存在历史遗留的碎片条目。 */
