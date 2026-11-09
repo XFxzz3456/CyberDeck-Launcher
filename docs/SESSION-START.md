@@ -43,16 +43,17 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 ---
 
-## 3. 当前状态快照（2026-11-09）
+## 3. 当前状态快照（2026-11-10）
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.3.1**（tag `v1.3.1`；localhost 验收通过，exe 已构建并替换 release） |
-| 远端 | `main` 含 1.3.1 发版提交；tag 最新 **`v1.3.1`** |
+| 版本 | **1.4.0**（tag `v1.4.0`；exe 已构建并替换 release；便携版 ZIP 已打并上传 GitHub Release） |
+| 远端 | `main` 含 1.4.0 发版提交；tag 最新 **`v1.4.0`** |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**，标签 `P0` / `P1` / `P2` / `migrated` |
-| 门禁基线 | `cargo test --lib` **272 passed / 2 ignored**（2026-11-09 第三批次 +6 条）；`npm run gate` **42/42 全绿**；`tsc --noEmit` 0 错误 |
-| 腾讯文档进度表 | **已同步**（2026-11-09 第三批次）：https://docs.qq.com/sheet/DR0dWckhvcmRTRUxY?_fid=GGVrHordSELX ，3 个子表（进度看板 / 近期进展 / 项目状态） |
-| 未做 | 便携 ZIP（需单独确认）；#8 实机双端验收（不装 Ollama）；全类型汉化 P1/P2 真机校准；Vortex 接管 A1–A10 真机验收；P3 全库批量；1 条缺失暂存目录重建（需确认） |
+| 门禁基线 | `cargo test --lib` **281 passed / 2 ignored**（2026-11-09 P4 +6 条）；发版链路二次门禁 **42/42 全绿**；`tsc --noEmit` 0 错误；命令契约 162/162 |
+| release exe | 10,787,840 B / md5 `b4659eae32fab9f7236558d1d44bb7fa`；冒烟 `stage=frontend mods=106`；PE `1.4.0` |
+| 腾讯文档进度表 | **已同步**（2026-11-10 P4 发版）：https://docs.qq.com/sheet/DR0dWckhvcmRTRUxY?_fid=GGVrHordSELX ，3 个子表 |
+| 未做 | #8 实机双端验收（不装 Ollama）；全类型汉化 P1/P2 真机样本校准；Vortex 接管 A1–A10 真机验收；**以 Vortex 为准重建库是显式操作**（设置 → 工具 → 执行重建后当前实例才变 225 条）；1 条缺失暂存目录重建（需确认） |
 
 ---
 

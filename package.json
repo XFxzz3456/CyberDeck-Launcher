@@ -1,7 +1,7 @@
 {
   "name": "cyberdeck-launcher",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.4.0",
   "type": "module",
   "description": "A focused Cyberpunk 2077 mod launcher built with Tauri + React",
   "scripts": {
