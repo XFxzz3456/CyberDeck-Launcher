@@ -475,6 +475,15 @@ pub fn plan(store: &Store, mod_id: &str) -> AppResult<AiLocPlan> {
     if policy == "uncertain" {
         warnings.push("作者意愿无法确定，确认时需要额外勾选一次。".to_string());
     }
+    // P2：覆盖前把「将被覆盖的已部署文件」摆到计划页，由既有勾选门确认。
+    let overlays = crate::ailoc_full::planned_overlays(&entry, &staging);
+    if !overlays.is_empty() {
+        warnings.push(format!(
+            "将覆盖 {} 个已部署文件（写入前自动备份，可一键恢复）：{}",
+            overlays.len(),
+            overlays.join("、")
+        ));
+    }
 
     Ok(AiLocPlan {
         mod_id: entry.id.clone(),
@@ -549,6 +558,68 @@ fn pack_archive(cli: &Path, source: &Path, output: &Path) -> Result<(), String> 
 }
 
 /// 执行汉化：翻译 → 生成覆盖层 → 打包 → 部署 → 登记。
+/// 纯 P1/P2 载体（没有本地化 JSON）走独立路径：生成覆盖物、登记状态、返回报告。
+fn apply_full_only(
+    store: &Store,
+    entry: &ModEntry,
+    game_root: &Path,
+    staging: &Path,
+    blocked: &[AiLocBlocked],
+) -> AppResult<AiLocReport> {
+    let outcome = crate::ailoc_full::emit_overlays(store, entry, game_root, staging)?;
+    if outcome.deployed.is_empty() {
+        return Err(CommandError::new(
+            "AI_LOC_NOTHING_TRANSLATED",
+            format!("没有生成可用覆盖物：{}", outcome.warnings.join("；")),
+        ));
+    }
+    let state_value = AiLocState {
+        staging_dir: String::new(),
+        deployed: outcome.deployed.clone(),
+        translated: outcome.translated,
+        skipped: 0,
+        model: outcome.model.clone(),
+        created_at: now_iso(),
+    };
+    {
+        let mut data = store.data.lock().expect("state mutex poisoned");
+        if let Some(slot) = data.mods.iter_mut().find(|item| item.id == entry.id) {
+            slot.ai_loc = Some(state_value);
+            slot.updated_at = Some(now_iso());
+        }
+        if let Err(err) = store.save(&data) {
+            return Err(err);
+        }
+    }
+    let mut warnings = outcome.warnings;
+    if !blocked.is_empty() {
+        warnings.push(format!("{} 条内容未处理，详见计划页。", blocked.len()));
+    }
+    warnings.push("覆盖型汉化层已备份原文件，可在模组卡片上撤销。".to_string());
+    if let Err(err) = crate::ailabel::generate(store, &entry.id) {
+        warnings.push(format!(
+            "配置项标签本地化未完成（不影响汉化）：{}",
+            err.message
+        ));
+    }
+    Ok(AiLocReport {
+        mod_id: entry.id.clone(),
+        planned: 0,
+        translated: outcome.translated,
+        skipped: 0,
+        written: outcome.written,
+        deployed: outcome
+            .deployed
+            .iter()
+            .map(|file| file.relative_path.clone())
+            .collect(),
+        rolled_back: false,
+        model: outcome.model,
+        warnings,
+        errors: outcome.errors,
+    })
+}
+
 pub fn apply(
     store: &Store,
     mod_id: &str,
@@ -594,10 +665,13 @@ pub fn apply(
     }
     let (entries, blocked) = scan_entries(&staging);
     if entries.is_empty() {
-        return Err(CommandError::new(
-            "AI_LOC_NO_CONTENT",
-            "这个模组没有可直接翻译的本地化 JSON；硬编码在脚本或归档里的文本暂不支持自动汉化。",
-        ));
+        if !crate::ailoc_full::has_carriers(&staging) {
+            return Err(CommandError::new(
+                "AI_LOC_NO_CONTENT",
+                "这个模组没有可翻译的本地化 JSON，也没有归档 / 脚本类文本载体。",
+            ));
+        }
+        return apply_full_only(store, &entry, game_root, &staging, &blocked);
     }
 
     // 1. 词表优先，未命中再走 AI。
@@ -682,7 +756,7 @@ pub fn apply(
     let extend = find_extend_target(&entry);
     fs::write(&xl_path, build_archive_xl(mod_id, extend.as_deref()))?;
 
-    let written = vec![
+    let mut written = vec![
         json_path.to_string_lossy().to_string(),
         xl_path.to_string_lossy().to_string(),
     ];
@@ -752,6 +826,24 @@ pub fn apply(
         deployed_labels.push(relative);
     }
 
+    // P1/P2：归档内文本 + 覆盖型脚本层，best-effort 合并进同一份部署清单。
+    let mut full_warnings: Vec<String> = Vec::new();
+    match crate::ailoc_full::emit_overlays(store, &entry, game_root, &staging) {
+        Ok(full) => {
+            for file in &full.deployed {
+                deployed_labels.push(file.relative_path.clone());
+            }
+            deployed.extend(full.deployed);
+            written.extend(full.written);
+            errors.extend(full.errors);
+            full_warnings.extend(full.warnings);
+        }
+        Err(err) => full_warnings.push(format!(
+            "全类型覆盖层未完成（不影响本地化 JSON 汉化）：{}",
+            err.message
+        )),
+    }
+
     // 6. 登记。状态写入是提交点：失败就把刚放进去的文件撤掉。
     let state_value = AiLocState {
         staging_dir: root.to_string_lossy().to_string(),
@@ -776,6 +868,7 @@ pub fn apply(
     }
 
     let mut warnings = Vec::new();
+    warnings.extend(full_warnings);
     if !blocked.is_empty() {
         warnings.push(format!(
             "有 {} 条内容未处理（含暂不支持的文本载体，详见计划页），未写入覆盖层。",
@@ -819,8 +912,15 @@ pub fn revert(store: &Store, mod_id: &str) -> AppResult<AiLocReport> {
         ));
     };
     let mut warnings = Vec::new();
+    // P2：先按备份清单恢复被覆盖的原文件；恢复过的目标不能再删。
+    let (restored, restore_warnings) = crate::ailoc_full::restore(store, mod_id);
+    warnings.extend(restore_warnings);
     let mut removed: Vec<String> = Vec::new();
     for file in &state_value.deployed {
+        if restored.contains(&file.target) {
+            warnings.push(format!("已恢复原文件，跳过删除：{}", file.relative_path));
+            continue;
+        }
         let target = PathBuf::from(&file.target);
         if !target.exists() {
             warnings.push(format!("目标文件已不存在：{}", file.relative_path));

@@ -224,6 +224,15 @@ export function AiToolsDialog({
               <span>{t("aiTools.statGlossary", { count: plan.glossaryHits })}</span>
               <span>{t("aiTools.statBlocked", { count: plan.blocked.length })}</span>
             </div>
+            {plan.warnings.length > 0 ? (
+              <ul className="ai-tools-list">
+                {plan.warnings.map((item, index) => (
+                  <li key={`plan-warning-${index}`}>
+                    <span className="ai-tools-text">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <p
               className={
                 plan.policy === "denied"

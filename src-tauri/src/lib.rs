@@ -6,6 +6,7 @@ mod aiprofile;
 mod aifix;
 mod ailoc;
 mod ailabel;
+mod ailoc_full;
 mod backup;
 mod category;
 mod collection;

@@ -64,6 +64,8 @@ pub mod wolvenkit;
 pub mod ailoc;
 #[path = "../../src-tauri/src/ailabel.rs"]
 pub mod ailabel;
+#[path = "../../src-tauri/src/ailoc_full.rs"]
+pub mod ailoc_full;
 #[path = "../../src-tauri/src/aifix.rs"]
 pub mod aifix;
 
