@@ -47,6 +47,51 @@
 
 ---
 
+## [1.5.0] - 2026-11-10
+
+> 发布：2026-11-10 01:02 构建，exe 10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`；冒烟 `stage=frontend mods=106`，PE 版本资源 `1.5.0`。
+> 授权：用户「本次一次性豁免逐项验收 + 自动收尾（构建 exe、上传等）」。
+
+### 新增（内置 Nexus 浏览器）
+
+- **`src-tauri/src/nexus_browser.rs`**：`open_nexus_browser` 创建 `nexus-browser` 独立 WebView，加载 `https://www.nexusmods.com/cyberpunk2077`；与主窗口共用 `EBWebView` 数据目录，Cookie / 登录态共享；重复调用只聚焦不重开。
+- **导航白名单**：仅 `nexusmods.com` 与 `*.nexusmods.com`（以及 `about:` / `data:` / `blob:` 内部页）放行；`nxm://` 在导航处理器拦截并转 `intake_nxm`，与协议拉起 / 单实例转交共用收件箱与 `nxm-link` 事件；其它站点交 `explorer` 转交系统浏览器，窗口留在 Nexus。
+- **入口**：发现页工具栏「在 N 网浏览」；`api.openNexusBrowser()`（浏览器预览回退 `window.open`）；mock 同步；命令契约 163/163。
+- 4 条导航白名单单测（根域 / 子域 / 仿冒域 / 内部 scheme / nxm scheme）。
+- 文档 `docs/NEXUS-INAPP-BROWSER.md`（行为、为什么这样接、已知边界）。
+
+### 新增（UI/UX 一期）
+
+- **导入闭环**：`ImportDialog` 结果页三按钮（稍后处理 / 仅保存分类 / 启用这 N 个模组）；`onEnableImported` 回传 App → `setModsEnabled` 批量启用 → 切回模组库 + 结果 toast。
+- **浮层治理**：新增 `src/lib/overlay.tsx`（`OverlayProvider` / `useOverlayLayer` / `useOverlay`），Esc 只关栈顶、关闭归还焦点；App 根节点包 Provider，全局快捷键加 `hasOverlay()` 守护。
+- **反馈体系**：`ToastItem` 增加 `action`（查看日志），error/warn 用 `role="alert"` + `aria-live="assertive"`，焦点进入 toast 也暂停倒计时。
+- **任务中心**：running 任务可停止（协作取消，后续批次不再开始）；超过 7 条可展开全部；进度条补 `progressbar` ARIA；`TASK QUEUE` / `RUNNING` 等英文状态词进词表。
+- **批量失败可见**：AI 汉化逐条收集 `normalizeError.message` 写入任务 `error`，部分失败 toast 带前 2 条原因；导入删除 16→88% 的模拟进度。
+- **跳转落点**：`onNavigate(view, tab?)`；游戏路径→设置·游戏、Nexus 设置→工具；`SettingsView` 增加 `tabRequestSeq`，重复点同一 tab 也生效。
+- **导航**：侧栏新增「快捷任务」分区（冲突与排序 / 迁移与接管），独立 class 不破坏 `check-sidebar` 的 5+2 断言。
+- **破坏性确认**：冲突中心「禁用 X」改 `ConfirmDialog`，说明影响范围与可恢复性。
+- **设计系统**：状态色语义对齐（修正 arasaka `--red` 与 `--danger` 不一致）；<10px 字号提升到 10px、z-index / 动效收敛、reduce-motion 合并；错误边界技术详情折叠；骨架屏 `role="status"`。
+- 新增 `docs/UI-TERMS.md`（术语、状态色语义、装饰性英文豁免清单）。
+
+### 修复
+
+- `check-deepseek` 的「固定工具区 1 项」断言排除新增快捷任务按钮（`.quick-nav-item`）。
+- 清理 3 条死文案（`importDialog.summaryHint`、`library.groupByCycle`、`toast.aiLoc.partialDetail`）。
+- 恢复被误删的 `toast.adopt.partialDetail` / `toast.import.partialDetail`（同名跨命名空间）。
+
+### 验证
+
+- `cargo test --lib` 285 passed / 2 ignored（新增 4 条 nexus_browser 单测）
+- 全量门禁 **38/38 全绿**（工时 325s）
+- `tsc --noEmit` 0 错误；`check-i18n --fail` 0 处；`--unused` 0 条
+- 命令契约 163/163 定义注册，missing 0
+
+### 已知边界
+
+- 内置窗口端到端（登录 → Mod Manager Download → 任务条 → 文件落地）需真机点击验收；自动化只覆盖白名单单测与主窗口冒烟。
+- 第三方 OAuth 登录按白名单外开，登录态不回传；建议 Nexus 邮箱密码登录。
+- UI/UX 顺延：首次向导、选择态上提、技术信息全量分层、366KB 样式全量令牌化。
+
 ## [1.4.0] - 2026-11-10（全类型汉化 P1/P2 · 收编事故修复 · Vortex 接管 P0–P4 · 暂存清理）
 
 > 发布：2026-11-10 00:07 构建，exe 10,787,840 B（10.29 MB） / md5 `b4659eae32fab9f7236558d1d44bb7fa`；冒烟 `stage=frontend mods=106`，PE 版本资源 `1.4.0`；便携版 5,532,603 B（5.28 MiB）；tag `v1.4.0`。
