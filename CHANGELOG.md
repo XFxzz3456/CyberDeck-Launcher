@@ -47,10 +47,11 @@
 
 ---
 
-## [未发布] - 2026-11-09（全类型汉化 P1/P2 · 归档内文本与覆盖型汉化层）
+## [未发布] - 2026-11-09（全类型汉化 P1/P2 · 收编事故修复 · Vortex 接管 P0 取证）
 
 > 用户要求「把 P1 和 P2 做了」。P1 红线已放宽（允许覆盖，但必须备份原文档），本轮落地两条写入通道。
 > **真机未验**：WolvenKit CLI 参数形态与真实 Mod 样本需实机校准（见「已知边界」）。
+> 同日第二批次：用户两张截图报收编卡死与 159 条批量失败 → 修复三个缺陷；随后按拍板结论落地 Vortex 接管 P0 只读取证层。
 
 ### 新增
 
@@ -60,15 +61,34 @@
 - **集成**：`ai_loc_apply` 对纯载体 Mod 走独立路径；有本地化 JSON 时把 P1/P2 产物 best-effort 合并进同一份部署清单；`revert` 先恢复备份并跳过删除已恢复目标。计划页回显 `warnings`（将被覆盖的文件清单 + 备份说明）。
 - 新增 3 条单测：CR2W 改写保 key、Lua 只改显示文本、备份恢复与「外部改动拒绝恢复」。
 
+### 新增（第二批次：收编事故修复 + Vortex 接管 P0 只读取证）
+
+- **`src-tauri/src/vortex_mirror.rs`（只读取证层）**：只读打开 `%APPDATA%\Vortex\state.v2`，解析 `activeProfileId`、`modState###<modId>###enabled`、`loadOrders###<pid>###cyberpunk2077-archive|-redmod`；按「游戏侧相对路径」精确配准 Vortex 目录，输出启用状态漂移、顺序一致性、状态指纹。Vortex 运行中（DB 独占锁）回一份带原因的报告而非异常。**零写入、零删除**。
+- **两个只读命令**：`vortex_takeover_preflight`、`adopt_staging_health`（均 `spawn_blocking`）；后者只列孤儿暂存目录与已登记但缺失的目录。
+- **设置页「工具」→「Vortex 接管体检」卡片**（`VortexTakeoverCard.tsx` + CSS）：展示 profile、启用/禁用计数、archive/redmod 顺序、映射覆盖率、漂移清单、指纹、暂存区体检与告警，明确标注只读边界。
+- **6 条新单测**：多 profile 隔离、顺序解析、指纹稳定、顺序交集比较、坏 JSON 转 warning、暂存体检不删目录、DB 不可读回报告。
+- 方案定稿归档 `docs/ARCH-VORTEX-TAKEOVER-2026-11-09.md`（含接管范围、生效条件、A1–A10 验收标准、P0–P3 分期）；事故复盘 `docs/INCIDENT-2026-11-09-adopt-freeze.md`。
+
+### 修复（第二批次）
+
+- **`adopt_scan` 异步化**：原本是同步 Tauri 命令跑在主线程，扫描 225 个 Vortex 目录 + 4076 个文件 metadata + LevelDB 会把窗口冻成「未响应」。改为 `async` + `spawn_blocking`，与 `adopt_execute` 对齐。
+- **失败原因内联**：`AdoptPreviewDialog` 原来只渲染 `error.code`，四种具体原因藏在 tooltip，159 条失败看起来一模一样。现在直接显示 `error.message`，错误码降级为 `title`；CSS 允许换行。
+- **回滚不再删库内资产**：`rollback_staging` 增加 `protected` 集合（批次开始时已登记的 id），`execute_inner` 额外拦截已登记候选，`scan` 把已登记且暂存目录存在的候选标 `already_managed`。现场曾有 44 个孤儿目录 + 1 条已登记模组暂存目录丢失。
+- 口径修正：`HANDOFF §0` 三处版本号示例仍写 `1.2.1`，改为 `1.3.1`。
+
 ### 验证结果
 
-- `cargo test --lib`（core-tests）：**260 passed / 0 failed / 2 ignored**（基线 257 + 3 条）。
-- `cargo check`（生产 crate）通过；`npm run gate`：**42/42 全绿**（353s 工时）。
+- `cargo test --lib`（core-tests）：**266 passed / 0 failed / 2 ignored**（基线 260 + 6 条）。
+- `cargo check`（生产 crate）通过；`npx tsc --noEmit` 0 错误；`npm run i18n:check` / `i18n:unused` 通过（新增 30 条文案全部被引用）。
+- `npm run gate`：**42/42 全绿**（327s 工时；首轮 2/42 失败已修：`core-tests` 普通 lib 编译缺 `rusty-leveldb` 依赖、新 CSS 字面 `font-weight: 500` 违反字重令牌门禁）。
 
 ### 已知边界
 
 - **真机样本未提供**：WolvenKit CLI 的 `convert serialize/deserialize`、`import --keep` 参数按 8.x/旧版多形态回退实现，尚未用真实 `.archive` 校准；CET/redscript 覆盖也需用真实 Mod 验证游戏内文字与卸载无残留。
 - P3（全库批量、Mod 更新重做提示）未做；动态拼接文本、加密资源仍标记 blocked。
+- **Vortex 接管 P0 只做取证**：未写 Vortex 状态库、未新增 `ModEntry.vortexModId` 持久化字段、未实现启用/顺序双写与快照还原；A1–A10 真机验收未做。P1 写入需单独授权。
+- **44 个孤儿暂存目录与 1 个缺失目录只列出、未清理**：清理/重建需用户单独确认。
+- 159 条失败的最终 message 当时界面未显示，需悬停红色错误码取 tooltip 原文才能 100% 定案；修复后新失败会直接显示原因。
 - 未升版（三处仍 `1.3.1`）、未构建 exe、未打便携 ZIP；等 localhost 验收 + 用户确认。
 
 ## [1.3.1] - 2026-11-08（全类型汉化 P0 · 载体分类扫描）
