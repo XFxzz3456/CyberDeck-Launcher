@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
+import { Activity, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
 import { api } from "../lib/api";
 import type {
   AdoptStagingHealth,
@@ -7,16 +7,18 @@ import type {
   VortexSyncStatus,
 } from "../types";
 import { t } from "../i18n";
-import { Spinner } from "./ui";
+import { Badge, Spinner } from "./ui";
 import "./VortexTakeoverCard.css";
 
 /**
- * 设置页「Vortex 接管」卡片（方案 P0 取证 + P1/P2 双写）。
+ * 设置页「Vortex 接管」卡片。
  *
- * 取证永远只读；写入只由「接管开关」放行，且开关本身要先过前置校验
- * （Vortex 已退出、profile 正确）。所有双写失败都落在待同步队列与
- * 「同步状态」里，不静默；还原需二次确认。见
- * docs/ARCH-VORTEX-TAKEOVER-2026-11-09.md。
+ * 排版跟随其它设置卡：panel-head 放主动作、setting-item 行式放开关、
+ * 字段用 kv 网格、只读取证收进 details 折叠区。状态一律走 Badge，
+ * 避免一大片裸文本平铺（2026-11-09 用户反馈）。
+ *
+ * 颜色语义：红色只留给真错误；未接管时的顺序差异、历史遗留需重新收编
+ * 都降级为中性/黄色提示，不再一律报红。
  */
 export function VortexTakeoverCard({
   onError,
@@ -71,8 +73,15 @@ export function VortexTakeoverCard({
     setAction("retry");
     setNote("");
     try {
-      await api.vortexSyncRetry();
-      setNote(t("vortexTakeover.retryDone"));
+      const report = await api.vortexSyncRetry();
+      // 之前无条件显示「重试完成」，接管没开 / 队列空时也报成功，属假成功。
+      setNote(
+        report.ok
+          ? report.written > 0
+            ? t("vortexTakeover.retryDone")
+            : t("vortexTakeover.pendingNone")
+          : report.reason || t("vortexTakeover.syncError"),
+      );
       await run();
     } catch (error) {
       onError(error, t("vortexTakeover.syncError"));
@@ -101,9 +110,21 @@ export function VortexTakeoverCard({
   const drift = preflight?.drift ?? [];
   const warnings = [...(preflight?.warnings ?? []), ...(health?.warnings ?? [])];
   const orphanMb = ((health?.orphanBytes ?? 0) / 1024 / 1024).toFixed(1);
+  const takeoverOn = status?.takeoverEnabled ?? false;
   const hasLastSync =
     !!status &&
     (status.lastSync.ok || status.lastSync.written > 0 || !!status.lastSync.reason);
+  const syncTone = !hasLastSync ? "muted" : status?.lastSync.ok ? "green" : "red";
+  const orderTone = !takeoverOn
+    ? "muted"
+    : preflight?.archiveOrderSame
+      ? "green"
+      : "red";
+  const orderText = !takeoverOn
+    ? t("vortexTakeover.stateIndependent")
+    : preflight?.archiveOrderSame
+      ? t("vortexTakeover.orderSame")
+      : t("vortexTakeover.orderDiff");
 
   return (
     <section className="panel vortex-takeover-card">
@@ -112,208 +133,289 @@ export function VortexTakeoverCard({
           <div className="panel-eyebrow">{t("vortexTakeover.eyebrow")}</div>
           <h2>{t("vortexTakeover.title")}</h2>
         </div>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => void run()}
-          disabled={busy}
-        >
-          {busy ? <Spinner size={13} /> : <RefreshCw size={13} />}
-          {busy ? t("vortexTakeover.running") : t("vortexTakeover.run")}
-        </button>
+        <div className="settings-field-row">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void run()}
+            disabled={busy || action !== null}
+          >
+            {busy ? <Spinner size={13} /> : <RefreshCw size={13} />}
+            {busy ? t("vortexTakeover.running") : t("vortexTakeover.run")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void retry()}
+            disabled={action !== null}
+          >
+            <RotateCcw size={13} />
+            {t("vortexTakeover.retry")}
+          </button>
+        </div>
       </header>
 
       <p className="vortex-takeover-subtitle">{t("vortexTakeover.subtitle")}</p>
 
-      {status ? (
-        <div className="vortex-takeover-control">
-          <label className="vortex-takeover-switch">
-            <ShieldCheck size={14} />
-            <input
-              type="checkbox"
-              checked={status.takeoverEnabled}
-              onChange={() => void toggle()}
-              disabled={action !== null}
-            />
-            <span>{t("vortexTakeover.toggleLabel")}</span>
-          </label>
-          <span className={status.takeoverEnabled ? "is-ok" : "is-muted"}>
-            {status.takeoverEnabled
-              ? t("vortexTakeover.toggleOn")
-              : t("vortexTakeover.toggleOff")}
-          </span>
-          <p>{t("vortexTakeover.scopeNote")}</p>
+      {/* 区块 1：接管开关（与外观页「点击关闭按钮时」同款行式二选一） */}
+      <div className="vortex-block">
+        <div className="vortex-block-head">
+          <span className="setting-item-label">{t("vortexTakeover.toggleLabel")}</span>
+          <Badge tone={takeoverOn ? "green" : "muted"}>
+            {takeoverOn ? t("vortexTakeover.badgeOn") : t("vortexTakeover.badgeOff")}
+          </Badge>
         </div>
-      ) : null}
-
-      {status ? (
-        <div className="vortex-takeover-section">
-          <h3>{t("vortexTakeover.syncTitle")}</h3>
-          <p>
-            {status.pendingCount > 0
-              ? t("vortexTakeover.pending", { count: status.pendingCount })
-              : t("vortexTakeover.pendingNone")}
-          </p>
-          <p>{t("vortexTakeover.backups", { count: status.backups.length })}</p>
-          {hasLastSync ? (
-            <p className={status?.lastSync.ok ? "is-ok" : "is-bad"}>
-              {status?.lastSync.ok
-                ? t("vortexTakeover.lastOk", { count: status.lastSync.written })
-                : t("vortexTakeover.lastBad", { reason: status?.lastSync.reason ?? "" })}
-            </p>
-          ) : (
-            <p>{t("vortexTakeover.lastNone")}</p>
-          )}
-          <div className="vortex-takeover-actions">
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => void retry()}
-              disabled={action !== null}
-            >
-              <RotateCcw size={13} />
-              {t("vortexTakeover.retry")}
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setConfirmName(status.backups[0] ?? null)}
-              disabled={status.backups.length === 0 || action !== null}
-            >
-              {t("vortexTakeover.restore")}
-            </button>
-          </div>
-          {confirmName ? (
-            <div className="vortex-takeover-confirm">
-              <span>{t("vortexTakeover.restoreConfirm", { name: confirmName })}</span>
-              <button
-                className="btn btn-sm"
-                onClick={() => void restore(confirmName)}
-                disabled={action !== null}
-              >
-                {t("vortexTakeover.restoreYes")}
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setConfirmName(null)}
-              >
-                {t("vortexTakeover.restoreCancel")}
-              </button>
-            </div>
-          ) : null}
-          {note ? <p className="is-ok">{note}</p> : null}
+        <div className="settings-field-row">
+          <button
+            type="button"
+            className={`btn btn-sm ${takeoverOn ? "btn-primary" : "btn-ghost"}`}
+            aria-pressed={takeoverOn}
+            disabled={action !== null || takeoverOn || !status}
+            onClick={() => void toggle()}
+          >
+            {t("vortexTakeover.toggleEnable")}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${takeoverOn ? "btn-ghost" : "btn-primary"}`}
+            aria-pressed={!takeoverOn}
+            disabled={action !== null || !takeoverOn || !status}
+            onClick={() => void toggle()}
+          >
+            {t("vortexTakeover.toggleDisable")}
+          </button>
         </div>
-      ) : null}
+        <small className="setting-item-note">
+          {takeoverOn ? t("vortexTakeover.toggleOn") : t("vortexTakeover.toggleOff")}
+          {" · "}
+          {t("vortexTakeover.scopeNote")}
+        </small>
+      </div>
 
-      {preflight && !preflight.available ? (
-        <div className="vortex-takeover-blocked">
-          <Activity size={14} />
-          <span>{t("vortexTakeover.unavailable")}</span>
-          <code>{preflight.reason}</code>
-          {preflight.dbLocked ? (
-            <small>{t("vortexTakeover.locked")}</small>
-          ) : null}
+      {/* 区块 2：同步状态（字段网格 + Badge） */}
+      <div className="vortex-block">
+        <div className="vortex-block-head">
+          <span className="setting-item-label">{t("vortexTakeover.syncTitle")}</span>
+          <Badge tone={syncTone}>
+            {!hasLastSync
+              ? t("vortexTakeover.lastNone")
+              : status?.lastSync.ok
+                ? t("vortexTakeover.badgeOk")
+                : t("vortexTakeover.badgeFailed")}
+          </Badge>
         </div>
-      ) : null}
-
-      {preflight?.available ? (
-        <dl className="vortex-takeover-facts">
+        <dl className="vortex-field-grid">
           <div>
-            <dt>{t("vortexTakeover.profile", {
-              id: preflight.activeProfileId || "—",
-              game: preflight.profileGameId || "—",
-            })}</dt>
-            {!preflight.profileOk ? (
-              <dd className="is-bad">{t("vortexTakeover.profileBad")}</dd>
-            ) : null}
-          </div>
-          <div>
-            <dt>{t("vortexTakeover.counts", {
-              total: preflight.vortexModCount,
-              enabled: preflight.vortexEnabledCount,
-              disabled: preflight.vortexDisabledCount,
-            })}</dt>
-          </div>
-          <div>
-            <dt>{t("vortexTakeover.order", {
-              archive: preflight.archiveOrder.length,
-              redmod: preflight.redmodOrder.length,
-            })}</dt>
-            <dd className={preflight.archiveOrderSame ? "is-ok" : "is-bad"}>
-              {preflight.archiveOrderSame
-                ? t("vortexTakeover.orderSame")
-                : t("vortexTakeover.orderDiff")}
+            <dt>{t("vortexTakeover.labelPending")}</dt>
+            <dd>
+              {status && status.pendingCount > 0
+                ? t("vortexTakeover.pending", { count: status.pendingCount })
+                : t("vortexTakeover.pendingNone")}
             </dd>
           </div>
           <div>
-            <dt>{t("vortexTakeover.mapping", {
-              mapped: preflight.mappedModCount,
-              unmapped: preflight.unmappedModCount,
-            })}</dt>
+            <dt>{t("vortexTakeover.labelBackups")}</dt>
+            <dd>{t("vortexTakeover.backups", { count: status?.backups.length ?? 0 })}</dd>
           </div>
           <div>
-            <dt>{t("vortexTakeover.fingerprint", { hash: preflight.fingerprint })}</dt>
+            <dt>{t("vortexTakeover.labelLast")}</dt>
+            <dd className={status?.lastSync.ok ? "is-ok" : "is-warn"}>
+              {!hasLastSync
+                ? t("vortexTakeover.lastNone")
+                : status?.lastSync.ok
+                  ? t("vortexTakeover.lastOk", { count: status.lastSync.written })
+                  : t("vortexTakeover.lastBad", { reason: status?.lastSync.reason ?? "" })}
+            </dd>
           </div>
         </dl>
-      ) : null}
+        <div className="settings-field-row">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setConfirmName(status?.backups[0] ?? null)}
+            disabled={!status?.backups.length || action !== null}
+          >
+            <Undo2 size={13} />
+            {t("vortexTakeover.restore")}
+          </button>
+        </div>
+        {confirmName ? (
+          <div className="vortex-takeover-confirm">
+            <span>{t("vortexTakeover.restoreConfirm", { name: confirmName })}</span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void restore(confirmName)}
+              disabled={action !== null}
+            >
+              {t("vortexTakeover.restoreYes")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setConfirmName(null)}
+            >
+              {t("vortexTakeover.restoreCancel")}
+            </button>
+          </div>
+        ) : null}
+        {note ? <p className="vortex-inline-note">{note}</p> : null}
+      </div>
 
-      {preflight?.available ? (
-        <div className="vortex-takeover-section">
-          <h3>{t("vortexTakeover.driftTitle", { count: drift.length })}</h3>
-          {drift.length === 0 ? (
-            <p>{t("vortexTakeover.driftNone")}</p>
-          ) : (
-            <ul>
-              {drift.slice(0, 6).map((item) => (
-                <li key={item.modId}>
-                  {item.vortexEnabled === null
-                    ? t("vortexTakeover.driftMissing", { name: item.name })
-                    : t("vortexTakeover.driftMismatch", {
-                        name: item.name,
-                        local: label(item.cyberdeckEnabled),
-                        remote: label(item.vortexEnabled),
-                      })}
-                </li>
+      {/* 区块 3：只读取证（折叠，避免一大片平铺） */}
+      <details className="vortex-details">
+        <summary>
+          <span>{t("vortexTakeover.detailsSummary")}</span>
+          <Badge tone={orderTone}>{orderText}</Badge>
+        </summary>
+
+        {preflight && !preflight.available ? (
+          <div className="vortex-takeover-blocked">
+            <Activity size={14} />
+            <span>{t("vortexTakeover.unavailable")}</span>
+            <code>{preflight.reason}</code>
+            {preflight.dbLocked ? (
+              <small>{t("vortexTakeover.locked")}</small>
+            ) : null}
+          </div>
+        ) : null}
+
+        {preflight?.available ? (
+          <dl className="vortex-field-grid">
+            <div>
+              <dt>{t("vortexTakeover.labelProfile")}</dt>
+              <dd>
+                {t("vortexTakeover.profile", {
+                  id: preflight.activeProfileId || "—",
+                  game: preflight.profileGameId || "—",
+                })}
+              </dd>
+            </div>
+            {!preflight.profileOk ? (
+              <div>
+                <dt>{t("vortexTakeover.labelStatus")}</dt>
+                <dd className="is-warn">{t("vortexTakeover.profileBad")}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>{t("vortexTakeover.labelMods")}</dt>
+              <dd>
+                {t("vortexTakeover.counts", {
+                  total: preflight.vortexModCount,
+                  enabled: preflight.vortexEnabledCount,
+                  disabled: preflight.vortexDisabledCount,
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("vortexTakeover.labelOrder")}</dt>
+              <dd>
+                {t("vortexTakeover.order", {
+                  archive: preflight.archiveOrder.length,
+                  redmod: preflight.redmodOrder.length,
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("vortexTakeover.labelMapping")}</dt>
+              <dd>
+                {t("vortexTakeover.mapping", {
+                  mapped: preflight.mappedModCount,
+                  unmapped: preflight.unmappedModCount,
+                })}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("vortexTakeover.labelFingerprint")}</dt>
+              <dd className="vortex-mono">{preflight.fingerprint}</dd>
+            </div>
+          </dl>
+        ) : null}
+
+        {preflight?.available ? (
+          <div className="vortex-subblock">
+            <div className="vortex-block-head">
+              <span className="setting-item-label">
+                {t("vortexTakeover.driftTitle", { count: drift.length })}
+              </span>
+              <Badge tone={drift.length ? "yellow" : "green"}>
+                {drift.length
+                  ? t("vortexTakeover.badgeWarn")
+                  : t("vortexTakeover.badgeOk")}
+              </Badge>
+            </div>
+            {drift.length === 0 ? (
+              <small className="setting-item-note">{t("vortexTakeover.driftNone")}</small>
+            ) : (
+              <ul className="vortex-list">
+                {drift.slice(0, 6).map((item) => (
+                  <li key={item.modId}>
+                    {item.vortexEnabled === null
+                      ? t("vortexTakeover.driftMissing", { name: item.name })
+                      : t("vortexTakeover.driftMismatch", {
+                          name: item.name,
+                          local: label(item.cyberdeckEnabled),
+                          remote: label(item.vortexEnabled),
+                        })}
+                  </li>
+                ))}
+                {drift.length > 6 ? (
+                  <li>{t("vortexTakeover.driftMore", { count: drift.length - 6 })}</li>
+                ) : null}
+              </ul>
+            )}
+          </div>
+        ) : null}
+
+        {health ? (
+          <div className="vortex-subblock">
+            <div className="vortex-block-head">
+              <span className="setting-item-label">{t("vortexTakeover.stagingTitle")}</span>
+              <Badge
+                tone={
+                  health.orphanDirs.length || health.missingDirs.length ? "yellow" : "green"
+                }
+              >
+                {health.orphanDirs.length || health.missingDirs.length
+                  ? t("vortexTakeover.badgeWarn")
+                  : t("vortexTakeover.stagingClean")}
+              </Badge>
+            </div>
+            <small className="setting-item-note">
+              {t("vortexTakeover.stagingSummary", {
+                total: health.dirsTotal,
+                registered: health.registeredTotal,
+              })}
+            </small>
+            {health.orphanDirs.length > 0 ? (
+              <p className="is-warn">
+                {t("vortexTakeover.stagingOrphans", {
+                  count: health.orphanDirs.length,
+                  bytes: `${orphanMb} MB`,
+                })}
+              </p>
+            ) : null}
+            {health.missingDirs.length > 0 ? (
+              <p className="is-warn">
+                {t("vortexTakeover.stateNeedRebuild", { count: health.missingDirs.length })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {warnings.length > 0 ? (
+          <div className="vortex-subblock">
+            <div className="vortex-block-head">
+              <span className="setting-item-label">{t("vortexTakeover.warnings")}</span>
+            </div>
+            <ul className="vortex-list">
+              {warnings.map((warning, index) => (
+                <li key={`${index}-${warning}`}>{warning}</li>
               ))}
-              {drift.length > 6 ? (
-                <li>{t("vortexTakeover.driftMore", { count: drift.length - 6 })}</li>
-              ) : null}
             </ul>
-          )}
-        </div>
-      ) : null}
-
-      {health ? (
-        <div className="vortex-takeover-section">
-          <h3>{t("vortexTakeover.stagingTitle")}</h3>
-          <p>{t("vortexTakeover.stagingSummary", {
-            total: health.dirsTotal,
-            registered: health.registeredTotal,
-          })}</p>
-          {health.orphanDirs.length > 0 ? (
-            <p className="is-bad">{t("vortexTakeover.stagingOrphans", {
-              count: health.orphanDirs.length,
-              bytes: `${orphanMb} MB`,
-            })}</p>
-          ) : null}
-          {health.missingDirs.length > 0 ? (
-            <p className="is-bad">{t("vortexTakeover.stagingMissing", {
-              count: health.missingDirs.length,
-            })}</p>
-          ) : null}
-          {health.orphanDirs.length === 0 && health.missingDirs.length === 0 ? (
-            <p className="is-ok">{t("vortexTakeover.stagingClean")}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {warnings.length > 0 ? (
-        <div className="vortex-takeover-section">
-          <h3>{t("vortexTakeover.warnings")}</h3>
-          <ul>
-            {warnings.map((warning, index) => (
-              <li key={`${index}-${warning}`}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </details>
 
       <p className="vortex-takeover-note">{t("vortexTakeover.readOnlyNote")}</p>
     </section>

@@ -1,12 +1,131 @@
+/* Vortex 接管卡片：跟随设置页的行式卡片语言。
+   区块用 .vortex-block 分隔，字段用 .vortex-field-grid 两列对齐，
+   状态统一走 Badge；只读取证收进 details，避免整页裸文本平铺。 */
+
 .vortex-takeover-card {
   grid-column: 1 / -1;
 }
 
 .vortex-takeover-subtitle {
-  margin: 4px 0 14px;
+  margin: 4px 0 12px;
   font-size: 11.5px;
   line-height: 1.6;
   color: var(--muted);
+}
+
+.vortex-block {
+  padding: 12px 0;
+  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.18));
+}
+
+.vortex-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.vortex-block .settings-field-row {
+  margin-bottom: 8px;
+}
+
+.vortex-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0 0 10px;
+}
+
+.vortex-field-grid > div {
+  min-width: 0;
+}
+
+.vortex-field-grid dt {
+  margin: 0 0 2px;
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.vortex-field-grid dd {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.vortex-mono {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.vortex-inline-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ok);
+}
+
+.vortex-details {
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.18));
+}
+
+.vortex-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.vortex-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vortex-details > summary::before {
+  content: "\25B8";
+  color: var(--muted-2);
+}
+
+.vortex-details[open] > summary::before {
+  content: "\25BE";
+}
+
+.vortex-details > summary > span {
+  flex: 1;
+}
+
+.vortex-subblock {
+  margin-top: 12px;
+  padding: 10px 0 0;
+  border-top: 1px dashed var(--border, rgba(128, 128, 128, 0.18));
+}
+
+.vortex-subblock p,
+.vortex-list li {
+  margin: 4px 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.vortex-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.is-ok {
+  color: var(--ok);
+}
+
+/* 警告而非报错：黄/橙，留给「历史遗留需处理」，不占红色语义。 */
+.is-warn {
+  color: var(--warn);
 }
 
 .vortex-takeover-blocked {
@@ -14,6 +133,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  margin: 10px 0 0;
   padding: 10px 12px;
   border: 1px solid rgba(var(--danger-rgb), 0.3);
   border-radius: var(--radius-md, 8px);
@@ -33,110 +153,6 @@
   font-size: 11px;
 }
 
-.vortex-takeover-facts {
-  display: grid;
-  gap: 6px;
-  margin: 0 0 14px;
-}
-
-.vortex-takeover-facts dt {
-  font-size: 11.5px;
-  color: var(--text, var(--fg));
-  font-family: var(--mono);
-  overflow-wrap: anywhere;
-}
-
-.vortex-takeover-facts dd {
-  margin: 2px 0 0;
-  font-size: 11.5px;
-  color: var(--muted);
-}
-
-.vortex-takeover-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border, rgba(128, 128, 128, 0.2));
-}
-
-.vortex-takeover-section h3 {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: var(--fw-title, 500);
-}
-
-.vortex-takeover-section p,
-.vortex-takeover-section li {
-  margin: 3px 0;
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.vortex-takeover-section ul {
-  margin: 4px 0 0;
-  padding-left: 16px;
-}
-
-.vortex-takeover-section .is-ok,
-.vortex-takeover-facts .is-ok {
-  color: var(--ok);
-}
-
-.vortex-takeover-section .is-bad,
-.vortex-takeover-facts .is-bad {
-  color: var(--danger);
-}
-
-.vortex-takeover-note {
-  margin: 14px 0 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
-.vortex-takeover-control {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
-  border-radius: var(--radius-md, 8px);
-}
-
-.vortex-takeover-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.vortex-takeover-switch input {
-  accent-color: var(--accent);
-}
-
-.vortex-takeover-control p {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
-.vortex-takeover-section .is-muted {
-  color: var(--muted);
-}
-
-.vortex-takeover-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
 .vortex-takeover-confirm {
   display: flex;
   align-items: center;
@@ -154,4 +170,17 @@
 .vortex-takeover-confirm span {
   flex-basis: 100%;
   overflow-wrap: anywhere;
+}
+
+.vortex-takeover-note {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted-2);
+}
+
+@media (max-width: 900px) {
+  .vortex-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
