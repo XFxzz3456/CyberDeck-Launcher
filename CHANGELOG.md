@@ -47,6 +47,30 @@
 
 ---
 
+## [未发布] - 2026-11-09（全类型汉化 P1/P2 · 归档内文本与覆盖型汉化层）
+
+> 用户要求「把 P1 和 P2 做了」。P1 红线已放宽（允许覆盖，但必须备份原文档），本轮落地两条写入通道。
+> **真机未验**：WolvenKit CLI 参数形态与真实 Mod 样本需实机校准（见「已知边界」）。
+
+### 新增
+
+- **`src-tauri/src/ailoc_full.rs`（P1）**：`.archive` 内文本链路 —— `unbundle` → `serialize`（CR2W→可读 JSON）→ 抽 `femaleVariant`/`maleVariant`（`primaryKey`/`secondaryKey`/`stringId` 不动）→ 词表/AI 翻译 → `deserialize` → `pack` → 生成 `.archive.xl` → 部署。CLI 参数按多形态尝试 + 产物校验，失败只记 warning、不留半成品。
+- **P2 覆盖型汉化层**：`.lua`/`.reds` 只替换「显示类赋值」的字符串（正则白名单，逻辑比较用的键不碰）；按 `deployed_files` 定位游戏目录目标，绝不按文件名猜路径。
+- **备份 / 恢复**：写入前原子备份到 `data_dir/ai-loc-backups/<modId>/`；独立 `full-manifest.json` 登记 target/backup/size/mtime/指纹（不动 state schema）；撤销时按 size/mtime 校验恢复，外部改动过则拒绝自动恢复并告警、备份保留。
+- **集成**：`ai_loc_apply` 对纯载体 Mod 走独立路径；有本地化 JSON 时把 P1/P2 产物 best-effort 合并进同一份部署清单；`revert` 先恢复备份并跳过删除已恢复目标。计划页回显 `warnings`（将被覆盖的文件清单 + 备份说明）。
+- 新增 3 条单测：CR2W 改写保 key、Lua 只改显示文本、备份恢复与「外部改动拒绝恢复」。
+
+### 验证结果
+
+- `cargo test --lib`（core-tests）：**260 passed / 0 failed / 2 ignored**（基线 257 + 3 条）。
+- `cargo check`（生产 crate）通过；`npm run gate`：**42/42 全绿**（353s 工时）。
+
+### 已知边界
+
+- **真机样本未提供**：WolvenKit CLI 的 `convert serialize/deserialize`、`import --keep` 参数按 8.x/旧版多形态回退实现，尚未用真实 `.archive` 校准；CET/redscript 覆盖也需用真实 Mod 验证游戏内文字与卸载无残留。
+- P3（全库批量、Mod 更新重做提示）未做；动态拼接文本、加密资源仍标记 blocked。
+- 未升版（三处仍 `1.3.1`）、未构建 exe、未打便携 ZIP；等 localhost 验收 + 用户确认。
+
 ## [1.3.1] - 2026-11-08（全类型汉化 P0 · 载体分类扫描）
 
 > 决策：用户确认**放宽 P1 红线**（允许覆盖型汉化层，但必须备份原文档）；AI 由用户自接 API。
