@@ -48,7 +48,8 @@ use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
     AiProfileList,
     AdoptCandidate, AdoptReport, AdoptScanReport, AdoptStagingHealth,
-    LibraryNormalizeReport, VortexTakeoverPreflight, VortexSyncReport,
+    LibraryNormalizeReport, VortexTakeoverPreflight, VortexMappingReport,
+    VortexPrelaunchReport, VortexReconcileReport, VortexSyncReport,
     VortexSyncStatus,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
@@ -586,6 +587,69 @@ fn vortex_sync_status(store: State<'_, Store>) -> VortexSyncStatus {
     }
 }
 
+
+/// P3：全库重新配准 Vortex 目录身份并持久化到 state。
+#[tauri::command]
+async fn vortex_mapping_rebuild(app: tauri::AppHandle) -> AppResult<VortexMappingReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_mirror::rebuild_mapping(store.inner())
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_MAPPING_TASK", format!("配准线程异常：{err}")))?
+}
+
+/// P3：把全库启用状态与两套加载顺序一次性镜像到 Vortex。
+#[tauri::command]
+async fn vortex_sync_full(app: tauri::AppHandle) -> AppResult<VortexSyncReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new("VORTEX_NOT_FOUND", "找不到 Vortex 状态库，无法全量同步。")
+        })?;
+        Ok(vortex_sync::mirror(
+            store.inner(),
+            &dir,
+            &vortex_sync::full_changes(store.inner()),
+        ))
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("全量同步线程异常：{err}")))?
+}
+
+/// P3：漂移对账。strategy = report | cyberdeck | vortex，默认 report 零写入。
+#[tauri::command]
+async fn vortex_reconcile(
+    app: tauri::AppHandle,
+    strategy: String,
+) -> AppResult<VortexReconcileReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new("VORTEX_NOT_FOUND", "找不到 Vortex 状态库，无法对账。")
+        })?;
+        Ok(vortex_sync::reconcile(store.inner(), &dir, &strategy))
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("对账线程异常：{err}")))?
+}
+
+/// P3：把控制权交还 Vortex 前的一致性预检（只读）。
+#[tauri::command]
+async fn vortex_prelaunch_check(
+    app: tauri::AppHandle,
+) -> AppResult<VortexPrelaunchReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        let dir = vortex_sync::state_dir().ok_or_else(|| {
+            CommandError::new("VORTEX_NOT_FOUND", "找不到 Vortex 状态库，无法预检。")
+        })?;
+        Ok(vortex_sync::prelaunch_check(store.inner(), &dir))
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("预检线程异常：{err}")))?
+}
+
 #[tauri::command]
 async fn vortex_sync_retry(app: tauri::AppHandle) -> AppResult<VortexSyncReport> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -669,7 +733,22 @@ async fn switch_profile(app: tauri::AppHandle, profile_id: String) -> AppResult<
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let store = handle.state::<Store>();
-        profiles::switch_profile(&store, &profile_id)
+        let report = profiles::switch_profile(&store, &profile_id)?;
+        // P3：播放集切换会整批改启用集合，接管开启时紧跟一次全量镜像。
+        // 失败不阻断切换本身，mirror 会写 pending + last-sync，界面可见。
+        if store.snapshot_data().settings.vortex_takeover {
+            if let Some(dir) = vortex_sync::state_dir() {
+                let sync = vortex_sync::mirror(
+                    store.inner(),
+                    &dir,
+                    &vortex_sync::full_changes(store.inner()),
+                );
+                if !sync.ok {
+                    eprintln!("[vortex] 播放集切换后全量同步失败：{}", sync.reason);
+                }
+            }
+        }
+        Ok(report)
     })
     .await
     .map_err(|err| CommandError::new("PROFILE_TASK", format!("切换播放集线程异常：{err}")))?
@@ -4051,6 +4130,10 @@ pub fn run() {
             vortex_sync_status,
             vortex_sync_retry,
             vortex_sync_restore,
+            vortex_mapping_rebuild,
+            vortex_sync_full,
+            vortex_reconcile,
+            vortex_prelaunch_check,
             switch_profile,
             export_profile_modlist,
             import_profile_modlist,

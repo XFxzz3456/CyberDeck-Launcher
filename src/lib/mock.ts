@@ -5,6 +5,9 @@ import type {
   AdoptStagingHealth,
   LibraryNormalizeReport,
   VortexTakeoverPreflight,
+  VortexMappingReport,
+  VortexPrelaunchReport,
+  VortexReconcileReport,
   VortexSyncReport,
   VortexSyncStatus,
   AiDiagnosis,
@@ -1529,6 +1532,33 @@ export const mockApi = {
   async vortexSyncRestore(_name: string): Promise<number> {
     await sleep(80);
     return 0;
+  },
+
+  async vortexMappingRebuild(): Promise<VortexMappingReport> {
+    await sleep(80);
+    return { total: 0, mapped: 0, unmapped: 0, persisted: 0, cleared: 0, warnings: [] };
+  },
+
+  async vortexSyncFull(): Promise<VortexSyncReport> {
+    await sleep(80);
+    return { ok: true, written: 0, backup: "", reason: "", warnings: ["演示模式未同步"] };
+  },
+
+  async vortexReconcile(_strategy: string): Promise<VortexReconcileReport> {
+    await sleep(80);
+    return { strategy: "report", checked: 0, drift: [], applied: 0, warnings: [] };
+  },
+
+  async vortexPrelaunchCheck(): Promise<VortexPrelaunchReport> {
+    await sleep(80);
+    return {
+      ready: false,
+      takeoverEnabled: false,
+      dbLocked: false,
+      pendingCount: 0,
+      driftCount: 0,
+      warnings: ["演示模式不读取真实 Vortex 状态库"],
+    };
   },
 
   /** 演示数据是手工构造的，不存在历史遗留的碎片条目。 */

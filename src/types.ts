@@ -1255,3 +1255,30 @@ export interface VortexSyncStatus {
   backups: string[];
   lastSync: VortexSyncReport;
 }
+
+// ── Vortex 接管 P3 ───────────────────────────────────────────────────
+export interface VortexMappingReport {
+  total: number;
+  mapped: number;
+  unmapped: number;
+  persisted: number;
+  cleared: number;
+  warnings: string[];
+}
+
+export interface VortexReconcileReport {
+  strategy: string;
+  checked: number;
+  drift: VortexDriftItem[];
+  applied: number;
+  warnings: string[];
+}
+
+export interface VortexPrelaunchReport {
+  ready: boolean;
+  takeoverEnabled: boolean;
+  dbLocked: boolean;
+  pendingCount: number;
+  driftCount: number;
+  warnings: string[];
+}

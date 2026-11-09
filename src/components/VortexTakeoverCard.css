@@ -184,3 +184,17 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.vortex-p3-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vortex-p3-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

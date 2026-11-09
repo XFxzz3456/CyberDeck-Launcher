@@ -13,7 +13,10 @@
 //! 任何镜像失败都必须可见：写进 pending 队列 + 返回带原因的报告，由界面提示重试/还原，
 //! 绝不假装成功。所有 DB 操作都接受显式目录参数，单测用临时目录，不碰真实状态库。
 
-use crate::schema::{AppResult, CommandError, VortexSyncReport};
+use crate::schema::{
+    AppResult, CommandError, VortexDriftItem, VortexPrelaunchReport,
+    VortexReconcileReport, VortexSyncReport,
+};
 use crate::store::Store;
 use rusty_leveldb::{DB, LdbIterator, Options};
 use std::collections::{HashMap, HashSet};
@@ -499,6 +502,197 @@ pub fn pending_count(store: &Store) -> usize {
     load_pending(store).len()
 }
 
+// ── P3：全库批量 / 漂移对账 / 切换前预检 ─────────────────────────────
+
+/// 把库内所有可配准模组的启用状态与两套加载顺序合成一次全量变更。
+/// 播放集切换、批量启停、Mod 更新后重做都走这里。
+pub fn full_changes(store: &Store) -> SyncChanges {
+    let data = store.snapshot_data();
+    let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
+    let mapping = crate::vortex_mirror::build_mapping(&data, &root);
+    let mut merged: HashMap<String, bool> = HashMap::new();
+    for entry in &data.mods {
+        if let Some(vortex_id) = mapping.get(&entry.id) {
+            // 多个启动器碎片条目可能指向同一个 Vortex 目录：任一启用即视为启用。
+            let slot = merged.entry(vortex_id.clone()).or_insert(false);
+            *slot |= entry.enabled;
+        }
+    }
+    let mut out = SyncChanges {
+        enabled: merged.into_iter().collect(),
+        ..Default::default()
+    };
+    out.archive_order = Some(
+        data.load_order
+            .iter()
+            .map(|rel| rel.rsplit('/').next().unwrap_or(rel).to_string())
+            .collect(),
+    );
+    out.redmod_order = Some(
+        data.redmod_order
+            .iter()
+            .filter_map(|id| mapping.get(id).cloned())
+            .collect(),
+    );
+    out
+}
+
+/// 读 Vortex 里每个 modState 的 enabled 值（按活动 profile）。
+fn vortex_enabled_map(pairs: &[(String, String)], pid: &str) -> HashMap<String, bool> {
+    let prefix = format!("persistent###profiles###{pid}###modState###");
+    let mut out = HashMap::new();
+    for (key, value) in pairs {
+        if let Some(rest) = key.strip_prefix(&prefix) {
+            if let Some(mod_id) = rest.strip_suffix("###enabled") {
+                out.insert(mod_id.to_string(), plain_enabled(value));
+            }
+        }
+    }
+    out
+}
+
+fn plain_enabled(raw: &str) -> bool {
+    raw.trim().trim_matches('"').eq_ignore_ascii_case("true")
+}
+
+/// 漂移对账。strategy：
+/// - `report`：只列差异，零写入（默认、最安全）；
+/// - `cyberdeck`：以启动器为准，把全量状态写进 Vortex；
+/// - `vortex`：只把 Vortex 的 enabled 值写回启动器状态标记（**不重新部署**）。
+pub fn reconcile(store: &Store, dir: &Path, strategy: &str) -> VortexReconcileReport {
+    let mut report = VortexReconcileReport {
+        strategy: strategy.to_string(),
+        ..Default::default()
+    };
+    if !matches!(strategy, "report" | "cyberdeck" | "vortex") {
+        report
+            .warnings
+            .push("未知对账策略，已按 report 处理。".to_string());
+        return report;
+    }
+    let pairs = match read_pairs_from(dir) {
+        Ok(pairs) => pairs,
+        Err(err) => {
+            report
+                .warnings
+                .push(format!("读不到 Vortex 状态库：{}", err.message));
+            return report;
+        }
+    };
+    let (pid, ok) = active_profile(&pairs);
+    if !ok || pid.is_empty() {
+        report
+            .warnings
+            .push("活动 profile 校验失败，未做对账。".to_string());
+        return report;
+    }
+    let enabled = vortex_enabled_map(&pairs, &pid);
+    let data = store.snapshot_data();
+    let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
+    let mapping = crate::vortex_mirror::build_mapping(&data, &root);
+    for entry in &data.mods {
+        let Some(vortex_id) = mapping.get(&entry.id) else {
+            continue;
+        };
+        report.checked += 1;
+        let vortex_value = enabled.get(vortex_id).copied();
+        if vortex_value != Some(entry.enabled) {
+            report.drift.push(VortexDriftItem {
+                mod_id: entry.id.clone(),
+                name: entry.name.clone(),
+                vortex_mod_id: vortex_id.clone(),
+                cyberdeck_enabled: entry.enabled,
+                vortex_enabled: vortex_value,
+                kind: if vortex_value.is_none() {
+                    "vortexMissing".to_string()
+                } else {
+                    "enabledMismatch".to_string()
+                },
+            });
+        }
+    }
+    match strategy {
+        "cyberdeck" => {
+            let result = mirror(store, dir, &full_changes(store));
+            if result.ok {
+                report.applied = result.written;
+            } else {
+                report
+                    .warnings
+                    .push(format!("以启动器为准覆盖失败：{}", result.reason));
+            }
+        }
+        "vortex" => {
+            let mut guard = store.data.lock().expect("state mutex poisoned");
+            for entry in guard.mods.iter_mut() {
+                if let Some(vortex_id) = mapping.get(&entry.id) {
+                    if let Some(value) = enabled.get(vortex_id) {
+                        if entry.enabled != *value {
+                            entry.enabled = *value;
+                            report.applied += 1;
+                        }
+                    }
+                }
+            }
+            if report.applied > 0 {
+                if let Err(err) = store.save(&guard) {
+                    report
+                        .warnings
+                        .push(format!("回写启动器状态失败：{}", err.message));
+                }
+            }
+            report.warnings.push(
+                "反向同步只改启用标记，未重新部署；请回到模组库执行一次部署使文件与状态一致。"
+                    .to_string(),
+            );
+        }
+        _ => {}
+    }
+    report
+}
+
+/// 把控制权交还 Vortex 之前的一致性预检。
+/// ready=false 时不要启动 Vortex，否则 Vortex 可能按旧状态重新部署。
+pub fn prelaunch_check(store: &Store, dir: &Path) -> VortexPrelaunchReport {
+    let data = store.snapshot_data();
+    let mut report = VortexPrelaunchReport {
+        takeover_enabled: data.settings.vortex_takeover,
+        pending_count: pending_count(store),
+        ..Default::default()
+    };
+    if read_pairs_from(dir).is_err() {
+        report.db_locked = true;
+        report
+            .warnings
+            .push("读不到 Vortex 状态库（Vortex 可能正在运行）。".to_string());
+        return report;
+    }
+    let drift = reconcile(store, dir, "report");
+    report.drift_count = drift.drift.len();
+    if !report.takeover_enabled {
+        report
+            .warnings
+            .push("接管未开启，Vortex 状态可能与启动器不一致。".to_string());
+    }
+    if report.pending_count > 0 {
+        report.warnings.push(format!(
+            "还有 {} 项待同步变更，先在同步状态里重试。",
+            report.pending_count
+        ));
+    }
+    if report.drift_count > 0 {
+        report.warnings.push(format!(
+            "检测到 {} 项启用状态漂移，先做一次对账。",
+            report.drift_count
+        ));
+    }
+    report.ready = report.takeover_enabled
+        && !report.db_locked
+        && report.pending_count == 0
+        && report.drift_count == 0;
+    report
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -674,4 +868,70 @@ mod tests {
         ];
         assert_eq!(active_profile(&pairs), ("p2".to_string(), true));
     }
+
+    #[test]
+    fn vortex_enabled_map_reads_only_active_profile() {
+        let pairs = vec![
+            (
+                "persistent###profiles###tHYlht6Mz###modState###foo-1###enabled".to_string(),
+                "true".to_string(),
+            ),
+            (
+                "persistent###profiles###tHYlht6Mz###modState###bar-2###enabled".to_string(),
+                "false".to_string(),
+            ),
+            (
+                "persistent###profiles###other###modState###foo-1###enabled".to_string(),
+                "false".to_string(),
+            ),
+        ];
+        let map = vortex_enabled_map(&pairs, "tHYlht6Mz");
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["foo-1"], true);
+        assert_eq!(map["bar-2"], false);
+    }
+
+    #[test]
+    fn full_changes_keeps_archive_order_without_needing_mapping() {
+        let (root, store) = temp("full");
+        {
+            let mut guard = store.data.lock().unwrap();
+            guard.load_order = vec![
+                "archive/pc/mod/a.archive".to_string(),
+                "archive/pc/mod/b.archive".to_string(),
+            ];
+        }
+        let changes = full_changes(&store);
+        assert_eq!(
+            changes.archive_order.unwrap(),
+            vec!["a.archive".to_string(), "b.archive".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reconcile_report_is_read_only_and_prelaunch_is_not_ready() {
+        let (root, store) = temp("reconcile");
+        let dir = db_dir(&root);
+        let report = reconcile(&store, &dir, "report");
+        assert_eq!(report.strategy, "report");
+        assert_eq!(report.applied, 0);
+        assert!(report.checked == 0, "空库不应凭空配准出模组");
+
+        let pre = prelaunch_check(&store, &dir);
+        assert!(!pre.ready, "接管未开启时不应放行");
+        assert!(!pre.warnings.is_empty());
+        let pairs = read_pairs_from(&dir).unwrap();
+        assert_eq!(
+            pairs
+                .iter()
+                .find(|(key, _)| key.ends_with("demo-1###enabled"))
+                .unwrap()
+                .1,
+            "true",
+            "report 策略绝不能写状态库"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
 }

@@ -32,6 +32,11 @@ export function VortexTakeoverCard({
   const [action, setAction] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [confirmName, setConfirmName] = useState<string | null>(null);
+  const [p3Busy, setP3Busy] = useState(false);
+  const [p3Note, setP3Note] = useState("");
+  const [p3Tone, setP3Tone] = useState<"muted" | "yellow" | "cyan" | "red" | "green">(
+    "muted",
+  );
 
   const run = useCallback(async () => {
     setBusy(true);
@@ -104,6 +109,76 @@ export function VortexTakeoverCard({
       setAction(null);
     }
   };
+
+  type P3Result = {
+    text: string;
+    tone: "muted" | "yellow" | "cyan" | "red" | "green";
+  };
+
+  const runP3 = async (task: () => Promise<P3Result>) => {
+    setP3Busy(true);
+    setP3Note("");
+    try {
+      const result = await task();
+      setP3Note(result.text);
+      setP3Tone(result.tone);
+      await run();
+    } catch (error) {
+      onError(error, t("vortexTakeover.p3Error"));
+    } finally {
+      setP3Busy(false);
+    }
+  };
+
+  const remap = () =>
+    runP3(async () => {
+      const r = await api.vortexMappingRebuild();
+      return {
+        text: t("vortexTakeover.mapDone", {
+          mapped: r.mapped,
+          total: r.total,
+          persisted: r.persisted,
+        }),
+        tone: r.unmapped > 0 ? "yellow" : "green",
+      };
+    });
+
+  const fullSync = () =>
+    runP3(async () => {
+      const r = await api.vortexSyncFull();
+      return r.ok
+        ? { text: t("vortexTakeover.fullDone", { count: r.written }), tone: "green" as const }
+        : {
+            text: t("vortexTakeover.fullSkipped", { reason: r.reason }),
+            tone: "yellow" as const,
+          };
+    });
+
+  const doReconcile = () =>
+    runP3(async () => {
+      const r = await api.vortexReconcile("report");
+      const text = t("vortexTakeover.reconcileDone", {
+        checked: r.checked,
+        drift: r.drift.length,
+      });
+      return {
+        text: r.applied > 0 ? `${text} · ${t("vortexTakeover.applied", { count: r.applied })}` : text,
+        tone: r.drift.length > 0 ? "yellow" : "green",
+      };
+    });
+
+  const precheck = () =>
+    runP3(async () => {
+      const r = await api.vortexPrelaunchCheck();
+      return {
+        text: r.ready
+          ? t("vortexTakeover.precheckReady")
+          : t("vortexTakeover.precheckBlocked", {
+              reason: r.warnings.join("；"),
+            }),
+        tone: r.ready ? "green" : "yellow",
+      };
+    });
 
   const label = (enabled: boolean) =>
     enabled ? t("vortexTakeover.enabledOn") : t("vortexTakeover.enabledOff");
@@ -416,6 +491,57 @@ export function VortexTakeoverCard({
           </div>
         ) : null}
       </details>
+
+      {/* 区块 4：P3 批量与对账 */}
+      <div className="vortex-block">
+        <div className="vortex-block-head">
+          <span className="setting-item-label">{t("vortexTakeover.p3Title")}</span>
+          {p3Note ? (
+            <Badge tone={p3Tone}>
+              {p3Tone === "green"
+                ? t("vortexTakeover.badgeOk")
+                : p3Tone === "red"
+                  ? t("vortexTakeover.badgeFailed")
+                  : t("vortexTakeover.badgeWarn")}
+            </Badge>
+          ) : null}
+        </div>
+        <div className="vortex-p3-actions">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void remap()}
+            disabled={p3Busy || action !== null}
+          >
+            {t("vortexTakeover.btnRemap")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void fullSync()}
+            disabled={p3Busy || action !== null}
+          >
+            {t("vortexTakeover.btnFullSync")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void doReconcile()}
+            disabled={p3Busy || action !== null}
+          >
+            {t("vortexTakeover.btnReconcile")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void precheck()}
+            disabled={p3Busy || action !== null}
+          >
+            {t("vortexTakeover.btnPrecheck")}
+          </button>
+        </div>
+        {p3Note ? <p className="vortex-p3-note">{p3Note}</p> : null}
+      </div>
 
       <p className="vortex-takeover-note">{t("vortexTakeover.readOnlyNote")}</p>
     </section>

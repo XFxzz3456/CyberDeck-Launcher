@@ -6,6 +6,9 @@ import type {
   AdoptStagingHealth,
   LibraryNormalizeReport,
   VortexTakeoverPreflight,
+  VortexMappingReport,
+  VortexPrelaunchReport,
+  VortexReconcileReport,
   VortexSyncReport,
   VortexSyncStatus,
   EnvSnapshot,
@@ -278,6 +281,30 @@ export const api = {
   async vortexSyncRestore(name: string): Promise<number> {
     if (!isTauri) return mockApi.vortexSyncRestore(name);
     return call<number>("vortex_sync_restore", { name });
+  },
+
+  /** P3：全库重新配准 Vortex 目录身份并持久化到 state。 */
+  async vortexMappingRebuild(): Promise<VortexMappingReport> {
+    if (!isTauri) return mockApi.vortexMappingRebuild();
+    return call<VortexMappingReport>("vortex_mapping_rebuild");
+  },
+
+  /** P3：把全库启用状态与两套加载顺序一次性镜像到 Vortex。 */
+  async vortexSyncFull(): Promise<VortexSyncReport> {
+    if (!isTauri) return mockApi.vortexSyncFull();
+    return call<VortexSyncReport>("vortex_sync_full");
+  },
+
+  /** P3：漂移对账（report 只读）。 */
+  async vortexReconcile(strategy: string): Promise<VortexReconcileReport> {
+    if (!isTauri) return mockApi.vortexReconcile(strategy);
+    return call<VortexReconcileReport>("vortex_reconcile", { strategy });
+  },
+
+  /** P3：把控制权交还 Vortex 前的一致性预检（只读）。 */
+  async vortexPrelaunchCheck(): Promise<VortexPrelaunchReport> {
+    if (!isTauri) return mockApi.vortexPrelaunchCheck();
+    return call<VortexPrelaunchReport>("vortex_prelaunch_check");
   },
 
   /**

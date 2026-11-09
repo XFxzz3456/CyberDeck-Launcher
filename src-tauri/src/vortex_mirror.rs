@@ -12,7 +12,8 @@
 //!   改形状；解析一律走「读不到就记 warning、绝不猜」的路径。
 
 use crate::schema::{
-    AdoptStagingHealth, AppResult, CommandError, VortexDriftItem, VortexTakeoverPreflight,
+    AdoptStagingHealth, AppResult, CommandError, VortexDriftItem, VortexMappingReport,
+    VortexTakeoverPreflight,
 };
 use crate::store::Store;
 use std::collections::{HashMap, HashSet};
@@ -337,34 +338,99 @@ pub fn preflight(store: &Store) -> AppResult<VortexTakeoverPreflight> {
     Ok(report)
 }
 
-/// 按「游戏侧相对路径」精确配准 Vortex 目录，不做名称模糊匹配。
+/// 直接遍历 Vortex mod 存储根，**不过滤游戏侧**。
 ///
-/// 一个 Vortex mod 目录就是游戏根镜像；同一个 rel 只可能属于一个目录。
-/// 禁用中的 mod 文件已不在游戏目录，scan_dirs 看不到它，因此会落在 unmapped——
-/// 这是保守但正确的结果，不会误把改动写到别的模组头上。
+/// P0 用 `scan_dirs`（只保留游戏目录里真实存在的文件），于是禁用 / 未部署的
+/// Vortex mod 全部配准不上 —— 现场 83 条里只有 11 条能映射。P3 改成读存储根，
+/// 配准率与 Vortex 当前是否部署无关。
+fn collect_vortex_files(root: &std::path::Path) -> Vec<(String, Vec<String>)> {
+    fn walk(base: &std::path::Path, dir: &std::path::Path, depth: usize, out: &mut Vec<String>) {
+        if depth > 8 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                walk(base, &path, depth + 1, out);
+            } else if kind.is_file() {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return result;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let mut files = Vec::new();
+        walk(&entry.path(), &entry.path(), 0, &mut files);
+        result.push((name, files));
+    }
+    result
+}
+
+/// 精确配准 Vortex 目录：① 已持久化的 vortexModId 且目录仍在 → 直接复用；
+/// ② 按完整相对路径投票；③ 兜底按文件名，且只有唯一归属才认。
+/// 全程不做名称模糊匹配，避免把改动写到别的模组头上。
 pub fn build_mapping(
     data: &crate::schema::AppStateData,
     game_root: &std::path::Path,
 ) -> HashMap<String, String> {
-    let mut owner_of: HashMap<String, String> = HashMap::new();
+    // 参数保留是为了不改动既有调用点；P3 起不再拿游戏目录做过滤条件。
+    let _ = game_root;
     let Some(root) = crate::vortex_source::find_mods_root(GAME_ID) else {
-        return owner_of;
+        return HashMap::new();
     };
-    if !game_root.is_dir() {
-        return owner_of;
-    }
-    for dir in crate::vortex_source::scan_dirs(&root, game_root) {
-        for rel in &dir.files {
-            owner_of.insert(rel.to_ascii_lowercase(), dir.dir_name.clone());
+    let mut by_rel: HashMap<String, String> = HashMap::new();
+    let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
+    let mut valid: HashSet<String> = HashSet::new();
+    for (dir_name, files) in collect_vortex_files(&root) {
+        valid.insert(dir_name.clone());
+        for rel in files {
+            let lower = rel.to_ascii_lowercase();
+            by_rel.entry(lower.clone()).or_insert_with(|| dir_name.clone());
+            let name = lower.rsplit('/').next().unwrap_or("").to_string();
+            let bucket = by_name.entry(name).or_default();
+            if !bucket.contains(&dir_name) {
+                bucket.push(dir_name.clone());
+            }
         }
     }
 
     let mut mapping = HashMap::new();
     for entry in &data.mods {
+        if let Some(id) = data.vortex_mod_ids.get(&entry.id) {
+            if valid.contains(id) {
+                mapping.insert(entry.id.clone(), id.clone());
+                continue;
+            }
+        }
         let mut votes: HashMap<String, usize> = HashMap::new();
         for file in &entry.deployed_files {
-            if let Some(dir_name) = owner_of.get(&file.relative_path.to_ascii_lowercase()) {
-                *votes.entry(dir_name.clone()).or_default() += 1;
+            if let Some(dir) = by_rel.get(&file.relative_path.to_ascii_lowercase()) {
+                *votes.entry(dir.clone()).or_default() += 1;
+            }
+        }
+        if votes.is_empty() {
+            for file in &entry.deployed_files {
+                let lower = file.relative_path.to_ascii_lowercase();
+                let name = lower.rsplit('/').next().unwrap_or("").to_string();
+                if let Some(dirs) = by_name.get(&name) {
+                    if dirs.len() == 1 {
+                        *votes.entry(dirs[0].clone()).or_default() += 1;
+                    }
+                }
             }
         }
         if let Some((dir_name, _)) = votes.into_iter().max_by_key(|(_, count)| *count) {
@@ -372,6 +438,42 @@ pub fn build_mapping(
         }
     }
     mapping
+}
+
+/// 全库重新配准并把结果持久化到 `ModEntry.vortexModId`。
+/// 目录已被 Vortex 删除的旧绑定会被清掉，避免写到一个不存在的 modState 键上。
+pub fn rebuild_mapping(store: &Store) -> AppResult<VortexMappingReport> {
+    let mut data = store.data.lock().expect("state mutex poisoned");
+    let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
+    // 重算时忽略旧绑定，强制按当前 Vortex 存储根重新配准。
+    let previous = data.vortex_mod_ids.clone();
+    data.vortex_mod_ids.clear();
+    let mapping = build_mapping(&data, &root);
+    let kept = mapping
+        .iter()
+        .filter(|(mod_id, vortex_id)| previous.get(*mod_id) == Some(*vortex_id))
+        .count();
+    let mut report = VortexMappingReport {
+        total: data.mods.len(),
+        mapped: mapping.len(),
+        cleared: previous.len().saturating_sub(kept),
+        ..Default::default()
+    };
+    report.unmapped = report.total.saturating_sub(report.mapped);
+    let ids: HashSet<String> = data.mods.iter().map(|entry| entry.id.clone()).collect();
+    for (mod_id, vortex_id) in &mapping {
+        if ids.contains(mod_id) && data.vortex_mod_ids.insert(mod_id.clone(), vortex_id.clone()).is_none() {
+            report.persisted += 1;
+        }
+    }
+    store.save(&data)?;
+    if report.unmapped > 0 {
+        report.warnings.push(format!(
+            "{} 个模组仍无法精确配准（可能没有部署文件，或不在 Vortex 存储根里）。",
+            report.unmapped
+        ));
+    }
+    Ok(report)
 }
 
 /// 两边顺序一致性：只比较交集，按各自出现顺序比对；任一为空视为无法比较（true）。

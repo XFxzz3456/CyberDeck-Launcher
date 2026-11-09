@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use serde_json::Value;
 
 pub const APP_SCHEMA_VERSION: u32 = 1;
@@ -880,6 +881,11 @@ pub struct AppStateData {
     /// 最近一次「检查 Mod 更新」的时间（ISO 8601，P5）。空 = 从未查过。
     #[serde(default)]
     pub last_update_check: Option<String>,
+    /// 启动器 mod id → Vortex 安装目录名（= modState / loadOrders 键段）的持久映射。
+    /// 放在 state 级而不是 ModEntry 上，避免改动 26 处结构体字面量；「重新配准」
+    /// 命令全量刷新这份表，禁用 / 未部署的模组也能保持稳定身份。
+    #[serde(default)]
+    pub vortex_mod_ids: HashMap<String, String>,
 }
 
 impl AppStateData {
@@ -900,6 +906,7 @@ impl AppStateData {
             last_launch: None,
             backup: None,
             last_update_check: None,
+            vortex_mod_ids: HashMap::new(),
         }
     }
 }
@@ -1717,4 +1724,42 @@ pub struct VortexSyncStatus {
     pub pending_count: usize,
     pub backups: Vec<String>,
     pub last_sync: VortexSyncReport,
+}
+
+// ── Vortex 接管 P3：配准 / 对账 / 预检 ─────────────────────────────────
+
+/// 全库重新配准的结果。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexMappingReport {
+    pub total: usize,
+    pub mapped: usize,
+    pub unmapped: usize,
+    pub persisted: usize,
+    /// 目录已不在 Vortex、因此清掉旧绑定的条目数。
+    pub cleared: usize,
+    pub warnings: Vec<String>,
+}
+
+/// 漂移对账结果。strategy=report 时 applied 恒为 0。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexReconcileReport {
+    pub strategy: String,
+    pub checked: usize,
+    pub drift: Vec<VortexDriftItem>,
+    pub applied: usize,
+    pub warnings: Vec<String>,
+}
+
+/// 切到 Vortex 前的一致性预检。ready=false 时不要把控制权交给 Vortex。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexPrelaunchReport {
+    pub ready: bool,
+    pub takeover_enabled: bool,
+    pub db_locked: bool,
+    pub pending_count: usize,
+    pub drift_count: usize,
+    pub warnings: Vec<String>,
 }
