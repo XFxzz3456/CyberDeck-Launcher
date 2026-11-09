@@ -1282,3 +1282,61 @@ export interface VortexPrelaunchReport {
   driftCount: number;
   warnings: string[];
 }
+
+// ── Vortex 接管 P4：以 Vortex 为准重建模组库 ────────────────────────
+export interface VortexRebuildItem {
+  dirName: string;
+  name: string;
+  version: string | null;
+  author: string | null;
+  description: string;
+  category: string;
+  fileType: string | null;
+  nexusModId: number | null;
+  nexusFileId: number | null;
+  pictureUrl: string | null;
+  homepage: string | null;
+  installTime: string | null;
+  newestVersion: string | null;
+  metadataFields: number;
+  enabled: boolean;
+  fileCount: number;
+  sizeBytes: number;
+  metadataSource: string;
+  samplePaths: string[];
+}
+
+export interface VortexRebuildPreview {
+  available: boolean;
+  reason: string;
+  dataDir: string;
+  vortexRoot: string;
+  vortexDirs: number;
+  currentMods: number;
+  alreadyArchived: number;
+  toAdd: number;
+  toArchive: number;
+  enabledCount: number;
+  disabledCount: number;
+  withDescription: number;
+  withPicture: number;
+  withNexus: number;
+  metadataComplete: number;
+  mappingCoverage: string;
+  uncoveredArchives: string[];
+  dataSources: string[];
+  items: VortexRebuildItem[];
+  warnings: string[];
+}
+
+export interface VortexRebuildReport {
+  ok: boolean;
+  reason: string;
+  backupName: string;
+  backupPath: string;
+  reportPath: string;
+  added: number;
+  archived: number;
+  mapping: number;
+  warnings: string[];
+}

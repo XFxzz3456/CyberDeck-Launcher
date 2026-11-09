@@ -886,6 +886,10 @@ pub struct AppStateData {
     /// 命令全量刷新这份表，禁用 / 未部署的模组也能保持稳定身份。
     #[serde(default)]
     pub vortex_mod_ids: HashMap<String, String>,
+    /// 「以 Vortex 为准重建库」时从主列表移出的旧条目。**只归档不删除**，
+    /// 一键还原会把它们放回 `mods`；这样任何一次重建都能完整回滚。
+    #[serde(default)]
+    pub archived_mods: Vec<ModEntry>,
 }
 
 impl AppStateData {
@@ -907,6 +911,7 @@ impl AppStateData {
             backup: None,
             last_update_check: None,
             vortex_mod_ids: HashMap::new(),
+            archived_mods: Vec::new(),
         }
     }
 }
@@ -1761,5 +1766,84 @@ pub struct VortexPrelaunchReport {
     pub db_locked: bool,
     pub pending_count: usize,
     pub drift_count: usize,
+    pub warnings: Vec<String>,
+}
+
+// ── Vortex 接管 P4：以 Vortex 为准重建模组库（可审计、可逆） ─────────────
+
+/// 重建计划中的一个 Vortex 模组（预览阶段只读，不落盘）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexRebuildItem {
+    /// Vortex 安装目录名，同时是 modState / loadOrders 的键段 = 稳定身份。
+    pub dir_name: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub author: Option<String>,
+    /// 清洗过 HTML 的描述（预览里截断，落库保留更完整的版本）。
+    pub description: String,
+    /// 由 Vortex 的 Nexus category id + 文件内容推断出的启动器分类。
+    pub category: String,
+    pub file_type: Option<String>,
+    pub nexus_mod_id: Option<u64>,
+    pub nexus_file_id: Option<u64>,
+    pub picture_url: Option<String>,
+    pub homepage: Option<String>,
+    pub install_time: Option<String>,
+    pub newest_version: Option<String>,
+    /// 从 Vortex 元数据里成功读到的字段数，用来展示「元数据完整度」。
+    pub metadata_fields: usize,
+    pub enabled: bool,
+    pub file_count: usize,
+    pub size_bytes: u64,
+    /// "vortexJson"（完整状态快照带元数据）或 "directory"（只有目录名）。
+    pub metadata_source: String,
+    /// 该目录里识别出的游戏相对路径样例，供用户核对。
+    pub sample_paths: Vec<String>,
+}
+
+/// 重建计划。available=false 时前端必须禁用「执行」。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexRebuildPreview {
+    pub available: bool,
+    pub reason: String,
+    /// 本次重建实际会改哪份库。启动器按「exe 同级 cyberdeck-data 优先」选目录，
+    /// dev / release / AppData 可能是三份不同的库，必须让用户在执行前看见。
+    pub data_dir: String,
+    pub vortex_root: String,
+    pub vortex_dirs: usize,
+    pub current_mods: usize,
+    pub already_archived: usize,
+    pub to_add: usize,
+    pub to_archive: usize,
+    pub enabled_count: usize,
+    pub disabled_count: usize,
+    /// 元数据读取效果：带描述 / 带封面 / 带 Nexus 链接 / 字段齐全的条数。
+    pub with_description: usize,
+    pub with_picture: usize,
+    pub with_nexus: usize,
+    pub metadata_complete: usize,
+    /// "225/225" 这类口径，重建后映射覆盖率恒为 100%。
+    pub mapping_coverage: String,
+    /// 游戏目录里有、但 Vortex 存储根里找不到的 archive —— 重建后不会接管这些文件。
+    pub uncovered_archives: Vec<String>,
+    pub data_sources: Vec<String>,
+    pub items: Vec<VortexRebuildItem>,
+    pub warnings: Vec<String>,
+}
+
+/// 重建执行结果。备份与报告路径都落在启动器数据目录，便于用户自行检查。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexRebuildReport {
+    pub ok: bool,
+    pub reason: String,
+    pub backup_name: String,
+    pub backup_path: String,
+    pub report_path: String,
+    pub added: usize,
+    pub archived: usize,
+    pub mapping: usize,
     pub warnings: Vec<String>,
 }

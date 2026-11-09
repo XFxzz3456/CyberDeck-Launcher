@@ -2,6 +2,7 @@ mod adopt;
 mod vortex_source;
 mod vortex_mirror;
 mod vortex_sync;
+mod vortex_rebuild;
 mod ai;
 mod aiact;
 mod aiprofile;
@@ -50,6 +51,7 @@ use schema::{
     AdoptCandidate, AdoptReport, AdoptScanReport, AdoptStagingHealth,
     LibraryNormalizeReport, VortexTakeoverPreflight, VortexMappingReport,
     VortexPrelaunchReport, VortexReconcileReport, VortexSyncReport,
+    VortexRebuildPreview, VortexRebuildReport,
     VortexSyncStatus,
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
@@ -634,6 +636,53 @@ async fn vortex_reconcile(
     .map_err(|err| CommandError::new("VORTEX_SYNC_TASK", format!("对账线程异常：{err}")))?
 }
 
+/// P4：以 Vortex 安装目录为权威，只读生成重建计划（不写任何文件）。
+#[tauri::command]
+async fn vortex_rebuild_preview(app: tauri::AppHandle) -> AppResult<VortexRebuildPreview> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_rebuild::preview(store.inner())
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_REBUILD_TASK", format!("预览线程异常：{err}")))?
+}
+
+/// P4：执行重建。调用方必须已展示计划并拿到用户确认；内部会先整库备份。
+#[tauri::command]
+async fn vortex_rebuild_apply(app: tauri::AppHandle) -> AppResult<VortexRebuildReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_rebuild::apply(store.inner())
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_REBUILD_TASK", format!("重建线程异常：{err}")))?
+}
+
+/// P4：列出可一键还原的重建备份（只读）。
+#[tauri::command]
+async fn vortex_rebuild_backups(app: tauri::AppHandle) -> AppResult<Vec<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        Ok(vortex_rebuild::list_backups(store.inner()))
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_REBUILD_TASK", format!("备份列表线程异常：{err}")))?
+}
+
+/// P4：还原到某次重建之前。只覆盖当前实例的 launcher-state.json，不删任何文件。
+#[tauri::command]
+async fn vortex_rebuild_restore(
+    app: tauri::AppHandle,
+    name: String,
+) -> AppResult<VortexRebuildReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        vortex_rebuild::restore(store.inner(), &name)
+    })
+    .await
+    .map_err(|err| CommandError::new("VORTEX_REBUILD_TASK", format!("还原线程异常：{err}")))?
+}
+
 /// P3：把控制权交还 Vortex 前的一致性预检（只读）。
 #[tauri::command]
 async fn vortex_prelaunch_check(
@@ -954,6 +1003,45 @@ async fn set_mods_enabled(
             warnings: Vec::new(),
         };
 
+        // P4：Vortex 托管条目只改标记 + 双写，不进 deploy/undeploy 循环。
+        let vortex_ids: Vec<String> = {
+            let data = store.snapshot_data();
+            ids.iter()
+                .filter(|id| {
+                    data.mods
+                        .iter()
+                        .any(|item| &item.id == *id && item.origin == "vortex")
+                })
+                .cloned()
+                .collect()
+        };
+        if !vortex_ids.is_empty() {
+            {
+                let mut guard = store.data.lock().expect("state mutex poisoned");
+                for entry in guard.mods.iter_mut() {
+                    if vortex_ids.contains(&entry.id) {
+                        entry.enabled = enabled;
+                    }
+                }
+                store.save(&guard)?;
+            }
+            report.changed += vortex_ids.len();
+            report.warnings.extend(vortex_apply(
+                store.inner(),
+                vdir.clone(),
+                enabled_changes(store.inner(), &vortex_ids, enabled),
+            ));
+        }
+        let ids: Vec<String> = ids
+            .into_iter()
+            .filter(|id| !vortex_ids.contains(id))
+            .collect();
+        if ids.is_empty() {
+            let snapshot = store.snapshot_data();
+            redmod::flush_into(&store, snapshot.game_dir.as_deref(), &mut report.warnings);
+            return Ok(report);
+        }
+
         if enabled {
             // 更新熔断先查一次：整批都是要动游戏目录的部署，锁着就别逐个撞。
             let data = store.snapshot_data();
@@ -1120,6 +1208,40 @@ fn repair_mod(
 fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppResult<DeployReport> {
     // 接管开启时先过守卫：Vortex 运行中 / profile 不符 → 本地状态零改动。
     let vdir = vortex_guard(&store)?;
+    // P4：Vortex 托管的模组物理文件由 Vortex 部署，启动器绝不去增删游戏目录里的
+    // 硬链接；这里只改本地启用标记 + 镜像 Vortex 状态库。
+    {
+        let data = store.snapshot_data();
+        if data.mods.iter().any(|item| item.id == id && item.origin == "vortex") {
+            {
+                let mut guard = store.data.lock().expect("state mutex poisoned");
+                if let Some(entry) = guard.mods.iter_mut().find(|item| item.id == id) {
+                    entry.enabled = enabled;
+                }
+                store.save(&guard)?;
+            }
+            let warnings = vortex_apply(
+                &store,
+                vdir.clone(),
+                enabled_changes(&store, &[id.clone()], enabled),
+            );
+            let entry = store
+                .snapshot_data()
+                .mods
+                .into_iter()
+                .find(|item| item.id == id)
+                .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
+            return Ok(DeployReport {
+                mod_entry: entry,
+                deployed: 0,
+                hard_links: 0,
+                symlinks: 0,
+                copies: 0,
+                warnings,
+                purged: false,
+            });
+        }
+    }
     if enabled {
         let data = store.snapshot_data();
         let game = current_game(&data)?;
@@ -1202,6 +1324,12 @@ fn uninstall_mod(
 ) -> AppResult<()> {
     let _guard = busy.begin("卸载模组");
     let data = store.snapshot_data();
+    if data.mods.iter().any(|item| item.id == id && item.origin == "vortex") {
+        return Err(CommandError::new(
+            "VORTEX_MANAGED_MOD",
+            "这个模组由 Vortex 安装并部署，请在 Vortex 里卸载；启动器不会删除 Vortex 的文件。",
+        ));
+    }
     let game_root = data.game_dir.clone().map(PathBuf::from);
     installer::uninstall_mod(&store, &id, game_root.as_deref())?;
     // 卸载接口不返回提示列表，同步失败只记日志并保留脏标记，下次操作会重试。
@@ -4134,6 +4262,10 @@ pub fn run() {
             vortex_sync_full,
             vortex_reconcile,
             vortex_prelaunch_check,
+            vortex_rebuild_preview,
+            vortex_rebuild_apply,
+            vortex_rebuild_backups,
+            vortex_rebuild_restore,
             switch_profile,
             export_profile_modlist,
             import_profile_modlist,

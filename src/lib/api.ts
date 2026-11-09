@@ -11,6 +11,8 @@ import type {
   VortexReconcileReport,
   VortexSyncReport,
   VortexSyncStatus,
+  VortexRebuildPreview,
+  VortexRebuildReport,
   EnvSnapshot,
   SaveScanReport,
   AiDiagnosis,
@@ -306,6 +308,31 @@ export const api = {
     if (!isTauri) return mockApi.vortexPrelaunchCheck();
     return call<VortexPrelaunchReport>("vortex_prelaunch_check");
   },
+
+  /** P4：只读生成「以 Vortex 为准重建库」计划。 */
+  async vortexRebuildPreview(): Promise<VortexRebuildPreview> {
+    if (!isTauri) return mockApi.vortexRebuildPreview();
+    return call<VortexRebuildPreview>("vortex_rebuild_preview");
+  },
+
+  /** P4：执行重建（调用方必须先展示计划并拿到用户确认）。 */
+  async vortexRebuildApply(): Promise<VortexRebuildReport> {
+    if (!isTauri) return mockApi.vortexRebuildApply();
+    return call<VortexRebuildReport>("vortex_rebuild_apply");
+  },
+
+  /** P4：可还原的整库备份列表。 */
+  async vortexRebuildBackups(): Promise<string[]> {
+    if (!isTauri) return mockApi.vortexRebuildBackups();
+    return call<string[]>("vortex_rebuild_backups");
+  },
+
+  /** P4：一键还原到某次重建之前。 */
+  async vortexRebuildRestore(name: string): Promise<VortexRebuildReport> {
+    if (!isTauri) return mockApi.vortexRebuildRestore(name);
+    return call<VortexRebuildReport>("vortex_rebuild_restore", { name });
+  },
+
 
   /**
    * 库整理：把历史收编产生的「伴生 .xl 独立成条」并回主体，并清掉主体不存在的

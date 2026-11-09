@@ -244,7 +244,10 @@ impl Store {
 
 fn sanitize_loaded_state(state: &mut AppStateData) {
     for entry in &mut state.mods {
-        if entry.enabled && entry.deployed_files.is_empty() {
+        // Vortex 托管条目（P4 重建）刻意不登记 deployed_files：物理文件由 Vortex
+        // 部署，启动器不能拿「清单为空」推断它没启用，否则每次启动都会把 225 个
+        // 模组全部强制禁用。
+        if entry.enabled && entry.deployed_files.is_empty() && entry.origin != "vortex" {
             entry.enabled = false;
         }
         // 展示名清洗是后加的能力，老库里的 name 还是 `!!!!_vbr_2.0_skin` 这种原始

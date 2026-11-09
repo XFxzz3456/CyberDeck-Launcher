@@ -10,6 +10,8 @@ import type {
   VortexReconcileReport,
   VortexSyncReport,
   VortexSyncStatus,
+  VortexRebuildPreview,
+  VortexRebuildReport,
   AiDiagnosis,
   AiStatus,
   AiFixProposal,
@@ -1558,6 +1560,67 @@ export const mockApi = {
       pendingCount: 0,
       driftCount: 0,
       warnings: ["演示模式不读取真实 Vortex 状态库"],
+    };
+  },
+
+  async vortexRebuildPreview(): Promise<VortexRebuildPreview> {
+    await sleep(80);
+    return {
+      available: false,
+      reason: "演示模式不读取本机 Vortex 存储根",
+      dataDir: "",
+      vortexRoot: "",
+      vortexDirs: 0,
+      currentMods: 0,
+      alreadyArchived: 0,
+      toAdd: 0,
+      toArchive: 0,
+      enabledCount: 0,
+      disabledCount: 0,
+      withDescription: 0,
+      withPicture: 0,
+      withNexus: 0,
+      metadataComplete: 0,
+      mappingCoverage: "0/0",
+      uncoveredArchives: [],
+      dataSources: [],
+      items: [],
+      warnings: [],
+    };
+  },
+
+  async vortexRebuildApply(): Promise<VortexRebuildReport> {
+    await sleep(80);
+    return {
+      ok: false,
+      reason: "演示模式不重建模组库",
+      backupName: "",
+      backupPath: "",
+      reportPath: "",
+      added: 0,
+      archived: 0,
+      mapping: 0,
+      warnings: [],
+    };
+  },
+
+  async vortexRebuildBackups(): Promise<string[]> {
+    await sleep(40);
+    return [];
+  },
+
+  async vortexRebuildRestore(_name: string): Promise<VortexRebuildReport> {
+    await sleep(80);
+    return {
+      ok: false,
+      reason: "演示模式不还原",
+      backupName: "",
+      backupPath: "",
+      reportPath: "",
+      added: 0,
+      archived: 0,
+      mapping: 0,
+      warnings: [],
     };
   },
 

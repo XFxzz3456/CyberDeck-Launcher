@@ -42,6 +42,7 @@ import { GlossaryShareCard } from "./GlossaryShareCard";
 import { HelpCenterView } from "./HelpCenterView";
 import { SafeModeCard } from "./SafeModeCard";
 import { VortexTakeoverCard } from "./VortexTakeoverCard";
+import { VortexRebuildCard } from "./VortexRebuildCard";
 import { gameVersionText } from "../lib/gameVersion";
 import { SettingsTabs, type SettingsTabId } from "./SettingsTabs";
 import type { Preferences, ThemeId } from "../lib/preferences";
@@ -1179,6 +1180,9 @@ export function SettingsView({
         >
           {/* Vortex 接管体检：P0 只读取证，不写状态库、不删文件 */}
           <VortexTakeoverCard onError={onError} />
+
+          {/* 以 Vortex 安装目录为权威重建库：预览 / 确认 / 备份 / 还原 */}
+          <VortexRebuildCard onError={onError} />
 
           {/* ── 播放集 / PROFILES ─────────────────────────── */}
           <section className="panel profile-panel">
