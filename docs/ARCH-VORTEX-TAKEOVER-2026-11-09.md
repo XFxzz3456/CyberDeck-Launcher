@@ -172,3 +172,35 @@ CyberDeck UI（唯一入口）
 - 真机验收 A1–A10（尤其 A2/A3 禁用后启动 Vortex、A4 modlist 不被 Vortex 改写）。
 
 **当前状态**：未升版（仍 1.3.1）、未构建 exe、未打便携 ZIP；按交付顺序先挂 localhost 验收，用户确认后才出包。
+
+---
+
+## 10. P1/P2 落地记录与清理（2026-11-09 第三批次）
+
+用户「完成下一轮，然后帮我清理」= 把 §7 的 P1（启用/禁用镜像）与 P2（加载顺序镜像）一并做完，再清理暂存现场。
+
+### 已实现
+
+- **双写层** `src-tauri/src/vortex_sync.rs`：五道硬门槛（开关 / Vortex 已退出 / profile / 精确映射 / 写前备份），批量写 `modState` 与 `loadOrders`，逐键回读校验，失败进 `pending.json` + `last-sync.json`，提供重试与一键还原。
+- **接入**：`set_mod_enabled`、`set_mods_enabled`、`save_load_order`、`save_redmod_order` 四个命令；守卫跑在本地事务之前，保证 A6「Vortex 开着时零写入、本地也不改」。
+- **前端**：设置页卡片加接管开关（开启前先校验 Vortex 已退出）、同步状态、重试、还原（二次确认）。
+- **单测** 6 条，全部用临时 LevelDB 目录，不碰真实状态库。
+- **A1–A10 真机验收仍未做**：开发会话没有写用户的真实 `state.v2`。请在 localhost 验收时开启开关、改一次启用状态、退出后启动 Vortex 核对，逐条走 §6。
+
+### 顺带修的判定错误
+
+`staging_health` 原按「目录名 == mod.id」判孤儿，44 个里有 **18 个仍被 `deployedFiles[].source` 引用**（目录名是旧收编 id）。已把 `stagingPath` 与部署源解析出的目录计入「在用」，单测补夹具。
+
+### 清理（只归档、不删除）
+
+按严格口径复核：真孤儿 **26 个 / 12,478,128 B / 989 文件**，分 3 批移动到
+`release/cyberdeck-data/backups/staging-orphans-20261109-2155/`（附 `RESTORE.md`，可原样搬回 `staging/`）。
+**保留**：18 个在用旧 id 目录、1 条已登记但暂存目录缺失的记录（`adopt-2768f94e6857836a` The Nullifier，只报告不重建）。
+完整清单见工作区 `CyberDeck-暂存清理报告-2026-11-09.md`。
+
+### 仍未做
+
+- `ModEntry.vortexModId` 持久化字段（映射目前每次现算）。
+- P3 全库批量 / 播放集切换的镜像、Mod 更新重做提示。
+- Vortex 侧手改后的「以 Vortex 反向同步」方向选择（当前默认只告警，不自动覆盖）。
+- 缺失暂存目录的重建（需单独确认）。

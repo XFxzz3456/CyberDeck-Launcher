@@ -47,11 +47,12 @@
 
 ---
 
-## [未发布] - 2026-11-09（全类型汉化 P1/P2 · 收编事故修复 · Vortex 接管 P0 取证）
+## [未发布] - 2026-11-09（全类型汉化 P1/P2 · 收编事故修复 · Vortex 接管 P0 取证 + P1/P2 双写 · 暂存清理）
 
 > 用户要求「把 P1 和 P2 做了」。P1 红线已放宽（允许覆盖，但必须备份原文档），本轮落地两条写入通道。
 > **真机未验**：WolvenKit CLI 参数形态与真实 Mod 样本需实机校准（见「已知边界」）。
 > 同日第二批次：用户两张截图报收编卡死与 159 条批量失败 → 修复三个缺陷；随后按拍板结论落地 Vortex 接管 P0 只读取证层。
+> 同日第三批次：用户「完成下一轮，然后帮我清理」→ 落地 P1/P2 双写（启用状态 + archive/redmod 顺序），并按严格口径归档真孤儿暂存目录。
 
 ### 新增
 
@@ -76,18 +77,38 @@
 - **回滚不再删库内资产**：`rollback_staging` 增加 `protected` 集合（批次开始时已登记的 id），`execute_inner` 额外拦截已登记候选，`scan` 把已登记且暂存目录存在的候选标 `already_managed`。现场曾有 44 个孤儿目录 + 1 条已登记模组暂存目录丢失。
 - 口径修正：`HANDOFF §0` 三处版本号示例仍写 `1.2.1`，改为 `1.3.1`。
 
+### 新增（第三批次：Vortex 接管 P1/P2 双写 + 暂存现场清理）
+
+- **`src-tauri/src/vortex_sync.rs`（双写层）**：把启用/禁用与加载顺序直接写进 Vortex `%APPDATA%\Vortex\state.v2`：
+  - 守卫：接管开启时，命令在本地事务**之前**校验状态库可写（Vortex 运行中即拒绝，本地也零改动）、活动 profile 属于 `cyberpunk2077`；开启开关本身也跑同一份前置校验。
+  - 写前快照：相关键原样导出到 `data_dir/vortex-mirror/backups/<stamp>.json`；一键还原命令可整份写回。
+  - 批量写：`modState###<modId>###enabled` + `enabledTime`/`disabledTime`、`loadOrders###<pid>###cyberpunk2077-archive|-redmod`；顺序重排保留原条目全部字段，本次未出现的 Vortex 条目追加到末尾，绝不丢记录。
+  - 回读校验：逐键比对；失败写 `pending.json` 队列并落 `last-sync.json`，界面可见「重试 / 还原」，不静默、不抛给本地事务。
+- **接入点**：`set_mod_enabled`、`set_mods_enabled`（批量）、`save_load_order`、`save_redmod_order` 四个命令全部先过守卫、成功后双写；顺序类命令返回结构没有 warnings 字段，靠 `vortex_sync_status` 回读最近一次结果。
+- **新增命令**：`vortex_takeover_set_enabled`、`vortex_sync_status`、`vortex_sync_retry`、`vortex_sync_restore`；`Settings` 新增 `vortex_takeover`（默认 false，旧状态文件 serde 兜底），接管关闭时旧行为完全不变。
+- **前端**：设置页卡片增加接管开关（开启前提示 Vortex 必须已退出）、同步状态（待同步数 / 备份数 / 上次成功或失败原因）、重试按钮、还原按钮（二次确认）。
+- **6 条新单测**：双写写入与回读、顺序重排保留字段、profile 不符拒绝、快照还原、接管关闭零副作用、活动 profile 回退（全部用临时 LevelDB 目录）。
+
+### 修复（第三批次）
+
+- **孤儿暂存目录判定口径过窄**：`vortex_mirror::staging_health` 原按「目录名 == mod.id」判孤儿，把 18 个仍被 `deployedFiles[].source` 引用的旧收编 id 目录误报成垃圾。改为把 `stagingPath` 与所有部署源解析出的目录一并计入「在用」，单测补了对应夹具。
+- **现场清理（只归档、不删除）**：严格口径复核后 **26 个真孤儿**（12,478,128 B / 989 文件）分 3 批移动到 `release/cyberdeck-data/backups/staging-orphans-20261109-2155/`，每批 10 个逐一校验，附 `RESTORE.md` 还原说明；18 个在用目录与 1 条缺失记录保持原状。报告 `CyberDeck-暂存清理报告-2026-11-09.md`（工作区）。
+
 ### 验证结果
 
-- `cargo test --lib`（core-tests）：**266 passed / 0 failed / 2 ignored**（基线 260 + 6 条）。
-- `cargo check`（生产 crate）通过；`npx tsc --noEmit` 0 错误；`npm run i18n:check` / `i18n:unused` 通过（新增 30 条文案全部被引用）。
-- `npm run gate`：**42/42 全绿**（327s 工时；首轮 2/42 失败已修：`core-tests` 普通 lib 编译缺 `rusty-leveldb` 依赖、新 CSS 字面 `font-weight: 500` 违反字重令牌门禁）。
+- `cargo test --lib`（core-tests）：**272 passed / 0 failed / 2 ignored**（基线 266 + 6 条双写单测）。
+- `cargo check`（生产 crate）通过；`npx tsc --noEmit` 0 错误；`npm run i18n:check` / `i18n:unused` 通过（第三批次新增 20 条文案全部被引用）；命令契约 `commands=154 registered=154 missing=0 unresolved=0`。
+- `npm run gate`：**42/42 全绿**（334s 工时；首轮因上一轮 dev 窗口占用 1420 端口被拒，关窗后重跑）。
+
 
 ### 已知边界
 
 - **真机样本未提供**：WolvenKit CLI 的 `convert serialize/deserialize`、`import --keep` 参数按 8.x/旧版多形态回退实现，尚未用真实 `.archive` 校准；CET/redscript 覆盖也需用真实 Mod 验证游戏内文字与卸载无残留。
 - P3（全库批量、Mod 更新重做提示）未做；动态拼接文本、加密资源仍标记 blocked。
-- **Vortex 接管 P0 只做取证**：未写 Vortex 状态库、未新增 `ModEntry.vortexModId` 持久化字段、未实现启用/顺序双写与快照还原；A1–A10 真机验收未做。P1 写入需单独授权。
-- **44 个孤儿暂存目录与 1 个缺失目录只列出、未清理**：清理/重建需用户单独确认。
+- **Vortex 接管 P1/P2 已实现但真机未验**：A2/A3（禁用后启动 Vortex 状态一致）、A4（modlist 不被 Vortex 改写）、A6（Vortex 开着时零写入）、A9（快照还原）需在真机上逐条验；开发会话**没有**写用户的真实 Vortex 状态库。
+- P3（全库批量、Mod 更新重做提示）未做；`ModEntry.vortexModId` 仍未持久化（映射每次按游戏侧相对路径现算）。
+- **1 条已登记模组 `adopt-2768f94e6857836a`（The Nullifier）暂存目录仍缺失**：本轮只报告未重建，避免覆盖；重建需单独确认。
+- 26 个真孤儿已移动归档（可逆），18 个在用旧 id 目录与缺失记录保持原状。
 - 159 条失败的最终 message 当时界面未显示，需悬停红色错误码取 tooltip 原文才能 100% 定案；修复后新失败会直接显示原因。
 - 未升版（三处仍 `1.3.1`）、未构建 exe、未打便携 ZIP；等 localhost 验收 + 用户确认。
 

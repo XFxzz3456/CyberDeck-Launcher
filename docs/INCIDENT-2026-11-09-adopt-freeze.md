@@ -56,3 +56,11 @@
 - `AdoptPreviewDialog` 内联展示 `error.message`，CSS 允许换行。
 - `rollback_staging` 接受 `protected` 集合；`execute_inner` 额外拦截已登记候选；`scan` 把已登记且暂存目录存在的候选标 `already_managed`。
 - 新增 `adopt_staging_health`（只读）与设置页「Vortex 接管体检」卡片，列出孤儿/缺失目录与 Vortex 状态漂移，**不删任何文件**。
+
+## 7. 后续发现（第三批次）
+
+清理时复核发现：初版「44 个孤儿」里其实有 **18 个仍被库内模组的 `deployedFiles[].source` 引用** —— 目录名是旧收编 id，条目后来被合并/重建，id 变了但部署源没变。按「目录名 == mod.id」判孤儿会把仍在使用的暂存目录当垃圾清掉，这是比原事故更隐蔽的一类误判。
+
+- 已修 `vortex_mirror::staging_health`：把 `stagingPath` 与所有 `source` 字段解析出的暂存子目录一并计入「在用」，单测补了「旧 id 目录不算孤儿」夹具。
+- 清理按严格口径执行：真孤儿 26 个（只移动归档，不删除），18 个在用目录与 1 条缺失记录保持原状。
+- **新约束**：任何「孤儿 / 残留 / 可清理」判定都必须把**所有引用来源**（部署清单、AI 产物、备份清单）纳入，不能只看主键相等。
