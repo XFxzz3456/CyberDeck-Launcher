@@ -117,6 +117,31 @@
 - **实测配准率 14/84（16.7%）**，比旧的 11/83 只多 3 条：70 个模组的 archive 文件名在 Vortex 存储根 225 个目录里**根本不存在**。这份 AppData 库（84 条全是 adopted/archive）与 Vortex 的 mod 目录是两批不同来源，不是算法漏配。
 - 因此「直接把 `stagingDir` 指向 Vortex mod 根」不是改路径，而是**以 Vortex 为准重建启动器库的数据迁移**：目录名契约不同（`adopt-xxx` vs `installationPath`）、Vortex 会增删该目录形成双写冲突、`Store` 只有全局单根。要让覆盖率接近 100%，需单独授权这次重建。
 
+### 新增（第六批次：以 Vortex 225 个安装目录为准重建模组库 · P4）
+
+用户拍板「做 1，因为我在游戏里实际用的就是那个 225 个 mod」。上一轮 P3 只改善配准，实测 **14/84（16.7%）** 能映射：AppData 库的 84 条 `adopted` 是游戏 `archive/pc/mod` 里的散装 archive，与 Vortex 的 225 个安装目录是**两批不同来源**（文件名交集只有 13 个），算法补不齐，只能换权威来源。
+
+- **三份只读数据源**：磁盘安装目录（权威清单，225 个）→ Vortex 自己的完整状态快照 `%APPDATA%/Vortex/temp/state_backups_full/hourly.json`（`persistent.mods.cyberpunk2077` 的 `attributes`）→ 实时 `state.v2` 的 `modState`（Vortex 运行时锁库则降级到快照并记 warning）。实测 225 个磁盘目录 = 225 条 json mods = 225 条启用态，3 条 `enabled=false` 是已删除模组的残留键（含 Perkware）。
+- **新模块 `src-tauri/src/vortex_rebuild.rs`**：`preview`（纯只读计划）/ `apply`（写前整库备份 → 归档 → 写入 → 迁移报告）/ `restore`（一键还原）/ `list_backups`。四个新命令均 `spawn_blocking`。
+- **数据安全四条**：① 旧条目整份移进 `AppStateData.archived_mods`，**只归档不删除**；② 执行前把 `launcher-state.json` 原字节复制到 `backups/vortex-rebuild/<时间戳>/`；③ 写独立 `migration-report.json`（计划 + 结果 + 告警）；④ 失败时内存与磁盘一起回退。预览里明确显示**本次会改动哪份库**（启动器按「exe 同级 `cyberdeck-data` 优先」选目录，dev / release / AppData 可能是三份不同的库）。
+- **Vortex 托管条目的行为**：`origin="vortex"`、`managed=false`、`deployed_files` 留空 —— 物理文件由 Vortex 部署，启动器不增删游戏目录文件。`set_mod_enabled` / `set_mods_enabled` 对这类条目短路物理部署，只改本地启用标记 + 双写 Vortex 状态库；`uninstall_mod` 明确拒绝并提示去 Vortex 卸载。
+- **像 Vortex 一样读元数据**（用户本轮追加要求）：从 `attributes` 读 `customFileName`（中文名，211/225）、`modName`、`logicalFileName`、`version`、`author` / `uploader`、`description`（HTML 清洗）、`pictureUrl`（封面）、`homepage` / `modId` / `fileId` / `newestVersion`（Nexus 引用）、`installTime`、`fileType`、`category`。分类用 Vortex 的 Nexus category id 走 `category::from_nexus_id` 映射到启动器十类，无映射时用内容证据 `infer_with_nexus` 兜底。落库到 `ModEntry.name / version / author / description / category / nexus / nexusCoverUrl / installedAt / updatedAt`。真实数据预测：描述 199 条、封面 225 条、Nexus 225 条、字段齐全 225 条。
+- **前端**：设置 → 工具新增「以 Vortex 为准重建模组库」卡片（`VortexRebuildCard.tsx`）——自动生成计划、显示数据目录 / 元数据完整度 / 数据来源 / 注意事项 / 未覆盖 archive / 计划条目，执行重建需二次确认，完成后给备份路径、迁移报告路径与备份列表的一键还原入口。红色只留给真错误。
+- **顺手修两个会让重建「看起来没生效」的隐患**：① `Store::save` 只落盘不回写内存，重建 / 还原 / 启停短路分支改为持锁改内存再写盘，否则界面要重启才更新；② 启动时 `sanitize_loaded_state` 会把「enabled 且 deployed_files 为空」的条目强制禁用，Vortex 托管条目必须豁免，否则 225 条每次启动被全部关掉。
+- **6 条新单测**：磁盘权威 + 快照元数据、实时 state.v2 覆盖快照、元数据落库（HTML 清洗 / 分类 / Nexus / 封面 / 安装时间）、归档→映射→整库还原精确一致、空目录拒绝重建、未覆盖 archive 只报告不触碰。
+
+### 边界与已知限制（第六批次）
+
+- **重建是显式操作**：不会自动发生，也不改 Vortex 状态库与游戏目录文件。新 exe 里进「设置 → 工具 → 以 Vortex 为准重建模组库」，卡片自动出计划，点「执行重建」后当前实例的主列表才变为 225 条。
+- **元是一次性快照**：Vortex 之后新装 / 升级 Mod 不会自动刷新，需再跑一次预览 + 重建；`hourly.json` 是 Vortex 每小时写一次的快照，启用态优先读实时 `state.v2`。
+- 游戏目录里有 **62 个 archive 不在 Vortex 存储根**（旧散装 / 手动放置），重建后不会被接管，文件也不删除；预览会逐条列出。
+- 物理部署仍由 Vortex 负责；启动器镜像启用状态与加载顺序，切到 Vortex 时状态一致，但要让文件生效仍需 Vortex 部署一次。这是 LevelDB 独占锁下的硬边界。
+- A1–A10 真机验收仍待做；`ModEntry.vortexModId` 仍不持久化（用 `AppStateData.vortexModIds` 映射表）。
+
+### 验证结果（第六批次）
+
+- 按改动等级跑：`cargo test --lib` **281 passed / 2 ignored**（+6）、生产 crate `cargo check` 通过、`tsc --noEmit` 0 错、i18n 双向通过、字重门禁通过、命令契约 **162/162**、`node scripts/gate.mjs --fast` 全绿。**未跑**与本次改动无关的 38 个 UI 脚本；发版链路内置的二次全量门禁由 `npm run release` 自动执行，结果回填在产物记录里。
+
 ### 验证结果
 
 - `cargo test --lib`（core-tests）：**272 passed / 0 failed / 2 ignored**（基线 266 + 6 条双写单测）。

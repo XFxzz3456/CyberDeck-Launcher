@@ -240,3 +240,42 @@ P3 把配准从「游戏侧文件交集」升级为「Vortex 存储根全量文�
 - 前端卡片新增四个入口与结果 Badge；3 条新单测（`cargo test --lib` 275 passed / 2 ignored）。
 - 按等级验证：Rust 全量单测 + 生产 crate `cargo check` + `gate --fast` + tsc / i18n 双向 / 字重 / 命令契约 158/158，未跑与本次改动无关的 38 个 UI 脚本。
 - **未升版、未构建 exe、未打便携 ZIP**；A1–A10 真机验收仍待做。
+
+
+---
+
+## 12. P4 落地：以 Vortex 225 个安装目录为准重建模组库（2026-11-09 第六批次）
+
+用户拍板「做 1」，并追加要求「能不能像 Vortex 一样读取 mod 的元数据」。
+
+### 为什么必须重建，而不是继续优化配准
+
+| 数据 | 数量 | 说明 |
+| --- | --- | --- |
+| Vortex 存储根 `d:\Vortex Mods\cyberpunk2077` | 225 个目录 / 5458 文件 | 玩家真正在用的模组，目录内是完整游戏相对路径（`archive/`、`bin/`、`r6/`…） |
+| Vortex `hourly.json` 的 `persistent.mods.cyberpunk2077` | 225 条 `installed` | `id` = `installationPath` = 磁盘目录名；`attributes` 带完整元数据 |
+| 活动 profile `tHYlht6Mz` 的 `modState` | 228 条（225 启用 + 3 禁用残留） | 225 条与磁盘目录 100% 对齐；3 条禁用的是已删除模组（含 Perkware） |
+| AppData 库 | 84 条 `adopted/archive` | 从游戏 `archive/pc/mod` 收编的散装文件，只有 13 个 archive 名在 Vortex 根里出现 |
+| 游戏目录 `archive/pc/mod` | 150 个 archive | 88 个来自 Vortex，62 个不在 Vortex 根 |
+
+配准率 11 → 14/84 上不去，不是算法漏配，而是**两批不同来源的数据**。要达到 100% 只能换权威来源。
+
+### 落地设计
+
+- **三份只读来源**：磁盘目录（权威）→ `hourly.json`（元数据）→ 实时 `state.v2` 的 `modState`（启用态；Vortex 运行时锁库则降级快照并记 warning）。
+- **可逆性**：旧条目整份进 `AppStateData.archived_mods`（不删除）、写前整库原字节备份、独立 `migration-report.json`、`vortex_rebuild_restore` 一键还原；写失败时内存与磁盘一起回退。
+- **预览先行**：`vortex_rebuild_preview` 纯只读，展示将新增 / 归档条数、映射覆盖率、**本次会改动哪份库**（启动器按 exe 同级 `cyberdeck-data` 优先选目录，dev / release / AppData 可能是三份不同的库）、数据来源、未覆盖 archive 与全部计划条目；前端必须二次确认才调 `apply`。
+- **Vortex 托管条目**：`origin="vortex"`、`managed=false`、`deployed_files` 留空。物理部署由 Vortex 负责；`set_mod_enabled` / `set_mods_enabled` 短路物理部署，只改本地标记 + 双写 `modState`；`uninstall_mod` 明确拒绝。`sanitize_loaded_state` 对这类条目豁免「无部署清单即禁用」规则。
+- **元数据**：`customFileName` / `modName` / `logicalFileName` → `name`；`version` / `author` / `uploader`；`description` HTML 清洗 → `description`；`pictureUrl` → `nexusCoverUrl`；`homepage` / `modId` / `fileId` / `newestVersion` → `NexusRef`；`installTime` → `installedAt`；Vortex `category`（Nexus id）→ `category::from_nexus_id` 映射到启动器十类，无映射时 `infer_with_nexus` 用文件内容兜底。真实数据预测：描述 199、封面 225、Nexus 225、字段齐全 225。
+- **一次性快照**：Vortex 后续新装 / 升级不会自动刷新，需再跑一次预览 + 重建。
+
+### 已知边界
+
+- 重建是显式操作，**不会自动改库**；新 exe 进「设置 → 工具 → 以 Vortex 为准重建模组库」执行后，当前实例主列表才变 225 条。
+- 62 个不在 Vortex 根的 archive 不被接管，文件也不删除；预览逐条列出。
+- 物理部署仍由 Vortex 负责；写 `state.v2` 后切到 Vortex 状态一致，但要让文件生效仍需 Vortex 部署一次（LevelDB 独占锁，无实时联动）。
+- A1–A10 真机验收仍待做。
+
+### 验证（按改动等级）
+
+`cargo test --lib` 281 passed / 2 ignored（+6 条 P4 单测）、生产 crate `cargo check`、`tsc` / i18n 双向 / 字重 / 命令契约 162/162、`gate --fast` 全绿；未跑与本次改动无关的 38 个 UI 脚本。
