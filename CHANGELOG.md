@@ -93,12 +93,20 @@
 
 - **孤儿暂存目录判定口径过窄**：`vortex_mirror::staging_health` 原按「目录名 == mod.id」判孤儿，把 18 个仍被 `deployedFiles[].source` 引用的旧收编 id 目录误报成垃圾。改为把 `stagingPath` 与所有部署源解析出的目录一并计入「在用」，单测补了对应夹具。
 - **现场清理（只归档、不删除）**：严格口径复核后 **26 个真孤儿**（12,478,128 B / 989 文件）分 3 批移动到 `release/cyberdeck-data/backups/staging-orphans-20261109-2155/`，每批 10 个逐一校验，附 `RESTORE.md` 还原说明；18 个在用目录与 1 条缺失记录保持原状。报告 `CyberDeck-暂存清理报告-2026-11-09.md`（工作区）。
+- **第四批次：红字清理 + 卡片重排（用户截图反馈）**：
+  - **对准了正确的库**：设置页体检读的是 `%APPDATA%\com.arol.cyberdeck\staging`（AppData 用户库），上一轮清理的是 `release/cyberdeck-data/staging`，两份库不同，所以截图红字没变。本轮按严格口径归档该库 **72 个真孤儿 / 3,547,927,234 B（3383.6 MiB）/ 75 文件**（8 批，只移动不删，附 RESTORE.md），18 个在用旧 id 目录保留。
+  - **重建 6 个缺失暂存目录**：该库 `deployedFiles[].linkType` 全为 `copy`（C: 暂存 ← D: 游戏跨卷），从游戏侧现存 target 复制回 source 与既有语义一致，共 10 文件 / 22.4 MiB，逐一校验大小；剩 1 个（Perkware / `adopt-08a0d5a83ffe5e20`）主体文件在两侧都不存在，如实保留、需重新收编。报告 `CyberDeck-暂存清理报告-AppData-2026-11-09.md`（工作区）。
+  - **红字按性质分级**：未接管时的「两侧 archive 顺序不一致」降级为中性提示（它本来就不是错误，接管开启才报红）；孤儿 / 需重新收编改为黄色 Badge，红色只留给真错误。
+  - **卡片排版重做**：`panel-head` 收主动作、`setting-item` 行式放开关、字段改两列 kv 网格、状态统一走 Badge、只读取证收进 `details` 折叠区；接管开关改同款 `btn btn-sm btn-primary/btn-ghost` 分段按钮。删掉自定义 flex 容器与未用文案。
+  - **修假成功**：「重试同步」原先无条件显示「重试完成」，接管未开 / 队列空也报成功；改为按 `VortexSyncReport.ok / written` 显示真实结果。
+  - **门禁按等级执行**：纯前端改动只跑 `tsc / i18n 双向 / 字重 / 命令契约 + gate --fast`（约 10s），不再跑全量 38 个 UI 脚本（此前误跑 344s，已纠正）。
 
 ### 验证结果
 
 - `cargo test --lib`（core-tests）：**272 passed / 0 failed / 2 ignored**（基线 266 + 6 条双写单测）。
 - `cargo check`（生产 crate）通过；`npx tsc --noEmit` 0 错误；`npm run i18n:check` / `i18n:unused` 通过（第三批次新增 20 条文案全部被引用）；命令契约 `commands=154 registered=154 missing=0 unresolved=0`。
 - `npm run gate`：**42/42 全绿**（334s 工时；首轮因上一轮 dev 窗口占用 1420 端口被拒，关窗后重跑）。
+- 第四批次：`tsc` 0 错、`i18n:check` / `i18n:unused` 通过（新增 16 条文案全引用、删 2 条未用）、字重门禁通过、命令契约 154/154、`node scripts/gate.mjs --fast` **全绿**（约 10s）。
 
 
 ### 已知边界
