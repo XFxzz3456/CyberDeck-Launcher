@@ -101,6 +101,7 @@ import {
 } from "./lib/notify";
 import { t } from "./i18n";
 import { OverlayProvider, useOverlay } from "./lib/overlay";
+import { installNativeMenuGuard, installReloadGuard } from "./lib/nativeMenu";
 
 /** Toast 上的可选动作按钮（由 toast() / showError() 透传到 ToastItem.action）。 */
 interface ToastAction {
@@ -194,6 +195,17 @@ function AppShell() {
   // 必须 passive:false，否则 preventDefault 无效、WebView 会自己再缩一次。
   const scaleRef = useRef(preferences.scale);
   scaleRef.current = preferences.scale;
+  // 关掉 WebView2 自带的浏览器右键菜单（返回/刷新/另存为/打印），只保留
+  // 应用自己的功能菜单；同时拦掉 F5 / Ctrl+R，避免重载把正在跑的导入冲掉。
+  useEffect(() => {
+    const removeMenuGuard = installNativeMenuGuard();
+    const removeReloadGuard = installReloadGuard();
+    return () => {
+      removeMenuGuard();
+      removeReloadGuard();
+    };
+  }, []);
+
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let dispose: (() => void) | undefined;
