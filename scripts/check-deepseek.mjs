@@ -94,7 +94,7 @@ await page.waitForTimeout(300);
 check("添加工具表单展开", (await page.locator(".tool-add-form").count()) === 1, "", "toolAddForm");
 
 // 侧栏固定工具（demo WolvenKit pinned=true）
-check("侧栏固定工具区出现", (await page.locator(".tool-nav-item:not(.quick-nav-item)").count()) === 1, "", "sidebarTool");
+check("侧栏固定工具区出现", (await page.locator(".tool-nav-item").count()) === 1, "", "sidebarTool");
 
 // ── 模块二：下载中心折线 + 拖拽区 ───────────────────────────────────
 await page.getByRole("button", { name: /下载中心/ }).click();

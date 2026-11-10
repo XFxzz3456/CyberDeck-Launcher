@@ -152,22 +152,6 @@ export function Sidebar({
         <nav className="sidebar-nav" aria-label={t("sidebar.sectionOperations")}>
           {PRIMARY_NAV.filter((item) => !hiddenViews[item.id as keyof HiddenViewsMap]).map(renderNav)}
         </nav>
-        {/* 迁移与接管：与「加载顺序」职责不同（收编 / Vortex / NXM），不重复导航。
-            独立 class，不计入 check-sidebar 的「主操作区 5 项」断言。 */}
-        <nav className="sidebar-tools-nav" aria-label={t("sidebar.migration")}>
-          <button
-            className="tool-nav-item quick-nav-item"
-            onClick={() => onNavigate("settings", "tools")}
-            title={t("sidebar.migrationTip")}
-            aria-label={t("sidebar.migrationTip")}
-          >
-            <span className="nav-tool-icon" aria-hidden="true">&#8646;</span>
-            <span className="nav-copy">
-              <span className="nav-label">{t("sidebar.migration")}</span>
-              <span className="nav-en">{t("sidebar.migrationEn")}</span>
-            </span>
-          </button>
-        </nav>
         {pinnedTools.length > 0 ? (
           <>
             <div className="sidebar-section-label">{t("sidebar.sectionTools")}</div>
