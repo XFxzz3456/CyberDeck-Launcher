@@ -121,9 +121,10 @@ export function ModCard({
             <Check size={12} strokeWidth={3} />
           </label>
         ) : null}
-        {mod.nexusCoverUrl ? (
-          // 有官方封面就用官方封面：真实截图比拼出来的几何图形有信息量。
-          // 加载失败（离线、图床挂了）交给 onError 回退到程序封面。
+        {!mod.coverPath && !mod.coverCachePath && mod.nexusCoverUrl ? (
+          // 三级回落：包内封面 → 本地缓存 → 远程地址。
+          // 远程只在两者都没有时才用：它每渲染一次就发一次请求，CDN 慢或被墙
+          // 就是一片空白（Vortex 能显示，是因为它先把图下载到本地）。
           <img
             className="mod-cover-photo"
             src={mod.nexusCoverUrl}
@@ -135,7 +136,12 @@ export function ModCard({
             }}
           />
         ) : null}
-        <CoverArt id={mod.id} name={mod.name} category={mod.category} coverPath={mod.coverPath} />
+        <CoverArt
+          id={mod.id}
+          name={mod.name}
+          category={mod.category}
+          coverPath={mod.coverPath ?? mod.coverCachePath}
+        />
         <div className="cover-topline">
           <span className={`card-state-badge state-${state}`}>
             <i />

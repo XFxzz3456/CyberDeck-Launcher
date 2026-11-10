@@ -16,6 +16,7 @@ mod collection;
 mod compat;
 mod config_pack;
 mod config_resolver;
+mod covers;
 mod deps;
 mod diagnostics;
 mod download_queue;
@@ -2734,6 +2735,34 @@ async fn ai_apply_action(
 ///
 /// 必须走 spawn_blocking：内部逐条串行请求 + 250ms 节流，几百个 Mod 时会跑几十秒，
 /// 直接放在异步运行时里会占住主线程。
+/// 封面缓存现状（文件数 / 占用 / 待补数量 / 目录）。
+#[tauri::command]
+fn cover_cache_stats(store: State<'_, Store>) -> AppResult<covers::CoverCacheStats> {
+    Ok(covers::stats(store.inner()))
+}
+
+/// 补全封面缓存。`ids` 为 None 表示全库；给了就只补这几个模组。
+///
+/// 网络 IO 必须离开事件循环线程：100 多张图按 4 并发也要好几秒。
+#[tauri::command]
+async fn cover_cache_fill(
+    app: tauri::AppHandle,
+    ids: Option<Vec<String>>,
+) -> AppResult<covers::CoverCacheReport> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        covers::fill(store.inner(), ids)
+    })
+    .await
+    .map_err(|err| CommandError::new("COVER_CACHE_TASK", format!("封面缓存线程异常：{err}")))?
+}
+
+/// 清空封面缓存（只删 `covers/` 下本程序写出的文件）。
+#[tauri::command]
+fn cover_cache_clear(store: State<'_, Store>) -> AppResult<covers::CoverCacheStats> {
+    covers::clear(store.inner())
+}
+
 #[tauri::command]
 async fn nexus_refresh_covers(app: tauri::AppHandle) -> AppResult<NexusCoverRefresh> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -4320,6 +4349,18 @@ pub fn run() {
             eprintln!("CyberDeck Launcher: data dir = {}", store.data_dir.display());
             app.manage(store);
 
+            // 封面缓存路径是**派生数据**：每次启动按「远程地址 + 磁盘上是否真有文件」重算。
+            // 用户手动清过 covers 目录、或从别处拷来的状态库，都能立刻对齐实际情况，
+            // 不必信状态文件里存的旧路径。
+            {
+                let store = app.state::<Store>();
+                let mut data = store
+                    .data
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                covers::refresh_paths(&mut data, &store.data_dir);
+            }
+
             let store = app.state::<Store>();
             let webview_profile = store.data_dir.join("EBWebView");
             drop(store);
@@ -4510,6 +4551,9 @@ pub fn run() {
             nexus_rollback_update,
             nexus_list_update_backups,
     nexus_refresh_covers,
+    cover_cache_stats,
+    cover_cache_fill,
+    cover_cache_clear,
     nexus_enrich_metadata,
     attach_mod_from_nexus,
     vortex_import_metadata,

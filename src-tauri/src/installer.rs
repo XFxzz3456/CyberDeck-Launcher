@@ -897,6 +897,8 @@ fn finalize_install(
                 .to_string_lossy()
                 .to_string()
         }),
+        // 新装进来的模组还没有联网缓存；下一次 `covers::fill` 会补上。
+        cover_cache_path: None,
         enabled: false,
         installed_at: now_iso(),
         updated_at: None,
@@ -3000,6 +3002,7 @@ mod tests {
             nexus: None,
             staging_path: format!("Z:/__cdl_test_missing__/{id}"),
             cover_path: None,
+            cover_cache_path: None,
             enabled: true,
             installed_at: "2026-11-10T00:00:00Z".to_string(),
             updated_at: None,
@@ -3188,6 +3191,7 @@ mod tests {
             nexus: None,
             staging_path: staging.to_string_lossy().to_string(),
             cover_path: None,
+            cover_cache_path: None,
             enabled: !files.is_empty(),
             installed_at: "2026-10-31T00:00:00Z".to_string(),
             updated_at: None,

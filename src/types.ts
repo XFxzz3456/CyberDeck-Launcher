@@ -97,6 +97,8 @@ export interface ModEntry {
   nexus: NexusRef | null;
   stagingPath: string;
   coverPath: string | null;
+  /** 从 Nexus 下载并缓存在本地的封面（绝对路径）。为空表示还没缓存。 */
+  coverCachePath: string | null;
   enabled: boolean;
   installedAt: string;
   updatedAt: string | null;
@@ -239,6 +241,8 @@ export interface ToolProbe {
 export interface Settings {
   writeModlist: boolean;
   autoBackup: boolean;
+  /** 自动把 Nexus 封面下载到本地缓存（设置页可关）。 */
+  autoCacheCovers: boolean;
   confirmUninstall: boolean;
   /** 点击关闭按钮时的行为：tray = 最小化到托盘，exit = 直接退出。 */
   closeBehavior: "tray" | "exit";
@@ -743,6 +747,29 @@ export interface NexusCoverRefresh {
   failed: number;
   skipped: number;
   message: string;
+}
+
+/** 封面本地缓存的现状。 */
+export interface CoverCacheStats {
+  /** 磁盘上的缓存文件数。 */
+  count: number;
+  /** 占用字节数。 */
+  bytes: number;
+  /** 缓存目录绝对路径。 */
+  dir: string;
+  /** 有 Nexus 封面地址但还没缓存的模组数。 */
+  pending: number;
+  /** 已经能显示封面的模组数（包内图 + 缓存命中）。 */
+  cached: number;
+}
+
+/** 一次「补全封面」的结果。 */
+export interface CoverCacheReport {
+  downloaded: number;
+  failed: number;
+  skipped: number;
+  bytes: number;
+  stats: CoverCacheStats;
 }
 
 /** 「补全 Nexus 信息」的结果统计。 */

@@ -1096,6 +1096,32 @@ function AppShell() {
     };
   }, []);
 
+  /**
+   * 首屏起来后补一次封面缓存。
+   *
+   * 只在启动时跑一遍：有 `nexusCoverUrl` 但本地没有图（`coverCachePath` 为空）
+   * 的模组，会在后台被下载到 `covers/`。失败不打扰用户——封面只是观感问题，
+   * 下次启动会自然重试；成功则刷新快照，让列表立刻换成真正的封面。
+   *
+   * 用 ref 而不是状态做闸门：`refresh()` 会换掉 snapshot，走状态会自己触发自己。
+   */
+  const coverFillStarted = useRef(false);
+  useEffect(() => {
+    if (!snapshot || coverFillStarted.current) return;
+    if (!snapshot.state.settings.autoCacheCovers) return;
+    coverFillStarted.current = true;
+    void (async () => {
+      try {
+        const report = await api.coverCacheFill();
+        if (report.downloaded === 0) return;
+        await refresh();
+        toast("ok", t("toast.coverCache.filled", { count: report.downloaded }));
+      } catch {
+        // 静默：启动阶段不弹网络错误，设置页里有手动的「补全缺失封面」可查。
+      }
+    })();
+  }, [snapshot, refresh, toast]);
+
   const loadDiagnostics = useCallback(async () => {
     setDiagLoading(true);
     try {

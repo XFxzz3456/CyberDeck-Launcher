@@ -250,6 +250,7 @@ mod tests {
             nexus: None,
             staging_path: format!("staging/{id}"),
             cover_path: None,
+            cover_cache_path: None,
             enabled,
             installed_at: crate::store::now_iso(),
             updated_at: None,

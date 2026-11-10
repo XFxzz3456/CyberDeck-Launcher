@@ -120,6 +120,12 @@ pub struct ModEntry {
     pub staging_path: String,
     #[serde(default)]
     pub cover_path: Option<String>,
+    /// 从 Nexus 下载并缓存在本地的封面图（`covers/<hash>.<ext>`，绝对路径）。
+    ///
+    /// 与 `cover_path` 分开：那个是**压缩包里自带**的图，这个是**联网抓来**的。
+    /// 分开存才能在清缓存时只抹掉后者，不必重新解包找图。
+    #[serde(default)]
+    pub cover_cache_path: Option<String>,
     pub enabled: bool,
     pub installed_at: String,
     #[serde(default)]
@@ -590,6 +596,9 @@ pub struct Settings {
     pub vortex_takeover: bool,
     #[serde(default = "default_true")]
     pub auto_backup: bool,
+    /// 自动把 Nexus 封面下载到本地缓存（默认开）。关掉后只在设置页手动「补全封面」时抓。
+    #[serde(default = "default_true")]
+    pub auto_cache_covers: bool,
     #[serde(default = "default_true")]
     pub confirm_uninstall: bool,
     /// 点击关闭按钮时的行为：`tray` = 最小化到托盘（默认），`exit` = 直接退出。
@@ -788,6 +797,7 @@ impl Default for Settings {
             write_modlist: false,
             vortex_takeover: false,
             auto_backup: true,
+            auto_cache_covers: true,
             confirm_uninstall: true,
             close_behavior: default_close_behavior(),
             close_ask: true,

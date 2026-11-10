@@ -210,7 +210,12 @@ export function ModDetailDrawer({
       >
         <header className={`drawer-hero cover-${mod.category}`}>
           <div className="drawer-hero-cover">
-            <CoverArt id={mod.id} name={mod.name} category={mod.category} coverPath={mod.coverPath} />
+            <CoverArt
+              id={mod.id}
+              name={mod.name}
+              category={mod.category}
+              coverPath={mod.coverPath ?? mod.coverCachePath}
+            />
           </div>
           <div className="drawer-hero-art" />
           <div className="drawer-hero-top">

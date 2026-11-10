@@ -679,6 +679,7 @@ fn to_entry(catalog: &CatalogEntry, game_root: Option<&Path>) -> ModEntry {
         nexus,
         staging_path: catalog.dir.to_string_lossy().to_string(),
         cover_path: None,
+        cover_cache_path: None,
         enabled: item.enabled,
         installed_at: meta.install_time.clone().unwrap_or_else(now_iso),
         updated_at: meta.install_time.clone(),

@@ -647,6 +647,7 @@ mod tests {
             // 不存在的目录：元数据读取会安静地返回空，正好覆盖"没有 info.json"。
             staging_path: format!("Z:/__cdl_test_missing__/{id}"),
             cover_path: None,
+            cover_cache_path: None,
             enabled: true,
             installed_at: "2026-10-30T00:00:00Z".to_string(),
             updated_at: None,

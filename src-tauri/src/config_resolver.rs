@@ -1209,6 +1209,7 @@ mod tests {
             nexus: None,
             staging_path: String::new(),
             cover_path: None,
+            cover_cache_path: None,
             enabled: false,
             installed_at: "2026-01-01T00:00:00Z".to_string(),
             updated_at: None,

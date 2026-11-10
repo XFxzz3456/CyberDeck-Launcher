@@ -14,6 +14,8 @@ import type {
   VortexSyncStatus,
   VortexRebuildPreview,
   VortexRebuildReport,
+  CoverCacheReport,
+  CoverCacheStats,
   EnvSnapshot,
   SaveScanReport,
   AiDiagnosis,
@@ -571,6 +573,25 @@ export const api = {
       };
     }
     return call<NexusCoverRefresh>("nexus_refresh_covers");
+  },
+
+  // ── 封面本地缓存 ────────────────────────────────────────────────
+  // 把 N 网封面下载到本地再显示：远程 URL 每渲染一次就发一次请求，CDN 慢/被墙
+  // 都会变成空白（Vortex 一直是这么做的，所以它的封面对得上）。
+  async coverCacheStats(): Promise<CoverCacheStats> {
+    if (!isTauri) return mockApi.coverCacheStats();
+    return call<CoverCacheStats>("cover_cache_stats");
+  },
+
+  /** `ids` 省略 = 全库补全；给了就只补这几个模组。 */
+  async coverCacheFill(ids?: string[]): Promise<CoverCacheReport> {
+    if (!isTauri) return mockApi.coverCacheFill(ids);
+    return call<CoverCacheReport>("cover_cache_fill", { ids: ids ?? null });
+  },
+
+  async coverCacheClear(): Promise<CoverCacheStats> {
+    if (!isTauri) return mockApi.coverCacheClear();
+    return call<CoverCacheStats>("cover_cache_clear");
   },
 
   /** 批量补全收编进来的模组的 Nexus 元数据（名称/作者/版本/分类/封面）。 */

@@ -1,0 +1,106 @@
+/* 设置页「封面缓存」卡片。
+   版式跟 VortexRebuildCard / SafeModeCard 同一套：panel + 数字行 + 说明。
+   数字用等宽字体（--mono），四个格子并排；窗口窄了就两列，再窄一列。 */
+
+.cover-cache-panel .cover-cache-head-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.cover-cache-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 10px;
+}
+
+.cover-cache-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.016);
+}
+
+.cover-cache-label {
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  color: var(--muted-2);
+  text-transform: uppercase;
+}
+
+.cover-cache-figure strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: var(--fw-title);
+  color: var(--text);
+}
+
+.cover-cache-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.cover-cache-path code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cover-cache-auto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.cover-cache-auto strong {
+  display: block;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  color: var(--text-2);
+}
+
+.cover-cache-auto small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--muted-2);
+}
+
+.cover-cache-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--accent-text);
+}
+
+.cover-cache-note-muted {
+  color: var(--muted-2);
+}
+
+@media (max-width: 900px) {
+  .cover-cache-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

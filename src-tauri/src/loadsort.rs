@@ -672,6 +672,7 @@ mod tests {
             nexus: None,
             staging_path: format!("Z:/__cdl_test_missing__/{id}"),
             cover_path: None,
+            cover_cache_path: None,
             enabled: true,
             installed_at: installed.to_string(),
             updated_at: None,

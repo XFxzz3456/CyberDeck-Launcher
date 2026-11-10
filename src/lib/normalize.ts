@@ -61,6 +61,7 @@ function normalizeMod(raw: unknown): ModEntry | null {
       : null,
     stagingPath: text(mod.stagingPath),
     coverPath: optionalText(mod.coverPath),
+    coverCachePath: optionalText(mod.coverCachePath),
     enabled: bool(mod.enabled, false),
     installedAt: text(mod.installedAt),
     updatedAt: optionalText(mod.updatedAt),
@@ -100,6 +101,7 @@ const SETTING_BOOL_KEYS = [
   "closeAsk",
   "writeModlist",
   "autoBackup",
+  "autoCacheCovers",
   "confirmUninstall",
   "nexusHideAdult",
   "nxmAutoDownload",
@@ -189,6 +191,7 @@ function normalizeState(raw: unknown, fallbackSettings: Settings): AppStateData 
 export const FALLBACK_SETTINGS: Settings = {
   writeModlist: false,
   autoBackup: true,
+  autoCacheCovers: true,
   confirmUninstall: true,
   closeBehavior: "tray",
   closeAsk: true,

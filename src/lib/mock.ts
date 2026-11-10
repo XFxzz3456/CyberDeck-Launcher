@@ -75,7 +75,7 @@ import type {
   DeepScanRef,
   DeepScanReport, StagingMoveReport, ToolProbe,
   DownloadTask, DownloadQueueSettings, ProfileImportReport, BatchEnableReport,
-  ExternalToolEntry, DriveSuggestion } from "../types";
+  ExternalToolEntry, DriveSuggestion, CoverCacheReport, CoverCacheStats } from "../types";
 import type { CollectionDeployReport } from "./collection";
 import type { ApiSurface } from "./api";
 import type { CollectionPlan } from "./collection";
@@ -185,6 +185,7 @@ function cloneModConfig(sources: ModConfigSource[]): ModConfigSource[] {
 const DEFAULT_SETTINGS: Settings = {
   writeModlist: false,
   autoBackup: true,
+  autoCacheCovers: true,
   confirmUninstall: true,
   closeBehavior: "tray",
   closeAsk: true,
@@ -281,6 +282,7 @@ function baseMod(
     nexus: null,
     stagingPath: `${DEMO_DATA}\\staging\\${id}\\payload`,
     coverPath: null,
+    coverCachePath: null,
     enabled,
     installedAt: iso(8),
     updatedAt: iso(1),
@@ -2590,6 +2592,52 @@ export const mockApi = {
   async refreshNexusCovers(): Promise<NexusCoverRefresh> {
     await sleep(200);
     return { updated: 0, failed: 0, skipped: 0, message: "演示模式：没有需要回源的封面。" };
+  },
+
+  // 演示模式的封面缓存：不落盘，只按当前库算一遍统计，保证设置页能打开。
+  async coverCacheStats(): Promise<CoverCacheStats> {
+    await sleep(120);
+    const data = loadDb();
+    const pending = data.state.mods.filter((mod) => mod.nexusCoverUrl && !mod.coverPath).length;
+    return {
+      count: 0,
+      bytes: 0,
+      dir: `${DEMO_DATA}\\covers`,
+      pending,
+      cached: data.state.mods.length - pending,
+    };
+  },
+
+  async coverCacheFill(ids?: string[]): Promise<CoverCacheReport> {
+    await sleep(260);
+    const data = loadDb();
+    const pending = data.state.mods.filter((mod) => mod.nexusCoverUrl && !mod.coverPath).length;
+    return {
+      downloaded: 0,
+      failed: 0,
+      skipped: ids ? ids.length : pending,
+      bytes: 0,
+      stats: {
+        count: 0,
+        bytes: 0,
+        dir: `${DEMO_DATA}\\covers`,
+        pending,
+        cached: data.state.mods.length - pending,
+      },
+    };
+  },
+
+  async coverCacheClear(): Promise<CoverCacheStats> {
+    await sleep(180);
+    const data = loadDb();
+    const pending = data.state.mods.filter((mod) => mod.nexusCoverUrl && !mod.coverPath).length;
+    return {
+      count: 0,
+      bytes: 0,
+      dir: `${DEMO_DATA}\\covers`,
+      pending,
+      cached: data.state.mods.length - pending,
+    };
   },
 
   /** 演示模式没有 Nexus 元数据可查，返回零变更统计。 */

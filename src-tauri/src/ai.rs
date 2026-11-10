@@ -2877,6 +2877,7 @@ mod tests {
             nexus: None,
             staging_path: format!("mods/{id}"),
             cover_path: None,
+            cover_cache_path: None,
             enabled: true,
             installed_at: now_iso(),
             updated_at: None,

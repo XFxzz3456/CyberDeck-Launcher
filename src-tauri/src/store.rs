@@ -641,6 +641,7 @@ mod staging_dir_tests {
                 nexus: None,
                 staging_path: "Z:/__cdl_test_missing__".to_string(),
                 cover_path: None,
+                cover_cache_path: None,
                 enabled: false,
                 installed_at: "2026-10-01T00:00:00Z".to_string(),
                 updated_at: None,

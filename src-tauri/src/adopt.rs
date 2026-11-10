@@ -684,6 +684,7 @@ fn build_entry(
         nexus,
         staging_path: staging_dir.to_string_lossy().to_string(),
         cover_path: None,
+        cover_cache_path: None,
         enabled: true,
         installed_at: now_iso(),
         updated_at: None,

@@ -110,7 +110,8 @@ export function ModRow({
       ) : null}
 
       <div className="row-thumb">
-        {mod.nexusCoverUrl ? (
+        {/* 三级回落同卡片视图：包内封面 → 本地缓存 → 远程地址兜底。 */}
+        {!mod.coverPath && !mod.coverCachePath && mod.nexusCoverUrl ? (
           <img
             src={mod.nexusCoverUrl}
             alt=""
@@ -125,7 +126,7 @@ export function ModRow({
           id={mod.id}
           name={mod.name}
           category={mod.category}
-          coverPath={mod.coverPath}
+          coverPath={mod.coverPath ?? mod.coverCachePath}
           className="cover-thumb"
         />
       </div>

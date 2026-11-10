@@ -634,6 +634,29 @@ export const zhCN = {
     unmanagedCopy: "这个文件不是启动器部署的，默认不覆盖。移走或改名后重试。",
     unmanagedTitle: "游戏目录里已有同名文件",
   },
+  coverCache: {
+    title: "封面缓存",
+    intro:
+      "模组封面优先读本地：压缩包里自带的图直接用，没有就把 Nexus 封面下载到本机。远程地址每渲染一次就要发一次请求，网络慢的时候封面就是空白——Vortex 显示得出来，是因为它一直先把图存到本地。",
+    fill: "补全缺失封面",
+    clear: "清理缓存",
+    cachedLabel: "可显示封面",
+    filesLabel: "缓存文件",
+    sizeLabel: "占用空间",
+    pendingLabel: "待补全",
+    pendingBadge: "可补",
+    openDir: "打开缓存目录",
+    autoTitle: "启动时自动补全封面",
+    autoHint: "关闭后只在点「补全缺失封面」时才联网下载。",
+    error: "读取封面缓存信息失败",
+    fillDone: "已缓存 {count} 张封面",
+    fillFailed: "{count} 张下载失败（官网无图或网络问题），稍后可再试",
+    fillNothing: "没有需要补全的封面。",
+    fillError: "补全封面失败",
+    clearDone: "缓存已清空，重新进入页面会重新生成。",
+    clearError: "清理缓存失败",
+    emptyHint: "还没有缓存任何封面。"
+  },
   danger: {
     clickDetail: "按住按钮约 {seconds} 秒才会执行；中途松开立即取消。",
     clickTitle: "这个操作不能靠一次点击完成",
@@ -2142,6 +2165,9 @@ export const zhCN = {
       noArchiveTitle: "没有可导入的压缩包",
       partialTitle: "{ok} 个导入成功，{failed} 个失败",
       partialDetail: "失败的条目没有生成任何文件，可以单独重试。",
+    },
+    coverCache: {
+      filled: "已把 {count} 张封面缓存到本机",
     },
     metadata: {
       attachedDetail: "名称、作者、版本、封面都已更新。",
