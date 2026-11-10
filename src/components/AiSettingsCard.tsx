@@ -417,7 +417,7 @@ export function AiSettingsCard({
               ))}
             </select>
           </div>
-          <small>{selectedModel ? selectedModel.note : t("aiSettings.modelPresetHint")}</small>
+          <small>{selectedModel ? t(selectedModel.noteKey) : t("aiSettings.modelPresetHint")}</small>
           {baseUrl.trim() && baseUrl.trim() !== active.baseUrl ? (
             <small>{t("aiSettings.baseUrlSuggestion", { url: active.baseUrl })}</small>
           ) : null}

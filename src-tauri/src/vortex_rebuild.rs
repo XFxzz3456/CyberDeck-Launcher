@@ -744,7 +744,7 @@ pub fn apply_with_catalog(store: &Store, catalog: &Catalog) -> AppResult<VortexR
 
     // Store::save 只落盘、不回写内存；必须直接改内存快照并持锁写盘，
     // 否则重建后界面仍显示旧库，直到重启才变。
-    let mut guard = store.data.lock().expect("state mutex poisoned");
+    let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let original = guard.clone();
     let game_root = guard.game_dir.as_ref().map(PathBuf::from);
     let entries = catalog
@@ -865,7 +865,7 @@ pub fn restore(store: &Store, name: &str) -> AppResult<VortexRebuildReport> {
     })?;
     let archived = data.mods.len();
     // 与 apply 同理：save 只落盘，必须同步内存，否则还原后界面还是重建后的库。
-    let mut guard = store.data.lock().expect("state mutex poisoned");
+    let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     *guard = data.clone();
     if let Err(err) = store.save(&guard) {
         return Err(CommandError::new(
@@ -1021,7 +1021,7 @@ mod tests {
         // 写前备份复制的是磁盘上的 state 文件，所以夹具必须先落盘；
         // Store::save 不回写内存，再手动同步内存快照。
         store.save(&data).unwrap();
-        *store.data.lock().expect("state mutex poisoned") = data;
+        *store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = data;
 
         let catalog = build_catalog(&vortex, Some(&meta), None, None);
         let plan = plan_from_catalog(&store, &catalog);

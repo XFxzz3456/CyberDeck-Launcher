@@ -211,7 +211,7 @@ fn reinstall_from_backup(
     // 当前版本如果还部署着，必须先卸干净，否则会和新装的抢同一批文件。
     if game.is_none() {
         let deployed = {
-            let data = store.data.lock().expect("state mutex poisoned");
+            let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             data.mods
                 .iter()
                 .find(|item| item.id == backup.entry_id)
@@ -240,7 +240,7 @@ fn reinstall_from_backup(
     restored.id = backup.entry_id.clone();
     restored.enabled = backup.enabled;
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods.push(restored.clone());
         store.save(&data)?;
     }
@@ -260,7 +260,7 @@ pub fn apply_update(
     entry_id: &str,
 ) -> AppResult<UpdateApplyItem> {
     let entry = {
-        let data = store.data.lock().expect("state mutex poisoned");
+        let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods
             .iter()
             .find(|item| item.id == entry_id)
@@ -324,7 +324,7 @@ pub fn apply_update(
         fresh.raw_name = entry.raw_name.clone();
     }
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods.push(fresh.clone());
         store.save(&data)?;
     }

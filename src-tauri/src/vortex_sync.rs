@@ -17,7 +17,7 @@ use crate::schema::{
     AppResult, CommandError, VortexDriftItem, VortexPrelaunchReport,
     VortexReconcileReport, VortexSyncReport,
 };
-use crate::store::Store;
+use crate::store::{write_atomic, Store};
 use rusty_leveldb::{DB, LdbIterator, Options};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -170,7 +170,7 @@ fn save_pending(store: &Store, items: &[SyncChanges]) -> AppResult<()> {
     })?;
     let raw = serde_json::to_string_pretty(items)
         .map_err(|err| CommandError::new("VORTEX_MIRROR_IO", err.to_string()))?;
-    std::fs::write(pending_path(store), raw)
+    write_atomic(&pending_path(store), raw.as_bytes())
         .map_err(|err| CommandError::new("VORTEX_MIRROR_IO", format!("无法写待同步队列：{err}")))
 }
 
@@ -623,7 +623,7 @@ pub fn reconcile(store: &Store, dir: &Path, strategy: &str) -> VortexReconcileRe
             }
         }
         "vortex" => {
-            let mut guard = store.data.lock().expect("state mutex poisoned");
+            let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             for entry in guard.mods.iter_mut() {
                 if let Some(vortex_id) = mapping.get(&entry.id) {
                     if let Some(value) = enabled.get(vortex_id) {

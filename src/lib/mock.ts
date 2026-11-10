@@ -5,6 +5,7 @@ import type {
   AdoptStagingHealth,
   LibraryNormalizeReport,
   VortexTakeoverPreflight,
+  VortexCoverageReport,
   VortexMappingReport,
   VortexPrelaunchReport,
   VortexReconcileReport,
@@ -1534,6 +1535,17 @@ export const mockApi = {
   async vortexSyncRestore(_name: string): Promise<number> {
     await sleep(80);
     return 0;
+  },
+
+  async vortexCoverage(): Promise<VortexCoverageReport> {
+    await sleep(80);
+    return {
+      root: "D:////Vortex Mods////cyberpunk2077",
+      total: 0,
+      mapped: 0,
+      unmapped: [],
+      truncated: false,
+    };
   },
 
   async vortexMappingRebuild(): Promise<VortexMappingReport> {

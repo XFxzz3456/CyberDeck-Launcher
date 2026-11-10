@@ -29,6 +29,8 @@ import { categoryLabel, t } from "../i18n";
 import type { ModEntry } from "../types";
 import type { View } from "./Sidebar";
 import { Kbd } from "./ui";
+import { useOverlayLayer } from "../lib/overlay";
+import { useFocusTrap } from "../lib/focusTrap";
 
 interface PaletteItem {
   id: string;
@@ -102,6 +104,12 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  // 登记进全局浮层栈：面板开着时 Ctrl+K / Ctrl+Enter 不再穿透。
+  // Esc 面板自己处理（见 onKeyDown），这里只借栈。
+  useOverlayLayer("command-palette", open, onClose, { esc: false, manageFocus: false });
+  // aria-modal 说了「模态」就得真的把 Tab 关在面板里，否则 Tab 会跑到背景按钮上。
+  useFocusTrap(panelRef, open);
 
   useEffect(() => {
     if (!open) return;
@@ -236,7 +244,14 @@ export function CommandPalette({
   return (
     <div className="command-portal" role="presentation" onKeyDown={onKeyDown}>
       <button className="command-backdrop" onClick={onClose} aria-label={t("palette.closeAria")} />
-      <section className="command-panel" role="dialog" aria-modal="true" aria-label={t("palette.dialogAria")}>
+      <section
+        className="command-panel"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("palette.dialogAria")}
+      >
         <div className="command-input-row">
           <Search size={17} />
           <input

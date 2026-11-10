@@ -753,7 +753,14 @@ pub fn emit_overlays(
             let _ = fs::create_dir_all(&back_dir);
             match deserialize_cr2w(cli_path, readable, &back_dir) {
                 Ok(converted) => {
-                    let _ = fs::copy(&converted, cr2w);
+                    // 回写失败不能算「已汉化」：以前 `let _ =` 把错误吞了，界面显示成功、
+                    // 游戏里还是原文，用户只会怀疑是不是没生效（2026-11-10 自检 P1-6）。
+                    if let Err(err) = fs::copy(&converted, cr2w) {
+                        outcome
+                            .warnings
+                            .push(format!("译文回写失败 {}：{err}", cr2w.display()));
+                        continue;
+                    }
                     if first_rel.is_none() {
                         first_rel = cr2w
                             .strip_prefix(&work.unbundle_dir)

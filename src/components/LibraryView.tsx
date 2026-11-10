@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useDismissableMenu } from "../lib/useDismissableMenu";
 import {
   AlertTriangle,
   ArrowDown,
@@ -280,8 +289,25 @@ export function LibraryView({
   // 不订阅的话，在详情页点「忽略此提示」后列表仍是旧结果，用户以为没生效。
   const depIgnoresRev = useSyncExternalStore(subscribeDepIgnores, depIgnoresVersion);
 
+  // 搜索用 deferred 值过滤：输入框的每次按键都不再同步跑一遍全库过滤 + 排序，
+  // 251 条时能明显少掉卡顿（2026-11-10 自检 P2·渲染性能）。输入本身仍是即时的。
+  const deferredSearch = useDeferredValue(search);
+
+  /**
+   * 缺前置清单只跟「模组集合 + 依赖报告 + 框架状态 + 忽略表」有关，跟筛选/排序无关。
+   * 先算成一张表：筛选循环和每张可见卡片都查表，避免同一条模组在一次渲染里被算两遍
+   * （251 条时可见卡片十几张，每次滚动/输入都重算一遍纯属浪费）。
+   */
+  const missingDepsById = useMemo(() => {
+    const table = new Map<string, string[]>();
+    for (const mod of mods) {
+      table.set(mod.id, missingDependencyNames(mod, dependencyReport, frameworks));
+    }
+    return table;
+  }, [mods, dependencyReport, frameworks, depIgnoresRev]);
+
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+    const needle = deferredSearch.trim().toLowerCase();
     let result = mods.filter((mod) => {
       if (mod.parentModId) return false;
       // 状态筛选与左侧分类筛选是两条独立维度，可以叠加（例：框架 + 已禁用）。
@@ -289,7 +315,7 @@ export function LibraryView({
       if (statusFilter === "disabled" && mod.enabled) return false;
       if (
         statusFilter === "missing" &&
-        missingDependencyNames(mod, dependencyReport, frameworks).length === 0
+        (missingDepsById.get(mod.id)?.length ?? 0) === 0
       ) {
         return false;
       }
@@ -313,7 +339,7 @@ export function LibraryView({
     // 这里不再按字段写一串 if——否则每加一列就要在这里再补一遍方向逻辑。
     result = [...result].sort((a, b) => compareMods(a, b, sort, sortDir));
     return result;
-  }, [mods, category, search, sort, sortDir, statusFilter, dependencyReport, frameworks, depIgnoresRev]);
+  }, [mods, category, deferredSearch, sort, sortDir, statusFilter, missingDepsById]);
 
   // 折叠键带分组维度前缀（status:on / author:xxx / 分类名…），换维度不会误用旧状态。
   const toggleGroup = (key: string) => {
@@ -351,7 +377,18 @@ export function LibraryView({
     [filtered, collapsedGroups, groupMode, view, groupBy],
   );
 
-  const conflictTargets = new Set(conflicts.map((conflict) => conflict.target.toLowerCase())).size;
+  // 这两个集合以前每次渲染都重建：`new Set(...)` 引用不同，会让
+  // VirtualModGrid / ModCard 的 props 每帧都变，卡片上的 memo 全部失效
+  // （2026-11-10 自检 P2·渲染性能）。
+  const conflictTargets = useMemo(
+    () => new Set(conflicts.map((conflict) => conflict.target.toLowerCase())).size,
+    [conflicts],
+  );
+  // 有更新的条目集合：传给虚拟列表做角标，同样不能每帧重建。
+  const updateIds = useMemo(
+    () => (updateMap && updateMap.size > 0 ? new Set(updateMap.keys()) : undefined),
+    [updateMap],
+  );
   const pendingConflicts = conflicts.filter((conflict) => conflict.pending).length;
 
   // 「翻译名称」只在真有未翻译的模组时才需要点。
@@ -441,96 +478,11 @@ export function LibraryView({
   const [catMenuOpen, setCatMenuOpen] = useState(false);
   const catMenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!importMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (importMenuRef.current && !importMenuRef.current.contains(event.target as Node)) {
-        setImportMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setImportMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [importMenuOpen]);
-
-  useEffect(() => {
-    if (!enrichMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (enrichMenuRef.current && !enrichMenuRef.current.contains(event.target as Node)) {
-        setEnrichMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEnrichMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [enrichMenuOpen]);
-
-  useEffect(() => {
-    if (!aiMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (aiMenuRef.current && !aiMenuRef.current.contains(event.target as Node)) {
-        setAiMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAiMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [aiMenuOpen]);
-
-  useEffect(() => {
-    if (!catMenuOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (catMenuRef.current && !catMenuRef.current.contains(event.target as Node)) {
-        setCatMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCatMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [catMenuOpen]);
-
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (overflowRef.current && !overflowRef.current.contains(event.target as Node)) {
-        setOverflowOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOverflowOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [overflowOpen]);
-
+  useDismissableMenu(importMenuOpen, importMenuRef, () => setImportMenuOpen(false));
+  useDismissableMenu(enrichMenuOpen, enrichMenuRef, () => setEnrichMenuOpen(false));
+  useDismissableMenu(aiMenuOpen, aiMenuRef, () => setAiMenuOpen(false));
+  useDismissableMenu(catMenuOpen, catMenuRef, () => setCatMenuOpen(false));
+  useDismissableMenu(overflowOpen, overflowRef, () => setOverflowOpen(false));
   /* 工具栏密度自适应（2026-11-01 用户反馈「列表和补全按钮重叠」）。
    *
    * 为什么不用 @container 固定阈值：全显示实际需要 927px，之前写的 860 留下
@@ -1406,13 +1358,10 @@ export function LibraryView({
               }
               onToggleGroup={toggleGroup}
               conflicts={conflicts}
-              frameworks={frameworks}
-              dependencyReport={dependencyReport}
+              missingDepsById={missingDepsById}
               translationCounts={translationCounts}
               busyId={busyId}
-              updateIds={
-                updateMap && updateMap.size > 0 ? new Set(updateMap.keys()) : undefined
-              }
+              updateIds={updateIds}
               selectable={selectMode}
               selectedIds={selectedIds}
               onSelectChange={toggleSelected}

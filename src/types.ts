@@ -1257,6 +1257,16 @@ export interface VortexSyncStatus {
 }
 
 // ── Vortex 接管 P3 ───────────────────────────────────────────────────
+/** 接管覆盖率（只读）：配准能覆盖多少条、漏的是谁。 */
+export interface VortexCoverageReport {
+  /** Vortex 存储根；null = 这台机器上没找到。 */
+  root: string | null;
+  total: number;
+  mapped: number;
+  unmapped: string[];
+  truncated: boolean;
+}
+
 export interface VortexMappingReport {
   total: number;
   mapped: number;

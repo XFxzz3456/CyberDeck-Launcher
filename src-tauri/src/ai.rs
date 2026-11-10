@@ -564,6 +564,39 @@ struct AiActionPayload {
     position: Option<String>,
 }
 
+/// 校验 AI 接口地址：必须 `http(s)://` + 有主机名。
+///
+/// 只做「协议与主机存在」这一层，**不拦内网/回环**——本机 Ollama
+/// （`http://127.0.0.1:11434`）是官方支持的用法。但 `file://` / `javascript:` /
+/// `ftp://` 这类地址必须拒：请求发不出去是小事，把 API Key 塞进语义完全不同的
+/// 协议里才是真问题。2026-11-10 自检 P0-3：`config_pack` 导入曾绕过 `set_settings`
+/// 的检查直接写库，这里补一个可复用口径。
+pub(crate) fn validate_base_url(base: &str) -> Result<(), String> {
+    let trimmed = base.trim();
+    if trimmed.is_empty() {
+        return Err("接口地址不能为空。".into());
+    }
+    if trimmed.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err("接口地址里不能有空格或控制字符。".into());
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let rest = if lower.starts_with("https://") {
+        &trimmed["https://".len()..]
+    } else if lower.starts_with("http://") {
+        &trimmed["http://".len()..]
+    } else {
+        return Err("接口地址必须以 http:// 或 https:// 开头。".into());
+    };
+    // 主机名取到第一个 / ? # 为止；去掉可能存在的 user:pass@。
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    let host_only = host.split(':').next().unwrap_or("");
+    if host_only.is_empty() {
+        return Err("接口地址缺少主机名。".into());
+    }
+    Ok(())
+}
+
 fn normalize_base_url(base: &str) -> String {
     let trimmed = base.trim().trim_end_matches('/');
     if trimmed.ends_with("/chat/completions") {
@@ -1621,7 +1654,7 @@ fn persist_translations(
     model: &str,
     at: &str,
 ) -> AppResult<()> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut changed = false;
     for entry in data.mods.iter_mut() {
         let Some(translated) = updates.get(&entry.id) else {
@@ -2894,7 +2927,7 @@ mod tests {
         let store = Store::load(root.join("data")).unwrap();
         secret::save(&key_path(&store), "sk-local-test").unwrap();
         {
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             data.settings.ai_base_url = format!("http://{address}");
             data.settings.ai_model = "local-test".to_string();
             data.mods = vec![
@@ -2953,7 +2986,7 @@ mod tests {
             .join(format!("ai-translate-empty-{}", uuid::Uuid::new_v4().simple()));
         let store = Store::load(root.join("data")).unwrap();
         {
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             // 故意给一个不可达地址，并**不**写 API Key：只要实现试图联网就会直接报错。
             data.settings.ai_base_url = "http://127.0.0.1:1".to_string();
             data.settings.ai_model = "local-test".to_string();

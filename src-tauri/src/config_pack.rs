@@ -84,6 +84,20 @@ pub struct ImportReport {
     /// 导入后需要重新校验游戏目录（路径来自另一台机器时几乎总是 true）。
     pub needs_game_reverify: bool,
     pub profiles: usize,
+    /// 包里带了「敏感项」但与当前值不同：默认**不写入**，等用户确认。
+    pub sensitive: Vec<SensitiveChange>,
+}
+
+/// 一项「会改变数据流向或执行对象」的设置。
+///
+/// 只带 `key`（camelCase），不给文案——中文标签在前端词表里，后端出文案会绕开 i18n 门禁。
+/// `from` / `to` 原样展示，用户才能看出「这份包想把我连到哪台服务器」。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SensitiveChange {
+    pub key: String,
+    pub from: String,
+    pub to: String,
 }
 
 fn collect_pack(data: &crate::schema::AppStateData, app_version: &str) -> ConfigPack {
@@ -144,13 +158,19 @@ pub fn export_to_data_dir(store: &Store, app_version: &str) -> AppResult<String>
 }
 
 /// 从文件导入。任何校验失败都中止，状态保持原样。
-pub fn import_from(store: &Store, path: &Path) -> AppResult<ImportReport> {
+pub fn import_from(store: &Store, path: &Path, apply_sensitive: bool) -> AppResult<ImportReport> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| CommandError::new("CONFIG_PACK_READ", format!("无法读取配置文件：{e}")))?;
-    import_text(store, &raw)
+    import_text(store, raw.as_str(), apply_sensitive)
 }
 
-pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
+/// `apply_sensitive = false` 时，`aiBaseUrl / wolvenkitCliPath / archiveToolPath / launchArgs`
+/// 这四项**不写入**，只放进返回值的 `sensitive` 清单等用户确认。
+///
+/// 这四项是「信任边界」：改了 base URL 就等于把 API Key 发给另一个地址，改了工具路径
+/// 就等于让对方指定一个 exe 在本机执行。配置文件是可以随便转发的文本，不能因为
+/// 「用户点了导入」就默认拥有这些权力。
+pub fn import_text(store: &Store, raw: &str, apply_sensitive: bool) -> AppResult<ImportReport> {
     let pack: ConfigPack = serde_json::from_str(raw).map_err(|e| {
         CommandError::new(
             "CONFIG_PACK_INVALID",
@@ -166,16 +186,33 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
 
     let mut applied: Vec<String> = Vec::new();
     let mut ignored: Vec<String> = Vec::new();
+    let mut sensitive: Vec<SensitiveChange> = Vec::new();
     let needs_game_reverify;
 
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let s = pack.settings.clone();
         let target = &mut data.settings;
 
-        if !s.ai_base_url.trim().is_empty() {
-            target.ai_base_url = s.ai_base_url.trim().to_string();
-            applied.push("aiBaseUrl".into());
+        // ── 敏感项（见 import_text 文档）：默认只登记、不写入 ──
+        let ai_url = s.ai_base_url.trim();
+        if !ai_url.is_empty() && ai_url != target.ai_base_url.trim() {
+            if apply_sensitive {
+                crate::ai::validate_base_url(ai_url).map_err(|reason| {
+                    CommandError::new(
+                        "CONFIG_PACK_BASE_URL",
+                        format!("配置文件里的 AI 接口地址不可用：{reason}"),
+                    )
+                })?;
+                target.ai_base_url = ai_url.to_string();
+                applied.push("aiBaseUrl".into());
+            } else {
+                sensitive.push(SensitiveChange {
+                    key: "aiBaseUrl".into(),
+                    from: target.ai_base_url.clone(),
+                    to: ai_url.to_string(),
+                });
+            }
         }
         if !s.ai_model.trim().is_empty() {
             target.ai_model = s.ai_model.trim().to_string();
@@ -215,17 +252,35 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
             applied.push(format!("nexus/backup 开关 ×{switches}"));
         }
 
-        if !s.wolvenkit_cli_path.trim().is_empty() {
-            target.wolvenkit_cli_path = s.wolvenkit_cli_path.trim().to_string();
-            applied.push("wolvenkitCliPath".into());
+        let wolvenkit = s.wolvenkit_cli_path.trim();
+        if !wolvenkit.is_empty() && wolvenkit != target.wolvenkit_cli_path.trim() {
+            if apply_sensitive {
+                target.wolvenkit_cli_path = wolvenkit.to_string();
+                applied.push("wolvenkitCliPath".into());
+            } else {
+                sensitive.push(SensitiveChange {
+                    key: "wolvenkitCliPath".into(),
+                    from: target.wolvenkit_cli_path.clone(),
+                    to: wolvenkit.to_string(),
+                });
+            }
         }
         if s.wolvenkit_timeout_secs >= 10 && s.wolvenkit_timeout_secs <= 600 {
             target.wolvenkit_timeout_secs = s.wolvenkit_timeout_secs;
             applied.push("wolvenkitTimeoutSecs".into());
         }
-        if !s.archive_tool_path.trim().is_empty() {
-            target.archive_tool_path = s.archive_tool_path.trim().to_string();
-            applied.push("archiveToolPath".into());
+        let archive_tool = s.archive_tool_path.trim();
+        if !archive_tool.is_empty() && archive_tool != target.archive_tool_path.trim() {
+            if apply_sensitive {
+                target.archive_tool_path = archive_tool.to_string();
+                applied.push("archiveToolPath".into());
+            } else {
+                sensitive.push(SensitiveChange {
+                    key: "archiveToolPath".into(),
+                    from: target.archive_tool_path.clone(),
+                    to: archive_tool.to_string(),
+                });
+            }
         }
         if matches!(s.launch_method.as_str(), "auto" | "steam" | "gog" | "epic" | "direct") {
             target.launch_method = s.launch_method.clone();
@@ -243,8 +298,18 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
         }
         // launch_args 允许显式空串（= 清空启动参数），所以只判「包里有没有这个键」。
         if let Some(value) = s.launch_args.as_ref() {
-            target.launch_args = value.clone();
-            applied.push("launchArgs".into());
+            if *value != target.launch_args {
+                if apply_sensitive {
+                    target.launch_args = value.clone();
+                    applied.push("launchArgs".into());
+                } else {
+                    sensitive.push(SensitiveChange {
+                        key: "launchArgs".into(),
+                        from: target.launch_args.clone(),
+                        to: value.clone(),
+                    });
+                }
+            }
         }
 
         // 游戏目录：路径来自另一台机器时几乎一定失效，只写值不保证可用。
@@ -277,6 +342,7 @@ pub fn import_text(store: &Store, raw: &str) -> AppResult<ImportReport> {
         ignored,
         needs_game_reverify,
         profiles: pack.profiles.len(),
+        sensitive,
     })
 }
 
@@ -319,7 +385,7 @@ mod tests {
         let (root, store) = temp_store("broken");
         store.save(&store.snapshot_data()).unwrap();
         let before = fs::read_to_string(root.join("launcher-state.json")).unwrap();
-        let err = import_text(&store, "{ not a pack").unwrap_err();
+        let err = import_text(&store, "{ not a pack", false).unwrap_err();
         assert_eq!(err.code, "CONFIG_PACK_INVALID");
         let after = fs::read_to_string(root.join("launcher-state.json")).unwrap();
         assert_eq!(before, after, "导入失败不能改动状态文件");
@@ -344,13 +410,55 @@ mod tests {
             "{{\"schemaVersion\":{},\"settings\":{{\"aiModel\":\"gpt-4o-mini\"}}}}",
             PACK_VERSION
         );
-        import_text(&store, &pack).unwrap();
+        import_text(&store, &pack, false).unwrap();
         let data = store.snapshot_data();
         assert!(data.settings.auto_backup, "自动备份被迷你包静默关掉了");
         assert!(data.settings.confirm_uninstall, "卸载确认被迷你包静默关掉了");
         assert!(data.settings.write_modlist, "modlist 开关被迷你包静默关掉了");
         assert_eq!(data.settings.launch_args, "--skipStartScreen", "启动参数被清空了");
         assert_eq!(data.settings.ai_model, "gpt-4o-mini", "显式字段应当生效");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 2026-11-10 自检 P0-3：配置文件不得静默改写 AI 地址 / 外部工具路径。
+    #[test]
+    fn sensitive_fields_need_explicit_confirmation() {
+        let (root, store) = temp_store("sensitive");
+        {
+            let mut state = store.data.lock().unwrap();
+            state.settings.ai_base_url = "https://api.mine.example/v1".into();
+            store.save(&state).unwrap();
+        }
+        let pack = format!(
+            "{{\"schemaVersion\":{PACK_VERSION},\"settings\":{{\"aiBaseUrl\":\"http://evil.example/v1\",\"aiModel\":\"m\",\"archiveToolPath\":\"C:/Windows/System32/calc.exe\",\"launchArgs\":\"-evil\"}}}}"
+        );
+        let report = import_text(&store, &pack, false).unwrap();
+        let keys: Vec<&str> = report.sensitive.iter().map(|item| item.key.as_str()).collect();
+        assert!(keys.contains(&"aiBaseUrl"), "AI 地址必须进待确认清单: {keys:?}");
+        assert!(keys.contains(&"archiveToolPath"), "工具路径必须进待确认清单: {keys:?}");
+        assert!(keys.contains(&"launchArgs"), "启动参数必须进待确认清单: {keys:?}");
+        let data = store.snapshot_data();
+        assert_eq!(
+            data.settings.ai_base_url, "https://api.mine.example/v1",
+            "未经确认不能改 AI 地址（否则 Key 会发到对方服务器）"
+        );
+        assert!(data.settings.archive_tool_path.is_empty(), "未经确认不能改工具路径");
+        assert_eq!(data.settings.ai_model, "m", "非敏感项应当照常生效");
+
+        let report = import_text(&store, &pack, true).unwrap();
+        assert!(report.sensitive.is_empty(), "确认后不应再有待确认项");
+        assert_eq!(store.snapshot_data().settings.ai_base_url, "http://evil.example/v1");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn non_http_base_url_is_rejected() {
+        let (root, store) = temp_store("scheme");
+        let pack = format!(
+            "{{\"schemaVersion\":{PACK_VERSION},\"settings\":{{\"aiBaseUrl\":\"file:///C:/keys.txt\"}}}}"
+        );
+        let err = import_text(&store, &pack, true).unwrap_err();
+        assert_eq!(err.code, "CONFIG_PACK_BASE_URL");
         let _ = fs::remove_dir_all(root);
     }
 
@@ -367,7 +475,7 @@ mod tests {
             active_profile_id: None,
             ignored_keys: Vec::new(),
         };
-        let err = import_text(&store, &serde_json::to_string(&pack).unwrap()).unwrap_err();
+        let err = import_text(&store, &serde_json::to_string(&pack).unwrap(), false).unwrap_err();
         assert_eq!(err.code, "CONFIG_PACK_VERSION");
         let _ = fs::remove_dir_all(root);
     }
@@ -380,7 +488,7 @@ mod tests {
         )
         .unwrap();
         pack.settings.ai_model = "m".into();
-        let report = import_text(&store, &serde_json::to_string(&pack).unwrap()).unwrap();
+        let report = import_text(&store, &serde_json::to_string(&pack).unwrap(), true).unwrap();
         assert!(report.ignored.iter().any(|item| item.contains("aiProtocol")));
         let data = store.snapshot_data();
         assert_eq!(data.settings.ai_protocol, "openai", "非法协议不能写进状态");

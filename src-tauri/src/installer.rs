@@ -334,6 +334,100 @@ pub(crate) fn extract_7z(archive_path: &Path, payload: &Path) -> AppResult<usize
     Ok(file_count)
 }
 
+/// 解压**前**先列一遍条目名（7z `l -slt` / unrar `lb`）。
+///
+/// 为什么必须前置：外部工具不会替我们做路径穿越防护，而事后的
+/// `normalize_external_payload` 只能扫 payload **内部** —— 真出现 `..\..\x`
+/// 时，文件已经落在 payload 外面了，再扫也看不见（2026-11-10 自检 P1-1）。
+fn list_archive_entries(tool: &Path, archive_path: &Path) -> AppResult<Vec<String>> {
+    let tool_name = tool
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let is_unrar = tool_name.starts_with("unrar");
+    let mut command = std::process::Command::new(tool);
+    if is_unrar {
+        // `lb` = bare list：每行一个条目名，没有表头，不用解析列宽。
+        command.args(["lb", "-p-", "-idq"]);
+        command.arg(archive_path);
+    } else {
+        // `-slt` = 技术列表，每行 `Key = Value`；只取 `Path`。
+        command.args(["l", "-slt", "-p-", "-bd", "-bso0"]);
+        command.arg("--");
+        command.arg(archive_path);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    let output = command.output().map_err(|e| {
+        CommandError::new("RAR_LIST_FAILED", format!("无法读取压缩包清单：{e}"))
+    })?;
+    if !output.status.success() {
+        return Err(CommandError::new(
+            "RAR_LIST_FAILED",
+            "解压工具读不出这个 .rar 的文件清单，已停止导入（可能是加密包或文件损坏）。",
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut names: Vec<String> = Vec::new();
+    if is_unrar {
+        for line in text.lines() {
+            let name = line.trim();
+            if !name.is_empty() {
+                names.push(name.replace('\\', "/"));
+            }
+        }
+    } else {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("Attributes = ") {
+                // 7z 用 'L' 标记链接 / 重解析点。落到 payload 里的链接会让后续条目
+                // 顺着它写到 payload 之外，所以提前拒掉，而不是等解压完再扫。
+                if rest.split_whitespace().any(|flag| flag.contains('L')) {
+                    return Err(CommandError::new(
+                        "RAR_SYMLINK_ENTRY",
+                        "压缩包内含符号链接 / 重解析点，已拒绝导入。",
+                    ));
+                }
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix("Path = ") {
+                names.push(rest.trim().replace('\\', "/"));
+            }
+        }
+        // 7z 的第一条 `Path` 是压缩包自身，不是成员。
+        if !names.is_empty() {
+            names.remove(0);
+        }
+    }
+    Ok(names)
+}
+
+/// 逐条校验清单里的相对路径：绝对路径、盘符、`..`、`./` 一律拒绝。
+fn validate_archive_entries(payload: &Path, names: &[String]) -> AppResult<()> {
+    if names.len() > MAX_ENTRIES {
+        return Err(CommandError::new(
+            "RAR_TOO_MANY_FILES",
+            format!("压缩包包含 {} 个条目，超过安全上限 {MAX_ENTRIES}。", names.len()),
+        ));
+    }
+    for name in names {
+        let rel = name.trim().trim_end_matches('/');
+        if rel.is_empty() {
+            continue;
+        }
+        // `safe_join` 已覆盖「绝对路径 / 盘符 / ..」三种，这里只是把错误换成能给用户看的话。
+        crate::store::safe_join(payload, rel).map_err(|_| {
+            CommandError::new(
+                "RAR_UNSAFE_ENTRY",
+                format!("压缩包包含不安全路径，已拒绝导入：{rel}"),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 pub(crate) fn extract_rar(store: &Store, archive_path: &Path, payload: &Path) -> AppResult<usize> {
     let configured = store.snapshot_data().settings.archive_tool_path;
     let tool = find_archive_tool(&configured).ok_or_else(|| {
@@ -344,6 +438,10 @@ pub(crate) fn extract_rar(store: &Store, archive_path: &Path, payload: &Path) ->
              .zip 和 .7z 不需要额外工具。",
         )
     })?;
+
+    // 先看清单再解压：不安全条目一个都不落地（见 list_archive_entries 注释）。
+    let entries = list_archive_entries(&tool, archive_path)?;
+    validate_archive_entries(payload, &entries)?;
 
     let mut command = std::process::Command::new(&tool);
     let tool_name = tool
@@ -1472,7 +1570,7 @@ pub(crate) fn reclassify(store: &Store, all: bool) -> AppResult<usize> {
     // ① 短锁：只读快照，不做任何磁盘 IO。
     type Row = (String, String, String, InstallLayout, String, Vec<String>, String);
     let rows: Vec<Row> = {
-        let data = store.data.lock().expect("state mutex poisoned");
+        let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods
             .iter()
             .filter(|entry| !entry.category_locked)
@@ -1516,7 +1614,7 @@ pub(crate) fn reclassify(store: &Store, all: bool) -> AppResult<usize> {
     if updates.is_empty() {
         return Ok(0);
     }
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let stamp = crate::store::now_iso();
     let mut changed = 0;
     for (id, next) in &updates {
@@ -1543,7 +1641,7 @@ pub(crate) fn set_category(store: &Store, mod_id: &str, category: &str) -> AppRe
             format!("未知的分类：{category}"),
         ));
     }
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let entry = data
         .mods
         .iter_mut()
@@ -1576,7 +1674,7 @@ pub(crate) fn set_categories(
     if mod_ids.is_empty() {
         return Ok(0);
     }
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let stamp = crate::store::now_iso();
     let mut changed = 0usize;
     for id in mod_ids {
@@ -1599,7 +1697,27 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
     let _gate = crate::redmod::deploy_gate();
     let game_info = validate_game_dir(Path::new(&game.root))?;
     let game_root = PathBuf::from(&game_info.root);
-    let mut state = store.data.lock().expect("state mutex poisoned");
+
+    // 首次部署的自动备份在这里做，**不持锁**：它要把游戏目录里的配置/存档复制几百 MB，
+    // 放在锁内会让所有读状态的命令一起排队（2026-11-10 自检 P1-3）。
+    // 判断用短快照，写完再在锁内回填；并发下 `backup` 已被别人填好就直接丢弃这份。
+    let prepared_backup = {
+        let data = store.snapshot_data();
+        if data.settings.auto_backup && data.backup.is_none() {
+            Some(crate::backup::create_backup_files(store, &game_root)?)
+        } else {
+            None
+        }
+    };
+
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(info) = prepared_backup {
+        if state.backup.is_none() {
+            state.backup = Some(info);
+        } else if let Err(err) = fs::remove_dir_all(Path::new(&info.root)) {
+            eprintln!("[backup] 丢弃重复备份失败：{err}");
+        }
+    }
     let index = state
         .mods
         .iter()
@@ -1691,7 +1809,7 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
         }
     }
 
-    let conflicts = find_conflicts(&state.mods, &game_root, &plan, &entry.id);
+    let conflicts = find_conflicts(&state.mods, &game_root, &plan, &entry.id)?;
     if !conflicts.is_empty() {
         return Err(CommandError::new(
             "DEPLOY_CONFLICT",
@@ -1711,9 +1829,6 @@ pub fn deploy_mod(store: &Store, mod_id: &str, game: &GameInfo) -> AppResult<Dep
         .with_conflicts(conflicts));
     }
 
-    if state.settings.auto_backup && state.backup.is_none() {
-        crate::backup::ensure_backup(store, &game_root, &mut state)?;
-    }
 
     let mut deployed: Vec<DeployedFile> = Vec::new();
     let mut created: Vec<PathBuf> = Vec::new();
@@ -1941,7 +2056,7 @@ pub(crate) fn find_conflicts(
     game_root: &Path,
     plan: &[PlanFile],
     own_id: &str,
-) -> Vec<ConflictInfo> {
+) -> AppResult<Vec<ConflictInfo>> {
     let mut owners: HashMap<String, (&str, &str, &str)> = HashMap::new();
     for entry in mods.iter().filter(|entry| entry.id != own_id && entry.enabled) {
         for file in &entry.deployed_files {
@@ -1967,8 +2082,11 @@ pub(crate) fn find_conflicts(
             });
             continue;
         }
-        let target = safe_join(game_root, &file.relative).unwrap_or_default();
-        if !target.as_os_str().is_empty() && target.exists() {
+        // 非法相对路径必须当场报错：以前 `unwrap_or_default()` 会把它变成空路径，
+        // `as_os_str().is_empty()` 判真后当成「无冲突」跳过，用户要等到部署进行到一半
+        // 才看到失败，而且错误码指向别处（2026-11-10 自检 P1-6）。
+        let target = safe_join(game_root, &file.relative)?;
+        if target.exists() {
             conflicts.push(ConflictInfo {
                 target: file.relative.clone(),
                 mod_id: own_id.to_string(),
@@ -1980,7 +2098,7 @@ pub(crate) fn find_conflicts(
             });
         }
     }
-    conflicts
+    Ok(conflicts)
 }
 
 /// Conflicts caused by two enabled mods claiming the same deployed target.
@@ -2199,7 +2317,7 @@ pub fn undeploy_mod(store: &Store, mod_id: &str, game_root: &Path) -> AppResult<
             format!("游戏目录不存在，无法安全移除链接：{}", game_root.display()),
         ));
     }
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let index = state
         .mods
         .iter()
@@ -2467,7 +2585,7 @@ pub fn sync_physical_state(
         return Ok(report);
     }
 
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     for entry in &repaired {
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == entry.id) {
             *slot = entry.clone();
@@ -2492,7 +2610,7 @@ pub fn sync_physical_state(
 
 pub fn uninstall_mod(store: &Store, mod_id: &str, game_root: Option<&Path>) -> AppResult<()> {
     {
-        let state = store.data.lock().expect("state mutex poisoned");
+        let state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let entry = state
             .mods
             .iter()
@@ -2510,7 +2628,7 @@ pub fn uninstall_mod(store: &Store, mod_id: &str, game_root: Option<&Path>) -> A
         }
     }
 
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let index = state
         .mods
         .iter()
@@ -2657,7 +2775,7 @@ pub(crate) fn hardlink_source_for(
 ) -> Option<PathBuf> {
     let relative = manifest_relative(game_root, target)?;
     let candidates: Vec<String> = {
-        let state = store.data.lock().expect("state mutex poisoned");
+        let state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         state
             .mods
             .iter()
@@ -2883,7 +3001,7 @@ mod tests {
 
         {
             // Store::save 只落盘、不更新内存；测试要改的正是内存里的那份状态。
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut entry = sync_entry("m1", &gone, Vec::new());
             entry.mod_folder = Some("m1".to_string());
             data.mods.push(entry);
@@ -2936,7 +3054,7 @@ mod tests {
         ];
 
         {
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             data.game_dir = Some(game.to_string_lossy().to_string());
             data.mods.push(sync_entry("m1", &gone, files));
             data.load_order.push("archive/pc/mod/a.archive".to_string());
@@ -2961,7 +3079,7 @@ mod tests {
         fs::create_dir_all(&gone).unwrap();
 
         {
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             for index in 0..5 {
                 data.mods.push(sync_entry(&format!("m{index}"), &gone, Vec::new()));
             }

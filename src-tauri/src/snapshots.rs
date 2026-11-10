@@ -11,7 +11,7 @@
 
 use crate::game::framework_statuses;
 use crate::schema::{AppResult, AppStateData, CommandError, GameInfo};
-use crate::store::{now_iso, Store};
+use crate::store::{now_iso, write_atomic, Store};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -136,7 +136,7 @@ pub fn write_snapshot(
     let text = serde_json::to_string_pretty(snapshot)
         .map_err(|err| CommandError::new("SNAPSHOT_WRITE", format!("快照序列化失败：{err}")))?;
     let path = snapshot_path(data_dir, &snapshot.id);
-    fs::write(&path, text)
+    write_atomic(&path, text.as_bytes())
         .map_err(|err| CommandError::new("SNAPSHOT_WRITE", format!("快照写入失败：{err}")))?;
     prune(data_dir, limit);
     Ok(snapshot.clone())

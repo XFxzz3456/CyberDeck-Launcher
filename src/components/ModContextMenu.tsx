@@ -81,6 +81,37 @@ export function ModContextMenu({
     setPos({ left: left / zoom, top: top / zoom });
   }, [x, y]);
 
+  // 键盘入口（Shift+F10 / 菜单键）打开时焦点必须进得来：以前菜单只响应鼠标，
+  // 键盘用户按出来之后焦点还留在卡片上，Tab 会跑到页面别处（2026-11-10 自检 P2）。
+  // 顺带支持 ↑↓ / Home / End 在菜单内移动，Esc 关掉后把焦点还给原来的卡片。
+  useEffect(() => {
+    const node = menuRef.current;
+    if (!node) return;
+    const previous =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const items = () =>
+      Array.from(node.querySelectorAll<HTMLElement>(".mod-context-item:not([disabled])"));
+    items()[0]?.focus();
+    const onArrow = (event: KeyboardEvent) => {
+      const list = items();
+      if (list.length === 0) return;
+      const index = list.indexOf(document.activeElement as HTMLElement);
+      let next = index;
+      if (event.key === "ArrowDown") next = index < 0 ? 0 : (index + 1) % list.length;
+      else if (event.key === "ArrowUp") next = index <= 0 ? list.length - 1 : index - 1;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = list.length - 1;
+      else return;
+      event.preventDefault();
+      list[next]?.focus();
+    };
+    node.addEventListener("keydown", onArrow);
+    return () => {
+      node.removeEventListener("keydown", onArrow);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();

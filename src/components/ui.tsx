@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Info, LoaderCircle, Pin, X } from "lucide-
 import { t } from "../i18n";
 import { useEscLayer } from "../lib/escLayer";
 import { useFocusTrap } from "../lib/focusTrap";
+import { useOverlayLayer } from "../lib/overlay";
 import { makeBackdropVariants, makeModalVariants, useMotionFactor, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 
@@ -184,6 +185,11 @@ export function Modal({
 }) {
   // Esc 只关最上面这层（见 lib/escLayer：叠了两层时按一次不会全关）。
   useEscLayer(open, onClose);
+  // 登记进全局浮层栈：否则底层快捷键（Ctrl+K / Ctrl+Enter）会穿透弹窗。
+  // 每个实例一个独立 id，抽屉里再开对话框时两层都在栈上，Esc 仍只关栈顶。
+  // Esc 与焦点已由 useEscLayer / useFocusTrap 负责，这里只借栈，不重复接管。
+  const overlayId = useId();
+  useOverlayLayer(`modal-${overlayId}`, open, onClose, { esc: false, manageFocus: false });
 
   const motionEnabled = useMotionEnabled();
   const springs = useMotionSprings();

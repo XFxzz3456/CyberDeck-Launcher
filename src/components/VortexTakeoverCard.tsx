@@ -3,6 +3,7 @@ import { Activity, RefreshCw, RotateCcw, Undo2 } from "lucide-react";
 import { api } from "../lib/api";
 import type {
   AdoptStagingHealth,
+  VortexCoverageReport,
   VortexTakeoverPreflight,
   VortexSyncStatus,
 } from "../types";
@@ -29,6 +30,9 @@ export function VortexTakeoverCard({
   const [preflight, setPreflight] = useState<VortexTakeoverPreflight | null>(null);
   const [health, setHealth] = useState<AdoptStagingHealth | null>(null);
   const [status, setStatus] = useState<VortexSyncStatus | null>(null);
+  // 覆盖率：配准是启发式，必然有覆盖不到的条目。不显示出来，用户永远不知道
+  // 「我在这边关了，Vortex 里为什么还开着」（2026-11-10 自检 P1-7）。
+  const [coverage, setCoverage] = useState<VortexCoverageReport | null>(null);
   const [action, setAction] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [confirmName, setConfirmName] = useState<string | null>(null);
@@ -41,14 +45,17 @@ export function VortexTakeoverCard({
   const run = useCallback(async () => {
     setBusy(true);
     try {
-      const [nextPreflight, nextHealth, nextStatus] = await Promise.all([
+      const [nextPreflight, nextHealth, nextStatus, nextCoverage] = await Promise.all([
         api.vortexTakeoverPreflight(),
         api.adoptStagingHealth(),
         api.vortexSyncStatus(),
+        // 覆盖率遍历 Vortex 存储根，失败不该让整张卡报错——降级成「未知」。
+        api.vortexCoverage().catch(() => null),
       ]);
       setPreflight(nextPreflight);
       setHealth(nextHealth);
       setStatus(nextStatus);
+      setCoverage(nextCoverage);
     } catch (error) {
       onError(error, t("vortexTakeover.error"));
     } finally {
@@ -201,6 +208,25 @@ export function VortexTakeoverCard({
       ? t("vortexTakeover.orderSame")
       : t("vortexTakeover.orderDiff");
 
+  // 覆盖率：全部配准 = 绿；部分 = 黄（不是错误，是启发式的固有上限）。
+  const coveragePercent =
+    coverage && coverage.total > 0 ? Math.round((coverage.mapped / coverage.total) * 100) : 0;
+  const coverageMissing = coverage ? coverage.total - coverage.mapped : 0;
+  const coverageTone = !coverage || !coverage.root
+    ? "muted"
+    : coverageMissing === 0
+      ? "green"
+      : "yellow";
+  const coverageText = !coverage
+    ? t("vortexTakeover.coverageUnknown")
+    : !coverage.root
+      ? t("vortexTakeover.coverageNoVortex")
+      : t("vortexTakeover.coverageValue", {
+          mapped: coverage.mapped,
+          total: coverage.total,
+          percent: coveragePercent,
+        });
+
   return (
     <section className="panel vortex-takeover-card">
       <header className="panel-head">
@@ -337,7 +363,33 @@ export function VortexTakeoverCard({
         {note ? <p className="vortex-inline-note">{note}</p> : null}
       </div>
 
-      {/* 区块 3：只读取证（折叠，避免一大片平铺） */}
+      {/* 区块 3：接管覆盖率（只读）。
+          配准按「部署文件名投票」，永远有覆盖不到的条目；不列出来，用户会以为
+          「接管开着 = 全部同步」，然后在 Vortex 里看到状态不一致。 */}
+      <div className="vortex-block">
+        <div className="vortex-block-head">
+          <span className="setting-item-label">{t("vortexTakeover.coverageTitle")}</span>
+          <Badge tone={coverageTone}>{coverageText}</Badge>
+        </div>
+        <p className="setting-item-note">{t("vortexTakeover.coverageNote")}</p>
+        {coverage?.root && coverageMissing > 0 ? (
+          <details className="vortex-details vortex-coverage-details">
+            <summary>
+              {t("vortexTakeover.coverageListTitle", { count: coverageMissing })}
+            </summary>
+            <ul className="vortex-coverage-list">
+              {coverage.unmapped.map((name, index) => (
+                <li key={`${index}-${name}`}>{name}</li>
+              ))}
+            </ul>
+            {coverage.truncated ? (
+              <p className="setting-item-note">{t("vortexTakeover.coverageTruncated")}</p>
+            ) : null}
+          </details>
+        ) : null}
+      </div>
+
+      {/* 区块 4：只读取证（折叠，避免一大片平铺） */}
       <details className="vortex-details">
         <summary>
           <span>{t("vortexTakeover.detailsSummary")}</span>

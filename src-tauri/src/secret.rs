@@ -5,7 +5,7 @@
 //! the plaintext never appears in `launcher-state.json` or logs.
 
 use crate::schema::{AppResult, CommandError};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const MAX_SECRET_BYTES: usize = 8 * 1024;
 
@@ -34,15 +34,10 @@ fn write_blob(path: &Path, bytes: &[u8]) -> AppResult<()> {
             CommandError::new("SECRET_WRITE", format!("无法创建密钥目录：{err}"))
         })?;
     }
-    let temp: PathBuf = path.with_extension("tmp");
-    std::fs::write(&temp, bytes)
-        .map_err(|err| CommandError::new("SECRET_WRITE", format!("无法写入密钥：{err}")))?;
-    if path.exists() {
-        let _ = std::fs::remove_file(path);
-    }
-    std::fs::rename(&temp, path)
-        .map_err(|err| CommandError::new("SECRET_WRITE", format!("无法保存密钥：{err}")))?;
-    Ok(())
+    // 绝不能「先删目标、再 rename 临时文件」：那两步之间进程被杀 / 断电，密钥就永久
+    // 没了，而用户看到的是「填写成功」。统一走原子写（临时名 + fsync + rename 覆盖）。
+    crate::store::write_atomic(path, bytes)
+        .map_err(|err| CommandError::new("SECRET_WRITE", format!("无法保存密钥：{err}")))
 }
 
 pub fn save(path: &Path, secret: &str) -> AppResult<()> {
@@ -190,6 +185,7 @@ fn unprotect(_cipher: &[u8]) -> AppResult<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn dpapi_roundtrip_and_clear() {

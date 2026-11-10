@@ -131,7 +131,14 @@ export function Sidebar({
       className={`sidebar ${collapsed ? "is-collapsed" : ""}`}
       data-collapsed={collapsed ? "true" : "false"}
     >
-      <div className="sidebar-logo" onClick={() => onNavigate("library")}>
+      {/* Logo 是个真按钮：以前是可点击的 div，键盘 / 读屏用户根本点不到
+          （2026-11-10 自检 P2·可访问性）。外观仍由 .sidebar-logo 控制。 */}
+      <button
+        type="button"
+        className="sidebar-logo"
+        onClick={() => onNavigate("library")}
+        aria-label={t("sidebar.logoAria")}
+      >
         {/* 2026-11-03：Logo 改图形徽章（纯 SVG，主色走 currentColor）。
             三个方案见 components/LogoMark.tsx，className 沿用 logo-glyph
             以继承既有的 hover 缩放 + 发光。 */}
@@ -143,7 +150,7 @@ export function Sidebar({
           <span>{t("app.brandSub")}</span>
           <em className="logo-sys">{t("sidebar.sysCheck")}</em>
         </div>
-      </div>
+      </button>
 
       {/* 主操作区：整条侧栏里唯一可伸缩的一段。
           flex:1 吃掉中间空白 → 下面的辅助区被自然顶到底部。 */}

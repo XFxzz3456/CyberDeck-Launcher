@@ -15,7 +15,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::{AppResult, CommandError};
-use crate::store::{now_iso, Store};
+use crate::store::{now_iso, write_atomic, Store};
 
 const GLOSSARY_FILE: &str = "glossary.json";
 const CONFIG_FILE: &str = "glossary-config.json";
@@ -126,7 +126,7 @@ fn save(store: &Store, glossary: &Glossary) -> AppResult<()> {
     let path = glossary_path(store);
     let text = serde_json::to_string_pretty(glossary)
         .map_err(|e| CommandError::new("GLOSSARY_ENCODE", format!("词表序列化失败：{e}")))?;
-    std::fs::write(&path, text)
+    write_atomic(&path, text.as_bytes())
         .map_err(|e| CommandError::new("GLOSSARY_WRITE", format!("无法写入汉化词表：{e}")))
 }
 
@@ -142,7 +142,7 @@ pub fn save_config(store: &Store, config: &GlossaryConfig) -> AppResult<()> {
     let path = config_path(store);
     let text = serde_json::to_string_pretty(config)
         .map_err(|e| CommandError::new("GLOSSARY_ENCODE", format!("配置序列化失败：{e}")))?;
-    std::fs::write(&path, text)
+    write_atomic(&path, text.as_bytes())
         .map_err(|e| CommandError::new("GLOSSARY_WRITE", format!("无法写入词表配置：{e}")))
 }
 

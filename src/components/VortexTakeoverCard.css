@@ -198,3 +198,25 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* 覆盖率里「无法配准」的条目清单：默认折叠，展开后按两列铺，长名字换行不撑破卡片。 */
+.vortex-coverage-details {
+  margin-top: 8px;
+}
+
+.vortex-coverage-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 2px 12px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.vortex-coverage-list li {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

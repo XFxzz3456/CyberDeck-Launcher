@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::installer;
 use crate::schema::{AppResult, CommandError};
-use crate::store::{now_iso, Store};
+use crate::store::{now_iso, write_atomic, Store};
 
 const SNAPSHOT_FILE: &str = "safemode-snapshot.json";
 
@@ -119,7 +119,7 @@ pub fn enter(store: &Store) -> AppResult<SafeModeReport> {
     };
     let text = serde_json::to_string_pretty(&snapshot)
         .map_err(|e| CommandError::new("SAFEMODE_ENCODE", format!("快照序列化失败：{e}")))?;
-    std::fs::write(snapshot_path(store), text)
+    write_atomic(&snapshot_path(store), text.as_bytes())
         .map_err(|e| CommandError::new("SAFEMODE_WRITE", format!("无法写入安全模式快照：{e}")))?;
 
     // 逐条撤除：每一步都由 installer 自己加锁，这里绝不持锁。
@@ -141,7 +141,7 @@ pub fn enter(store: &Store) -> AppResult<SafeModeReport> {
 
     // 短锁写状态：只改内存 + 一次落盘。
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for entry in data.mods.iter_mut() {
             if entry.enabled {
                 entry.enabled = false;
@@ -165,7 +165,7 @@ pub fn exit(store: &Store) -> AppResult<SafeModeReport> {
 
     // 先恢复启用标记与加载顺序（短锁），再部署：deploy_mod 会读 enabled 与 load_order。
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let wanted: std::collections::HashSet<&String> = snapshot.enabled_ids.iter().collect();
         for entry in data.mods.iter_mut() {
             entry.enabled = wanted.contains(&entry.id);

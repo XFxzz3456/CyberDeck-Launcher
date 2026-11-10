@@ -19,7 +19,7 @@ use crate::schema::{
     AiFixProposal, AiFixReport, AiFixState, AppResult, CommandError, DeployedFile, LinkType,
     ModEntry,
 };
-use crate::store::{is_within, now_iso, safe_join, Store};
+use crate::store::{is_within, now_iso, safe_join, write_atomic, Store};
 
 /// 发给 AI 的脚本上下文上限（字符）。整包脚本可能有几万行，
 /// 全发既不礼貌也会把关键方法挤出窗口。
@@ -65,7 +65,7 @@ fn safe_id(raw: &str) -> String {
 }
 
 fn find_entry(store: &Store, mod_id: &str) -> AppResult<ModEntry> {
-    let data = store.data.lock().expect("state mutex poisoned");
+    let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.mods
         .iter()
         .find(|entry| entry.id == mod_id)
@@ -289,7 +289,7 @@ pub fn apply(
     let script_dir = store.staging_dir().join("ai-fix").join(safe_id(&entry.id));
     fs::create_dir_all(&script_dir)?;
     let staged = script_dir.join(format!("{id}-AIFix.reds"));
-    fs::write(&staged, code)?;
+    write_atomic(&staged, code.as_bytes())?;
 
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
@@ -312,7 +312,7 @@ pub fn apply(
         data.settings.ai_model.clone()
     };
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == mod_id) {
             slot.ai_fix.push(AiFixState {
                 file: deployed.clone(),
@@ -376,7 +376,7 @@ pub fn revert(store: &Store, mod_id: &str, relative_path: &str) -> AppResult<AiF
         let _ = fs::remove_file(&staged);
     }
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == mod_id) {
             slot.ai_fix.retain(|item| item.file.relative_path != relative_path);
             slot.updated_at = Some(now_iso());

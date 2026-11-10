@@ -28,7 +28,12 @@ import {
   type UiFontId,
 } from "../lib/fonts";
 import type { Preferences, ThemeId } from "../lib/preferences";
-import { HIDEABLE_VIEWS, type HiddenViewsMap, type HideableView } from "../lib/uiPrefs";
+import {
+  HIDEABLE_VIEW_LABEL_KEYS,
+  HIDEABLE_VIEWS,
+  type HiddenViewsMap,
+  type HideableView,
+} from "../lib/uiPrefs";
 import { STYLE_PRESETS, useTheme, type ColorMode } from "../lib/theme";
 import { Spinner, SwitchRow } from "./ui";
 
@@ -75,10 +80,16 @@ const SCALE_PRESETS = [90, 100, 110, 120] as const;
 const isPresetScale = (pct: number) =>
   (SCALE_PRESETS as readonly number[]).includes(pct);
 
-const MODE_OPTIONS: { id: ColorMode; label: string; icon: typeof Sun }[] = [
-  { id: "light", label: t("appearance.modeLight"), icon: Sun },
-  { id: "dark", label: t("appearance.modeDark"), icon: Moon },
-  { id: "system", label: t("appearance.modeSystem"), icon: MonitorSmartphone },
+/**
+ * 显示模式三选一。
+ *
+ * 存 key 不存文案：模块加载时就调 `t()` 会把当时语言的字符串固化进模块作用域，
+ * 之后切语言这批按钮永远不变（`LibraryView` 里同款坑的注释已写过一次）。
+ */
+const MODE_OPTIONS: { id: ColorMode; labelKey: MessageKey; icon: typeof Sun }[] = [
+  { id: "light", labelKey: "appearance.modeLight", icon: Sun },
+  { id: "dark", labelKey: "appearance.modeDark", icon: Moon },
+  { id: "system", labelKey: "appearance.modeSystem", icon: MonitorSmartphone },
 ];
 
 /**
@@ -272,7 +283,7 @@ export function AppearanceSettings({
                       aria-pressed={selected}
                     >
                       <Icon size={12} />
-                      {option.label}
+                      {t(option.labelKey)}
                     </button>
                   );
                 })}
@@ -358,7 +369,7 @@ export function AppearanceSettings({
           {HIDEABLE_VIEWS.map((viewId) => (
             <SwitchRow
               key={viewId}
-              title={t(`hiddenView.${viewId}` as MessageKey)}
+              title={t(HIDEABLE_VIEW_LABEL_KEYS[viewId])}
               checked={!hiddenViews[viewId]}
               onChange={(visible) => onToggleHiddenView?.(viewId, !visible)}
             />

@@ -26,7 +26,7 @@ use crate::schema::{
     AiLocBlocked, AiLocEntry, AiLocPlan, AiLocReport, AiLocState, AppResult, CommandError,
     DeployedFile, LinkType, ModEntry,
 };
-use crate::store::{is_within, now_iso, safe_join, Store};
+use crate::store::{is_within, now_iso, safe_join, write_atomic, Store};
 
 /// 目标语言固定简体中文：源语言自动探测会把「只有 ru-ru 的 Mod」翻成中俄混排，
 /// 收益远小于风险，宁可只支持最常见的一种。
@@ -417,7 +417,7 @@ pub(crate) fn build_archive_xl(mod_id: &str, extend: Option<&str>) -> String {
 }
 
 fn find_entry(store: &Store, mod_id: &str) -> AppResult<ModEntry> {
-    let data = store.data.lock().expect("state mutex poisoned");
+    let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.mods
         .iter()
         .find(|entry| entry.id == mod_id)
@@ -582,7 +582,7 @@ fn apply_full_only(
         created_at: now_iso(),
     };
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == entry.id) {
             slot.ai_loc = Some(state_value);
             slot.updated_at = Some(now_iso());
@@ -750,11 +750,14 @@ pub fn apply(
     if let Some(parent) = json_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&json_path, build_localization_json(&translated_pairs))?;
+    write_atomic(
+        &json_path,
+        build_localization_json(&translated_pairs).as_bytes(),
+    )?;
     let xl_name = format!("{mod_id}-ai-loc.archive.xl");
     let xl_path = root.join(&xl_name);
     let extend = find_extend_target(&entry);
-    fs::write(&xl_path, build_archive_xl(mod_id, extend.as_deref()))?;
+    write_atomic(&xl_path, build_archive_xl(mod_id, extend.as_deref()).as_bytes())?;
 
     let mut written = vec![
         json_path.to_string_lossy().to_string(),
@@ -854,7 +857,7 @@ pub fn apply(
         created_at: now_iso(),
     };
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == mod_id) {
             slot.ai_loc = Some(state_value.clone());
             slot.updated_at = Some(now_iso());
@@ -949,7 +952,7 @@ pub fn revert(store: &Store, mod_id: &str) -> AppResult<AiLocReport> {
         let _ = fs::remove_dir_all(&root);
     }
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(slot) = data.mods.iter_mut().find(|item| item.id == mod_id) {
             slot.ai_loc = None;
             slot.updated_at = Some(now_iso());

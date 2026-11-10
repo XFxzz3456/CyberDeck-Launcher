@@ -28,6 +28,7 @@ import { CoverArt } from "./CoverArt";
 import { Badge, Modal, Spinner, Toggle } from "./ui";
 import { ModSettingsPanel } from "./ModSettingsPanel";
 import { useEscLayer } from "../lib/escLayer";
+import { useOverlayLayer } from "../lib/overlay";
 import { useMotionFactor, useMotionSprings, makeBackdropVariants, makeDrawerVariants } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 import { categoryLabel, t } from "../i18n";
@@ -109,6 +110,9 @@ export function ModDetailDrawer({
   // Esc 只关最上面那层：抽屉里开着「编辑信息」对话框时，一次 Esc 只收对话框，
   // 不会把抽屉一起带走（见 lib/escLayer）。
   useEscLayer(true, onClose);
+  // 登记进全局浮层栈：抽屉开着时 Ctrl+K / Ctrl+Enter 不再穿透到命令面板 / 启动游戏。
+  // Esc 已由 useEscLayer 负责（带层叠仲裁），这里只借栈 + 接管焦点进出。
+  useOverlayLayer("mod-detail", true, onClose, { esc: false });
 
   // 动效：抽屉整体从右侧滑入，遮罩淡入（毛玻璃随 opacity 一起浮现）。
   // 关闭「界面动效」时变体退化为时长 0 的瞬移，不做位移。
@@ -197,6 +201,8 @@ export function ModDetailDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={t("modDetail.drawerAria", { name: mod.name })}
+        data-overlay-layer="mod-detail"
+        tabIndex={-1}
         variants={drawerVariants}
         initial="hidden"
         animate="visible"

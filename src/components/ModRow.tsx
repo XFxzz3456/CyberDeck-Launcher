@@ -4,6 +4,7 @@ import { formatBytes } from "../lib/format";
 import { CoverArt } from "./CoverArt";
 import { Toggle } from "./ui";
 import { categoryLabel, t } from "../i18n";
+import { isContextMenuKey, keyboardContextMenuEvent } from "../lib/contextMenuKey";
 
 type RowState = "deployed" | "staged" | "conflict";
 
@@ -24,7 +25,7 @@ const STATE_LABEL: Record<RowState, string> = {
  */
 export function ModRow({
   mod,
-  conflicts,
+  modConflicts,
   missingDeps = [],
   translationCount = 0,
   hasUpdate = false,
@@ -39,7 +40,8 @@ export function ModRow({
   onSelectedChange,
 }: {
   mod: ModEntry;
-  conflicts: ConflictInfo[];
+  /** 只属于这一条模组的冲突（上层按 id 分好组；行组件自己不再全表扫描）。 */
+  modConflicts: ConflictInfo[];
   missingDeps?: string[];
   translationCount?: number;
   hasUpdate?: boolean;
@@ -54,9 +56,6 @@ export function ModRow({
   selected?: boolean;
   onSelectedChange?: (checked: boolean) => void;
 }) {
-  const modConflicts = conflicts.filter(
-    (conflict) => conflict.modId === mod.id || conflict.otherModId === mod.id,
-  );
   const hasConflict = modConflicts.length > 0;
   const state: RowState = hasConflict ? "conflict" : mod.enabled ? "deployed" : "staged";
   const stateLabel = STATE_LABEL[state];
@@ -84,6 +83,13 @@ export function ModRow({
       }}
       onContextMenu={onContextMenu}
       onKeyDown={(event) => {
+        // 菜单键 / Shift+F10：键盘用户也要能开右键菜单，否则这里的功能只能鼠标用。
+        if (onContextMenu && isContextMenuKey(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          onContextMenu(keyboardContextMenuEvent(event.currentTarget));
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpen();

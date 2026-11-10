@@ -207,7 +207,7 @@ pub fn import(store: &Store) -> AppResult<String> {
         })
         .collect();
 
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut applied = 0usize;
     for entry in data.mods.iter_mut() {
         if entry.nexus.is_some() || entry.metadata_source == "manual" {

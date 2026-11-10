@@ -12,8 +12,8 @@
 //!   改形状；解析一律走「读不到就记 warning、绝不猜」的路径。
 
 use crate::schema::{
-    AdoptStagingHealth, AppResult, CommandError, VortexDriftItem, VortexMappingReport,
-    VortexTakeoverPreflight,
+    AdoptStagingHealth, AppResult, CommandError, VortexCoverageReport, VortexDriftItem,
+    VortexMappingReport, VortexTakeoverPreflight,
 };
 use crate::store::Store;
 use std::collections::{HashMap, HashSet};
@@ -442,8 +442,43 @@ pub fn build_mapping(
 
 /// 全库重新配准并把结果持久化到 `ModEntry.vortexModId`。
 /// 目录已被 Vortex 删除的旧绑定会被清掉，避免写到一个不存在的 modState 键上。
+/// 只读统计「接管覆盖率」：有多少条真的能双写回 Vortex，漏的是谁。
+///
+/// 与 `rebuild_mapping` 的区别：这里**不写**状态、不持久化映射，只回答
+/// 「现在这套配准算法能覆盖几成」。用户在设置页看到 176/251 这种数字，
+/// 才知道剩下的 75 条不会跟着启用状态同步（2026-11-10 自检 P1-7）。
+pub fn coverage(store: &Store) -> VortexCoverageReport {
+    let data = store.snapshot_data();
+    let Some(root) = crate::vortex_source::find_mods_root(GAME_ID) else {
+        return VortexCoverageReport {
+            root: None,
+            total: data.mods.len(),
+            ..Default::default()
+        };
+    };
+    let mapping = build_mapping(&data, std::path::Path::new(""));
+    const LIMIT: usize = 300;
+    let mut unmapped: Vec<String> = Vec::new();
+    let mut mapped = 0usize;
+    for entry in &data.mods {
+        if mapping.contains_key(&entry.id) {
+            mapped += 1;
+        } else if unmapped.len() < LIMIT {
+            unmapped.push(entry.name.clone());
+        }
+    }
+    let total = data.mods.len();
+    VortexCoverageReport {
+        root: Some(root.to_string_lossy().to_string()),
+        total,
+        mapped,
+        truncated: total.saturating_sub(mapped) > unmapped.len(),
+        unmapped,
+    }
+}
+
 pub fn rebuild_mapping(store: &Store) -> AppResult<VortexMappingReport> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = data.game_dir.as_ref().map(PathBuf::from).unwrap_or_default();
     // 重算时忽略旧绑定，强制按当前 Vortex 存储根重新配准。
     let previous = data.vortex_mod_ids.clone();
@@ -765,7 +800,7 @@ mod tests {
         });
         // Store::save 只落盘、不回写内存；体检读的是内存快照，所以这里直接改
         // 内存状态（也更贴合「体检只读、不改任何文件」的语义）。
-        store.data.lock().expect("state mutex poisoned").mods.push(entry);
+        store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).mods.push(entry);
 
         let health = staging_health(&store).unwrap();
         assert_eq!(health.registered_total, 1);

@@ -739,7 +739,7 @@ fn install_task(app: &AppHandle, id: &str, downloads_dir: &Path) {
     };
     match installer::install_archive(&store, &target.to_string_lossy(), Some(nexus)) {
         Ok(entry) => {
-            let mut data = store.data.lock().expect("state mutex poisoned");
+            let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             data.mods.push(entry);
             if let Err(err) = store.save(&data) {
                 // 暂存目录保留，用户可手动导入；不影响任务完成态。

@@ -1733,6 +1733,24 @@ pub struct VortexSyncStatus {
 
 // ── Vortex 接管 P3：配准 / 对账 / 预检 ─────────────────────────────────
 
+/// 接管覆盖率（只读快照）：多少条能真正双写回 Vortex。
+///
+/// 为什么单独立一个报告：配准是「按部署文件名投票」的启发式，必然有覆盖不到的
+/// 条目。以前界面上只有「已配准 N 条」这种笼统数字，用户根本不知道漏了谁
+/// （2026-11-10 自检 P1-7）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VortexCoverageReport {
+    /// Vortex 存储根；None = 这台机器上没找到，界面据此给出「未检测到 Vortex」。
+    pub root: Option<String>,
+    /// 库里条目总数。
+    pub total: usize,
+    pub mapped: usize,
+    /// 无法配准的条目名（最多 300 条，避免把状态文件撑大）。
+    pub unmapped: Vec<String>,
+    pub truncated: bool,
+}
+
 /// 全库重新配准的结果。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

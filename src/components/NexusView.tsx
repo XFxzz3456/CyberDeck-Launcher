@@ -57,7 +57,20 @@ function modInitials(name: string): string {
 function NexusCard({ mod, onOpen }: { mod: NexusModSummary; onOpen: () => void }) {
   const [broken, setBroken] = useState(false);
   return (
-    <article className="nexus-card" onClick={onOpen} tabIndex={0} role="button">
+    <article
+      className="nexus-card"
+      onClick={onOpen}
+      // role=button + tabIndex 只是「看起来可聚焦」，不补键盘处理的话
+      // 按回车/Space 毫无反应（2026-11-10 自检 P2·可访问性）。
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+    >
       <div className="nexus-cover">
         {mod.pictureUrl && !broken ? (
           <img src={mod.pictureUrl} alt="" loading="lazy" onError={() => setBroken(true)} />

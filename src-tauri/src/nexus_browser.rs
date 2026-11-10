@@ -5,8 +5,12 @@
 //! 边界（刻意为之）：
 //! - **不碰** nxm 解析与下载核心：窗口里触发的 `nxm://` 一律原样交给
 //!   `lib.rs::intake_nxm`，与协议拉起、单实例转交走完全相同的收件箱与事件链路。
-//! - 只允许在窗口内导航到 `nexusmods.com` 及其子域；其余 http/https 链接交给系统浏览器，
-//!   `nxm://` 拦截后交给收件箱并阻止 WebView 自己导航。
+//! - 只允许在窗口内导航到 `nexusmods.com` 及其子域；其余 **http/https** 链接交给系统浏览器，
+//!   `nxm://` 拦截后交给收件箱并阻止 WebView 自己导航。`file:` / `ms-*` / 其它自定义
+//!   scheme 一律直接丢弃 —— 它们不是「网页链接」，交给 shell 等于让页面执行本机程序
+//!   （2026-11-10 自检 P1-2）。
+//! - 不关 WebView2 沙箱：这个窗口会加载第三方 CDN 与广告，`--no-sandbox` 等于把渲染进程
+//!   的隔离也一起关掉，没有收益只有风险。
 //! - 与主窗口共用 `EBWebView` 数据目录，登录状态天然共享（同进程多 WebView）。
 
 use std::path::Path;
@@ -34,6 +38,14 @@ pub fn is_allowed_host(url: &tauri::Url) -> bool {
             host == "nexusmods.com" || host.ends_with(".nexusmods.com")
         })
         .unwrap_or(false)
+}
+
+/// 只有 http/https 才允许「交给系统浏览器」。
+///
+/// 判断放在函数里而不是内联，是为了能被单测覆盖：`file:` 这类 scheme 交给 shell
+/// 等于执行本机程序，这条红线必须有断言守着。
+pub fn is_external_link(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
 }
 
 /// WebView 内部产生的导航（空白页、内联数据、blob）放行，避免白屏。
@@ -66,7 +78,6 @@ pub fn open(app: &AppHandle, data_dir: &Path) -> AppResult<()> {
         .resizable(true)
         .decorations(true)
         .data_directory(profile)
-        .additional_browser_args("--no-sandbox")
         .on_navigation(move |url| {
             // 1) nxm:// —— 不导航，直接投递到既有收件箱（解析/下载核心零改动）。
             if url.scheme() == "nxm" {
@@ -77,8 +88,12 @@ pub fn open(app: &AppHandle, data_dir: &Path) -> AppResult<()> {
             if is_allowed_host(url) || is_internal_scheme(url) {
                 return true;
             }
-            // 3) 其它站点 —— 交给系统浏览器，窗口留在 Nexus。
-            let _ = crate::open_via_explorer(url.as_str());
+            // 3) 其它站点 —— 只把 http(s) 交给系统浏览器，窗口留在 Nexus。
+            //    其它 scheme 直接丢弃：`file:///C:/Windows/System32/calc.exe` 这类链接
+            //    出现在页面里时，交给 shell 就是把「点一下」变成「执行本机程序」。
+            if is_external_link(url) {
+                let _ = crate::open_via_explorer(url.as_str());
+            }
             false
         })
         .build()
@@ -108,6 +123,18 @@ mod tests {
         )));
         assert!(is_allowed_host(&parse("https://users.nexusmods.com/login")));
         assert!(is_allowed_host(&parse("http://nexusmods.com/")));
+    }
+
+    /// 页面里的 `file:` / `ms-*` 链接不能进 shell（2026-11-10 自检 P1-2）。
+    #[test]
+    fn only_http_links_go_to_shell() {
+        assert!(is_external_link(&parse("https://www.google.com/")));
+        assert!(is_external_link(&parse("http://example.com/")));
+        assert!(!is_external_link(&parse(
+            "file:///C:/Windows/System32/calc.exe"
+        )));
+        assert!(!is_external_link(&parse("ms-settings:privacy")));
+        assert!(!is_external_link(&parse("javascript:alert(1)")));
     }
 
     #[test]

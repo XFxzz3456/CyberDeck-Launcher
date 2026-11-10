@@ -50,7 +50,7 @@ use config_resolver::{GlobalConfigGroups, ModConfigView};
 use schema::{
     AiProfileList,
     AdoptCandidate, AdoptReport, AdoptScanReport, AdoptStagingHealth,
-    LibraryNormalizeReport, VortexTakeoverPreflight, VortexMappingReport,
+    LibraryNormalizeReport, VortexCoverageReport, VortexTakeoverPreflight, VortexMappingReport,
     VortexPrelaunchReport, VortexReconcileReport, VortexSyncReport,
     VortexRebuildPreview, VortexRebuildReport,
     VortexSyncStatus,
@@ -105,7 +105,7 @@ fn current_game(state: &AppStateData) -> AppResult<GameInfo> {
 }
 
 fn build_snapshot(store: &Store) -> AppResult<Snapshot> {
-    let mut data = store.data.lock().expect("state mutex poisoned").clone();
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     let game = match data.game_dir.as_deref() {
         Some(root) if game::detected_exe(Path::new(root)).is_file() => Some(game::inspect_game(
             Path::new(root),
@@ -212,7 +212,7 @@ fn detect_game_path(store: State<'_, Store>) -> AppResult<Option<GameInfo>> {
 #[tauri::command]
 fn set_game_dir(store: State<'_, Store>, path: String) -> AppResult<Snapshot> {
     let info = game::validate_game_dir(Path::new(&path))?;
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if data.mods.iter().any(|entry| !entry.deployed_files.is_empty()) {
         return Err(CommandError::new(
             "GAME_DIR_LOCKED",
@@ -235,7 +235,7 @@ fn set_game_dir(store: State<'_, Store>, path: String) -> AppResult<Snapshot> {
 
 #[tauri::command]
 fn clear_game_dir(store: State<'_, Store>) -> AppResult<Snapshot> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if data.mods.iter().any(|entry| !entry.deployed_files.is_empty()) {
         return Err(CommandError::new(
             "GAME_DIR_LOCKED",
@@ -249,17 +249,29 @@ fn clear_game_dir(store: State<'_, Store>) -> AppResult<Snapshot> {
     build_snapshot(&store)
 }
 
+/// 导入一批压缩包（解压 + 落暂存区 + 登记）。
+///
+/// `async` + `spawn_blocking`：解压/哈希是分钟级磁盘操作，同步命令会把窗口事件
+/// 循环一起卡住（2026-11-10 自检 P1-3）。批量启用 `set_mods_enabled` 早就这么做了，
+/// 单条链路补齐同一口径。
 #[tauri::command]
-fn install_mods(
-    store: State<'_, Store>,
-    paths: Vec<String>,
-    busy: State<'_, BusyTasks>,
-) -> AppResult<Vec<InstallOutcome>> {
-    let _guard = busy.begin("安装模组");
+async fn install_mods(app: tauri::AppHandle, paths: Vec<String>) -> AppResult<Vec<InstallOutcome>> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("安装模组");
+        install_mods_blocking(store.inner(), &paths)
+    })
+    .await
+    .map_err(|err| CommandError::new("INSTALL_TASK", format!("安装线程异常：{err}")))?
+}
+
+fn install_mods_blocking(store: &Store, paths: &[String]) -> AppResult<Vec<InstallOutcome>> {
     let mut outcomes = Vec::new();
     let mut installed: Vec<ModEntry> = Vec::new();
     for path in paths {
-        match installer::install_zip(&store, &path) {
+        match installer::install_zip(store, path) {
             Ok(entry) => {
                 outcomes.push(InstallOutcome {
                     path: path.clone(),
@@ -280,7 +292,7 @@ fn install_mods(
         }
     }
     if !installed.is_empty() {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods.extend(installed);
         store.save(&data)?;
     }
@@ -432,7 +444,7 @@ fn apply_collection_order_inner(
     // 文件 IO 一律在锁外：先在锁内改一份快照，锁外写文件 + 存状态，
     // 最后回填内存里的状态（短锁，无 IO）。
     let snapshot = {
-        let mut state = store.data.lock().expect("state mutex poisoned");
+        let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.load_order = ordered_paths;
         state.load_order = loadorder::normalized_order(&state);
         // 这次明确按清单顺序落了盘，之后单个模组的部署也得沿用这个顺序，
@@ -444,7 +456,7 @@ fn apply_collection_order_inner(
     store.save(&snapshot)?;
 
     {
-        let mut state = store.data.lock().expect("state mutex poisoned");
+        let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.load_order = snapshot.load_order.clone();
         state.settings.write_modlist = true;
     }
@@ -462,7 +474,7 @@ fn apply_collection_order_inner(
 #[tauri::command]
 fn clear_update_lock(store: State<'_, Store>) -> AppResult<Snapshot> {
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(root) = data.game_dir.clone() else {
             return Err(CommandError::new(
                 "GAME_NOT_CONFIGURED",
@@ -574,7 +586,7 @@ fn vortex_takeover_set_enabled(store: State<'_, Store>, enabled: bool) -> AppRes
         })?;
         vortex_sync::precheck(&dir)?;
     }
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.settings.vortex_takeover = enabled;
     store.save(&data)?;
     Ok(enabled)
@@ -590,6 +602,24 @@ fn vortex_sync_status(store: State<'_, Store>) -> VortexSyncStatus {
     }
 }
 
+
+/// P3：只读统计接管覆盖率（配准能覆盖多少条、漏的是谁）。
+///
+/// 只读：不改状态、不写 LevelDB。放在 `spawn_blocking` 里是因为它要遍历
+/// Vortex 存储根（200+ 目录 / 4000+ 文件）。
+#[tauri::command]
+async fn vortex_coverage(app: tauri::AppHandle) -> VortexCoverageReport {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        vortex_mirror::coverage(store.inner())
+    })
+    .await
+    .unwrap_or_else(|err| {
+        eprintln!("[vortex] 覆盖率统计线程异常：{err}");
+        VortexCoverageReport::default()
+    })
+}
 
 /// P3：全库重新配准 Vortex 目录身份并持久化到 state。
 #[tauri::command]
@@ -881,7 +911,7 @@ fn external_tool_add(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(2).collect::<String>());
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.external_tools.push(schema::ExternalToolEntry {
         id: format!("tool-{}", uuid::Uuid::new_v4().simple()),
         name: name.to_string(),
@@ -902,7 +932,7 @@ fn external_tool_update(
     icon: Option<String>,
     pinned: Option<bool>,
 ) -> AppResult<Vec<schema::ExternalToolEntry>> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let entry = data
         .external_tools
         .iter_mut()
@@ -930,7 +960,7 @@ fn external_tool_update(
 
 #[tauri::command]
 fn external_tool_remove(store: State<'_, Store>, id: String) -> AppResult<Vec<schema::ExternalToolEntry>> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.external_tools.retain(|item| item.id != id);
     store.save(&data)?;
     Ok(data.external_tools.clone())
@@ -1018,7 +1048,7 @@ async fn set_mods_enabled(
         };
         if !vortex_ids.is_empty() {
             {
-                let mut guard = store.data.lock().expect("state mutex poisoned");
+                let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 for entry in guard.mods.iter_mut() {
                     if vortex_ids.contains(&entry.id) {
                         entry.enabled = enabled;
@@ -1189,42 +1219,64 @@ fn open_in_explorer(store: State<'_, Store>, path: String) -> AppResult<()> {
 /// 撤销阶段的错误只记录不中断——旧链接可能已经因为游戏更新而失效，
 /// 反而需要 deploy 去覆盖它。
 #[tauri::command]
-fn repair_mod(
-    store: State<'_, Store>,
-    id: String,
-    busy: State<'_, BusyTasks>,
-) -> AppResult<DeployReport> {
-    let _guard = busy.begin("修复部署");
+async fn repair_mod(app: tauri::AppHandle, id: String) -> AppResult<DeployReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("修复部署");
+        repair_mod_blocking(store.inner(), &id)
+    })
+    .await
+    .map_err(|err| CommandError::new("REPAIR_TASK", format!("修复线程异常：{err}")))?
+}
+
+fn repair_mod_blocking(store: &Store, id: &str) -> AppResult<DeployReport> {
     let data = store.snapshot_data();
     let game = current_game(&data)?;
     if let Some(root) = data.game_dir.as_deref() {
-        let _ = installer::undeploy_mod(&store, &id, Path::new(root));
+        let _ = installer::undeploy_mod(store, id, Path::new(root));
     }
-    let mut report = installer::deploy_mod(&store, &id, &game)?;
-    redmod::flush_into(&store, data.game_dir.as_deref(), &mut report.warnings);
+    let mut report = installer::deploy_mod(store, id, &game)?;
+    redmod::flush_into(store, data.game_dir.as_deref(), &mut report.warnings);
     Ok(report)
 }
 
+/// 单条启用 / 禁用。
+///
+/// `async` + `spawn_blocking`：部署要建链接、递归备份、跑 redMod 编译，分钟级；
+/// 同步命令会把窗口事件循环卡死（2026-11-10 自检 P1-3）。锁的纪律不变（仍由
+/// `installer::deploy_mod` 自己持锁），这里只把工作搬到阻塞线程池。
 #[tauri::command]
-fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppResult<DeployReport> {
+async fn set_mod_enabled(app: tauri::AppHandle, id: String, enabled: bool) -> AppResult<DeployReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        set_mod_enabled_blocking(store.inner(), &id, enabled)
+    })
+    .await
+    .map_err(|err| CommandError::new("DEPLOY_TASK", format!("部署线程异常：{err}")))?
+}
+
+fn set_mod_enabled_blocking(store: &Store, id: &str, enabled: bool) -> AppResult<DeployReport> {
     // 接管开启时先过守卫：Vortex 运行中 / profile 不符 → 本地状态零改动。
-    let vdir = vortex_guard(&store)?;
+    let vdir = vortex_guard(store)?;
     // P4：Vortex 托管的模组物理文件由 Vortex 部署，启动器绝不去增删游戏目录里的
     // 硬链接；这里只改本地启用标记 + 镜像 Vortex 状态库。
     {
         let data = store.snapshot_data();
         if data.mods.iter().any(|item| item.id == id && item.origin == "vortex") {
             {
-                let mut guard = store.data.lock().expect("state mutex poisoned");
+                let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 if let Some(entry) = guard.mods.iter_mut().find(|item| item.id == id) {
                     entry.enabled = enabled;
                 }
                 store.save(&guard)?;
             }
             let warnings = vortex_apply(
-                &store,
+                store,
                 vdir.clone(),
-                enabled_changes(&store, &[id.clone()], enabled),
+                enabled_changes(store, &[id.to_string()], enabled),
             );
             let entry = store
                 .snapshot_data()
@@ -1260,12 +1312,12 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
             ));
         }
         // 部署前自动快照（865759）：失败只记日志，不阻断部署。
-        snapshots::auto_snapshot_pre_deploy(&store, &data, Some(&game));
-        let mut report = installer::deploy_mod(&store, &id, &game)?;
-        redmod::flush_into(&store, data.game_dir.as_deref(), &mut report.warnings);
+        snapshots::auto_snapshot_pre_deploy(store, &data, Some(&game));
+        let mut report = installer::deploy_mod(store, id, &game)?;
+        redmod::flush_into(store, data.game_dir.as_deref(), &mut report.warnings);
         report
             .warnings
-            .extend(vortex_apply(&store, vdir, enabled_changes(&store, &[id.clone()], true)));
+            .extend(vortex_apply(store, vdir, enabled_changes(store, &[id.to_string()], true)));
         return Ok(report);
     }
 
@@ -1293,8 +1345,8 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
             "部署清单还在，但游戏目录没有配置，无法安全移除链接。",
         ));
     };
-    let mut warnings = installer::undeploy_mod(&store, &id, Path::new(root))?;
-    redmod::flush_into(&store, data.game_dir.as_deref(), &mut warnings);
+    let mut warnings = installer::undeploy_mod(store, id, Path::new(root))?;
+    redmod::flush_into(store, data.game_dir.as_deref(), &mut warnings);
     let entry = store
         .snapshot_data()
         .mods
@@ -1302,9 +1354,9 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
         .find(|item| item.id == id)
         .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
     warnings.extend(vortex_apply(
-        &store,
+        store,
         vdir,
-        enabled_changes(&store, &[id.clone()], false),
+        enabled_changes(store, &[id.to_string()], false),
     ));
     Ok(DeployReport {
         mod_entry: entry,
@@ -1317,13 +1369,21 @@ fn set_mod_enabled(store: State<'_, Store>, id: String, enabled: bool) -> AppRes
     })
 }
 
+/// 卸载（删暂存副本 + 撤链接 + 从库里移除）。同样是分钟级磁盘操作。
 #[tauri::command]
-fn uninstall_mod(
-    store: State<'_, Store>,
-    id: String,
-    busy: State<'_, BusyTasks>,
-) -> AppResult<()> {
-    let _guard = busy.begin("卸载模组");
+async fn uninstall_mod(app: tauri::AppHandle, id: String) -> AppResult<()> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("卸载模组");
+        uninstall_mod_blocking(store.inner(), &id)
+    })
+    .await
+    .map_err(|err| CommandError::new("UNINSTALL_TASK", format!("卸载线程异常：{err}")))?
+}
+
+fn uninstall_mod_blocking(store: &Store, id: &str) -> AppResult<()> {
     let data = store.snapshot_data();
     if data.mods.iter().any(|item| item.id == id && item.origin == "vortex") {
         return Err(CommandError::new(
@@ -1332,10 +1392,10 @@ fn uninstall_mod(
         ));
     }
     let game_root = data.game_dir.clone().map(PathBuf::from);
-    installer::uninstall_mod(&store, &id, game_root.as_deref())?;
+    installer::uninstall_mod(store, id, game_root.as_deref())?;
     // 卸载接口不返回提示列表，同步失败只记日志并保留脏标记，下次操作会重试。
     let mut warnings = Vec::new();
-    redmod::flush_into(&store, data.game_dir.as_deref(), &mut warnings);
+    redmod::flush_into(store, data.game_dir.as_deref(), &mut warnings);
     for warning in warnings {
         eprintln!("[redmod] {warning}");
     }
@@ -1351,7 +1411,7 @@ fn update_mod(
     busy: State<'_, BusyTasks>,
 ) -> AppResult<ModEntry> {
     let _guard = busy.begin("更新模组");
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let entry = data
         .mods
         .iter_mut()
@@ -1376,7 +1436,7 @@ fn update_mod(
 
 #[tauri::command]
 fn get_load_order(store: State<'_, Store>) -> AppResult<LoadOrderView> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.load_order = loadorder::normalized_order(&data);
     store.save(&data)?;
     let game_root = data.game_dir.clone();
@@ -1386,7 +1446,7 @@ fn get_load_order(store: State<'_, Store>) -> AppResult<LoadOrderView> {
 #[tauri::command]
 fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
     let vdir = vortex_guard(store.inner())?;
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let valid: std::collections::HashSet<String> = loadorder::deployed_archives(&data)
         .into_iter()
         .map(|(path, _, _, _)| path.to_ascii_lowercase())
@@ -1449,7 +1509,7 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
 #[tauri::command]
 fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
     let vdir = vortex_guard(store.inner())?;
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let valid: std::collections::HashSet<String> = data
         .mods
         .iter()
@@ -1496,7 +1556,7 @@ fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<L
 
 #[tauri::command]
 fn export_modlist(store: State<'_, Store>, force: bool) -> AppResult<ModlistExport> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let game_root = data.game_dir.clone().ok_or_else(|| {
         CommandError::new("GAME_NOT_CONFIGURED", "没有游戏目录，无法写入 modlist.txt。")
     })?;
@@ -1518,7 +1578,7 @@ fn export_modlist(store: State<'_, Store>, force: bool) -> AppResult<ModlistExpo
 
 #[tauri::command]
 fn remove_modlist(store: State<'_, Store>) -> AppResult<bool> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let game_root = data.game_dir.clone().ok_or_else(|| {
         CommandError::new("GAME_NOT_CONFIGURED", "没有游戏目录。")
     })?;
@@ -1530,7 +1590,7 @@ fn remove_modlist(store: State<'_, Store>) -> AppResult<bool> {
 
 #[tauri::command]
 fn set_write_modlist(store: State<'_, Store>, enabled: bool) -> AppResult<LoadOrderView> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let game_root = data.game_dir.clone().ok_or_else(|| {
         CommandError::new("GAME_NOT_CONFIGURED", "没有游戏目录。")
     })?;
@@ -1641,7 +1701,8 @@ async fn change_staging_dir(
     let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let store = handle.state::<Store>();
-        let mut data = store.snapshot_data();
+        // 只读快照：用来做前置校验（游戏目录 / 数据目录）。真正的修改在下面持锁做。
+        let data = store.snapshot_data();
         let old = store.staging_dir();
         let trimmed = new_dir.trim().to_string();
         if trimmed.is_empty() {
@@ -1706,21 +1767,36 @@ async fn change_staging_dir(
             let rel = value.strip_prefix(&old).ok()?;
             Some(target.join(rel).to_string_lossy().to_string())
         };
+        // 改内存必须持 `store.data` 的锁：`Store::save` 只落盘、不回写内存。
+        // 早先这里拿的是 snapshot（一份克隆），改完只 `save` —— 本会话里 `staging_path`
+        // 仍是旧路径，用户再点「启用」时 installer 按旧路径找不到目录，会把条目当成
+        // 失效模组 forget 掉（数据看起来丢了），重启后又恢复正常，极难归因。
         let mut rewritten = 0usize;
-        for entry in data.mods.iter_mut() {
-            if let Some(next) = rebase(&entry.staging_path) {
-                entry.staging_path = next;
-                rewritten += 1;
-            }
-            if let Some(zip) = entry.source_zip.clone() {
-                if let Some(next) = rebase(&zip) {
-                    entry.source_zip = Some(next);
+        {
+            let mut guard = store.data.lock().unwrap_or_else(|e| e.into_inner());
+            let original = guard.clone();
+            for entry in guard.mods.iter_mut() {
+                if let Some(next) = rebase(&entry.staging_path) {
+                    entry.staging_path = next;
+                    rewritten += 1;
+                }
+                if let Some(zip) = entry.source_zip.clone() {
+                    if let Some(next) = rebase(&zip) {
+                        entry.source_zip = Some(next);
+                    }
                 }
             }
+            guard.staging_dir = target.to_string_lossy().to_string();
+            if let Err(err) = store.save(&guard) {
+                // 盘没写成，内存也退回原状，避免「界面变了、重启又回去」的幽灵状态。
+                *guard = original;
+                return Err(CommandError::new(
+                    "STAGING_SAVE_FAILED",
+                    format!("暂存区已搬到新位置，但状态文件没能写入：{err}。请重启启动器让它重新扫描。"),
+                ));
+            }
         }
-
-        data.staging_dir = target.to_string_lossy().to_string();
-        store.save(&data)?;
+        // `staging_dir` 是另一把锁，刻意不与 `data` 嵌套持有（见 store.rs 字段注释）。
         store.set_staging_dir(target.clone());
         log_lifecycle(
             &handle,
@@ -1772,7 +1848,7 @@ fn detect_tool(tool: String) -> AppResult<ToolProbe> {
 
 #[tauri::command]
 fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settings> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let launch = settings.launch_method.as_str();
     if !matches!(launch, "auto" | "steam" | "direct") {
         return Err(CommandError::new(
@@ -1786,14 +1862,11 @@ fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settin
             "关闭行为必须是 tray（最小化到托盘）或 exit（直接退出）。",
         ));
     }
-    if !settings.ai_base_url.trim().is_empty()
-        && !settings.ai_base_url.trim().starts_with("https://")
-        && !settings.ai_base_url.trim().starts_with("http://")
-    {
-        return Err(CommandError::new(
-            "INVALID_SETTING",
-            "接口地址（Base URL）必须以 http:// 或 https:// 开头。",
-        ));
+    // 与 config_pack 导入共用同一口径（ai::validate_base_url）：协议 + 主机名都要有。
+    if !settings.ai_base_url.trim().is_empty() {
+        ai::validate_base_url(&settings.ai_base_url).map_err(|reason| {
+            CommandError::new("INVALID_SETTING", format!("接口地址（Base URL）不可用：{reason}"))
+        })?;
     }
     if settings.ai_model.trim().is_empty() {
         return Err(CommandError::new(
@@ -2486,9 +2559,21 @@ fn config_export(app: tauri::AppHandle, store: State<'_, Store>) -> AppResult<St
 }
 
 /// 导入全局配置。解析或版本校验失败时不写任何状态。
+///
+/// `apply_sensitive` 默认 false：`aiBaseUrl / wolvenkitCliPath / archiveToolPath /
+/// launchArgs` 四项会先回给前端让用户确认，确认后用同一份文件再导一次、带上 true。
+/// 这样「导入一份别人分享的配置」不会静默地把 API Key 指向别人的服务器。
 #[tauri::command]
-fn config_import(store: State<'_, Store>, path: String) -> AppResult<config_pack::ImportReport> {
-    config_pack::import_from(store.inner(), std::path::Path::new(path.trim()))
+fn config_import(
+    store: State<'_, Store>,
+    path: String,
+    apply_sensitive: Option<bool>,
+) -> AppResult<config_pack::ImportReport> {
+    config_pack::import_from(
+        store.inner(),
+        std::path::Path::new(path.trim()),
+        apply_sensitive.unwrap_or(false),
+    )
 }
 
 /// 安全模式当前状态（是否处于安全模式、快照时间、停用了多少 Mod）。
@@ -2655,7 +2740,7 @@ fn set_translation_parent(
     parent_id: Option<String>,
 ) -> AppResult<Snapshot> {
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let target_exists = data.mods.iter().any(|item| item.id == id);
         if !target_exists {
             return Err(CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"));
@@ -3374,7 +3459,7 @@ fn get_diagnostics(store: State<'_, Store>) -> AppResult<DiagnosticsReport> {
 
 #[tauri::command]
 fn create_backup(store: State<'_, Store>) -> AppResult<BackupInfo> {
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let game = current_game(&data)?;
     let info = backup::create_backup(&store, Path::new(&game.root), &mut data)?;
     store.save(&data)?;
@@ -3406,7 +3491,7 @@ fn restore_original(store: State<'_, Store>) -> AppResult<RestoreResult> {
         }
     }
 
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let restored_files = match backup::restore_backup(&store, Path::new(&game_root), &mut data) {
         Ok(result) => {
             warnings.extend(result.warnings);
@@ -3498,7 +3583,7 @@ fn launch_game(store: State<'_, Store>) -> AppResult<LaunchResult> {
             .push("REDmod 加载顺序有变化，已在启动前重建缓存。".to_string());
     }
 
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     data.last_launch = Some(store::now_iso());
     data.last_game_version = game.version.clone();
     store.save(&data)?;
@@ -3606,7 +3691,7 @@ fn apply_env_snapshot(store: State<'_, Store>, id: String) -> AppResult<snapshot
     // ③ 恢复 archive 相对路径顺序。normalized_order 会丢弃已卸载/未成功部署的
     // 路径，并把新出现的路径按既有规则补到末尾；空清单也照写，支持恢复成默认排序。
     let ordered = {
-        let mut state = store.data.lock().expect("state mutex poisoned");
+        let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.load_order = snapshots::restored_load_order(&state, &target.load_order);
         state.clone()
     };
@@ -4266,6 +4351,7 @@ pub fn run() {
             vortex_sync_status,
             vortex_sync_retry,
             vortex_sync_restore,
+            vortex_coverage,
             vortex_mapping_rebuild,
             vortex_sync_full,
             vortex_reconcile,

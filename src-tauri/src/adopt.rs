@@ -1152,7 +1152,7 @@ fn execute_inner(
         let entry = build_entry(candidate, &staging_dir, &staged);
         let absorb_ids = candidate.absorb_entry_ids.clone();
         let register_result = (|| -> AppResult<()> {
-            let mut state = store.data.lock().expect("state mutex poisoned");
+            let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             if state.mods.iter().any(|item| item.id == entry.id) {
                 return Err(CommandError::new(
                     "ADOPT_DUPLICATE",

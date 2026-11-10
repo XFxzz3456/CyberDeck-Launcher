@@ -25,7 +25,7 @@ import type {
   Snapshot,
   ExternalToolEntry,
 } from "./types";
-import { api, isTauri, normalizeError, mockApi } from "./lib/api";
+import { api, isTauri, normalizeError, mockApi, reportBackgroundFailure } from "./lib/api";
 import { markEulaAccepted, readEulaAccepted } from "./lib/eula";
 import { onNexusStatusChanged } from "./lib/nexusBus";
 import { EulaDialog } from "./components/EulaDialog";
@@ -272,7 +272,7 @@ function AppShell() {
         .then((list) => {
           if (alive) setPinnedTools(list.filter((tool) => tool.pinned));
         })
-        .catch(() => {});
+        .catch((error) => reportBackgroundFailure("externalTools.list", error));
     };
     reload();
     window.addEventListener("cdl.tools-changed", reload);
@@ -852,15 +852,24 @@ function AppShell() {
     [showError],
   );
 
-  const dismissNxm = useCallback((uri: string) => {
-    setNxmItems((items) => items.filter((item) => item.link.uri !== uri));
-    void api.nxmDismiss(uri).catch(() => {});
-  }, []);
+  // 乐观移除 + 落盘失败要说话：以前静默吞掉，用户下次启动会看到「忽略过的链接又回来了」，
+  // 以为是忽略功能坏了（2026-11-10 自检 P1-6）。
+  const dismissNxm = useCallback(
+    (uri: string) => {
+      setNxmItems((items) => items.filter((item) => item.link.uri !== uri));
+      void api.nxmDismiss(uri).catch((error) => {
+        showError(error, t("err.nxmDismiss"));
+      });
+    },
+    [showError, t],
+  );
 
   const dismissAllNxm = useCallback(() => {
     setNxmItems([]);
-    void api.nxmDismiss(null).catch(() => {});
-  }, []);
+    void api.nxmDismiss(null).catch((error) => {
+      showError(error, t("err.nxmDismiss"));
+    });
+  }, [showError, t]);
 
   useEffect(() => {
     let alive = true;
@@ -871,7 +880,7 @@ function AppShell() {
         .then((status) => {
           if (alive) setNxmPremium(Boolean(status.connected && status.user?.isPremium));
         })
-        .catch(() => {});
+        .catch((error) => reportBackgroundFailure("nexus.status", error));
     };
     pullPremium();
     // 设置页 / Nexus 页连接或断开账号后会广播，这里跟着重查一次——
@@ -882,7 +891,7 @@ function AppShell() {
       .then((links) => {
         if (alive) links.forEach(addNxmLink);
       })
-      .catch(() => {});
+      .catch((error) => reportBackgroundFailure("nxm.pending", error));
 
     let unlistenLink: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
@@ -3271,7 +3280,10 @@ function AppShell() {
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 setCloseAskOpen(false);
-                void api.closeWindowAction("exit", closeRemember).catch(() => undefined);
+                // 关窗失败必须说出来：以前 .catch 吞掉，窗口毫无反应，用户只会反复点。
+                void api
+                  .closeWindowAction("exit", closeRemember)
+                  .catch((error) => showError(error, t("closeAsk.failed")));
               }}
             >
               {t("closeAsk.exit")}
@@ -3280,7 +3292,9 @@ function AppShell() {
               className="btn btn-primary btn-sm"
               onClick={() => {
                 setCloseAskOpen(false);
-                void api.closeWindowAction("hide", closeRemember).catch(() => undefined);
+                void api
+                  .closeWindowAction("hide", closeRemember)
+                  .catch((error) => showError(error, t("closeAsk.failed")));
               }}
             >
               {t("closeAsk.minimize")}

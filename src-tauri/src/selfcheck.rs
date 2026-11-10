@@ -78,7 +78,7 @@ fn collect() -> Value {
 
     let (state, state_error, mods, profiles) = match Store::load(data_dir.clone()) {
         Ok(store) => {
-            let data = store.data.lock().expect("state mutex poisoned");
+            let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             (true, Value::Null, data.mods.len(), data.profiles.len())
         }
         Err(err) => (false, json!({ "code": err.code, "message": err.message }), 0, 0),
@@ -141,7 +141,7 @@ fn game_report(data_dir: &Path) -> Value {
     let Ok(store) = Store::load(data_dir.to_path_buf()) else {
         return Value::Null;
     };
-    let data = store.data.lock().expect("state mutex poisoned");
+    let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(directory) = data.game_dir.as_deref().filter(|value| !value.trim().is_empty()) else {
         return Value::Null;
     };

@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { ConflictInfo, DependencyReport, FrameworkStatus, ModEntry } from "../types";
-import { missingDependencyNames } from "../lib/dependencies";
+import type { ConflictInfo, ModEntry } from "../types";
 import type { LibraryListItem } from "../lib/libraryList";
 import type { LibraryView } from "../lib/preferences";
 import { ModCard } from "./ModCard";
@@ -9,14 +8,26 @@ import { ModCardErrorBoundary } from "./ModCardErrorBoundary";
 import { ModGroupHeader, GROUP_HEADER_HEIGHT } from "./ModGroupHeader";
 import { ModRow } from "./ModRow";
 
+/** 没有冲突时复用同一个空数组：props 引用稳定，卡片不用为一次渲染新建数组。 */
+const NO_CONFLICTS: ConflictInfo[] = [];
+
+/**
+ * 滚动锚点表。**刻意放在模块作用域**：
+ *
+ * 原先它是组件内的 ref，而换页是 `key={view}` + `AnimatePresence`，
+ * 离开模组库去设置页再回来时组件是重新挂载的，ref 里的记忆自然就没了——
+ * 报告里那条「从设置页回来滚动位置丢失」正是这个原因。
+ * key 是「筛选键:视图」，组合数有限（分类 × 排序 × 视图），不会无限增长。
+ */
+const scrollAnchors = new Map<string, number>();
+
 /** 列表视图单行占位高度（行 42px + 间距 6px）。虚拟滚动按固定值估算，改这里要同步改 CSS。 */
 const LIST_ROW_HEIGHT = 48;
 
 export function VirtualModGrid({
   mods,
   conflicts,
-  frameworks,
-  dependencyReport,
+  missingDepsById,
   translationCounts,
   busyId,
   filterKey = "",
@@ -34,9 +45,14 @@ export function VirtualModGrid({
 }: {
   mods: ModEntry[];
   conflicts: ConflictInfo[];
-  frameworks: FrameworkStatus[] | null;
-  /** 后端依赖报告；为空时退回本地推断（演示模式）。 */
-  dependencyReport?: DependencyReport | null;
+  /**
+   * Mod id → 缺失前置名列表，由上层一次算好。
+   *
+   * 为什么不在卡片里现算：可见卡片十几张、每次滚动或输入都重算一遍，
+   * 而同一条模组的缺失清单在一次渲染里完全相同。上层用 useMemo 建表，
+   * 这里只查表，顺便让引用稳定（卡片要不要 memo 化时这就是前提之一）。
+   */
+  missingDepsById: Map<string, string[]>;
   /** 父级 Mod id → 已绑定的汉化子包数量（卡片上打「中」徽标）。 */
   translationCounts?: Map<string, number>;
   busyId: string | null;
@@ -66,15 +82,43 @@ export function VirtualModGrid({
   selectedIds?: Set<string>;
   onSelectChange?: (modId: string, checked: boolean) => void;
 }) {
+  /**
+   * Mod id → 与它相关的冲突。冲突总数不大，但每张卡片各扫一遍全表就是
+   * O(卡片数 × 冲突数)，而且每次重渲染都重扫；这里一次分好组，卡片只取自己那份。
+   */
+  const conflictsById = useMemo(() => {
+    const table = new Map<string, ConflictInfo[]>();
+    for (const conflict of conflicts) {
+      const ids =
+        conflict.otherModId && conflict.otherModId !== conflict.modId
+          ? [conflict.modId, conflict.otherModId]
+          : [conflict.modId];
+      for (const id of ids) {
+        const list = table.get(id);
+        if (list) list.push(conflict);
+        else table.set(id, [conflict]);
+      }
+    }
+    return table;
+  }, [conflicts]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const anchors = useRef(new Map<string, number>());
+  const anchors = useRef(scrollAnchors);
   // 锚点 key 带上视图：网格和列表的行数差一个数量级，互相套用滚动位置只会跳飞。
   const anchorKey = `${filterKey}:${view}`;
-  const prevKey = useRef(anchorKey);
+  const prevKey = useRef<string | null>(null);
 
-  // 筛选键变化：把滚动位置恢复到上一次离开这个分类时的锚点。
-  useEffect(() => {
+  /**
+   * 筛选键变化 / 组件重新挂载：把滚动位置恢复到上一次离开这个分类时的锚点。
+   *
+   * 两处细节都是必要的：
+   * - `prevKey` 初值是 null 而不是当前 key——否则首帧就判定「键没变」，重新挂载后
+   *   永远不会去读模块表里存着的锚点（这正是「从设置页回来回到顶部」的另一半原因）；
+   * - 用 `useLayoutEffect` 而不是 `useEffect`：前者在绘制前执行，恢复动作不会先闪一帧
+   *   顶部再跳下去。
+   */
+  useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
     if (prevKey.current !== anchorKey) {
@@ -166,8 +210,8 @@ export function VirtualModGrid({
     <ModCardErrorBoundary modId={mod.id} modName={mod.name}>
       <ModRow
         mod={mod}
-        conflicts={conflicts}
-        missingDeps={missingDependencyNames(mod, dependencyReport, frameworks)}
+        modConflicts={conflictsById.get(mod.id) ?? NO_CONFLICTS}
+        missingDeps={missingDepsById.get(mod.id) ?? []}
         translationCount={translationCounts?.get(mod.id) ?? 0}
         hasUpdate={updateIds?.has(mod.id) ?? false}
         busy={busyId === mod.id}
@@ -251,10 +295,10 @@ export function VirtualModGrid({
                 <ModCardErrorBoundary key={mod.id} modId={mod.id} modName={mod.name}>
                   <ModCard
                     mod={mod}
-                    conflicts={conflicts}
-                    missingDeps={missingDependencyNames(mod, dependencyReport, frameworks)}
+                    modConflicts={conflictsById.get(mod.id) ?? NO_CONFLICTS}
+                    missingDeps={missingDepsById.get(mod.id) ?? []}
                     translationCount={translationCounts?.get(mod.id) ?? 0}
-              aiLocated={mod.aiLoc != null}
+                    aiLocated={mod.aiLoc != null}
                     hasUpdate={updateIds?.has(mod.id) ?? false}
                     busy={busyId === mod.id}
                     onToggle={(enabled) => onToggle(mod, enabled)}

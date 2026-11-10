@@ -834,7 +834,7 @@ mod tests {
     fn store_with_local_mods(base: &Path) -> Store {
         let store = Store::load(base.join("data")).expect("store");
         {
-            let mut guard = store.data.lock().expect("lock");
+            let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             guard.mods.push(local_mod("mod-a", 100, 1000, "1.0"));
             guard.mods.push(local_mod("mod-b", 200, 2000, "0.9"));
             store.save(&guard).expect("save");
@@ -892,7 +892,7 @@ mod tests {
         let base = scratch("file-id");
         let store = Store::load(base.join("data")).expect("store");
         {
-            let mut guard = store.data.lock().expect("lock");
+            let mut guard = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             guard.mods.push(local_mod("mod-x", 999, 1000, "1.0"));
             store.save(&guard).expect("save");
         }

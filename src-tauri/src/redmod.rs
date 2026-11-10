@@ -527,7 +527,7 @@ pub fn flush_into(store: &Store, game_dir: Option<&str>, warnings: &mut Vec<Stri
 /// 从 store 取一份状态快照后同步（自己管锁，锁外执行外部进程）。
 pub fn sync_from_store(store: &Store, game_root: &Path) -> AppResult<Option<SyncReport>> {
     let view = {
-        let data = store.data.lock().expect("state mutex poisoned");
+        let data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let view = RedmodView::from_state(&data);
         if !should_run(&view, game_root) {
             return Ok(None);

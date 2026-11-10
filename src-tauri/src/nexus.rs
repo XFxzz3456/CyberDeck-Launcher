@@ -521,7 +521,7 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
 
     let updated = updates.len();
     if !updates.is_empty() {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for (index, entry_id, cover, had_ref, mod_id, file_id) in updates {
             // 请求期间库可能被别的命令改过（比如正好卸掉一个 Mod），
             // 下标命中后还要核对 id，否则封面会写到别的模组身上。
@@ -585,7 +585,7 @@ pub fn attach_from_url(store: &Store, entry_id: &str, url: &str) -> AppResult<()
     let api_url = format!("{API_BASE}/games/{GAME_DOMAIN}/mods/{mod_id}.json");
     let raw: ApiMod = get_json(&client, &key, &api_url)?;
 
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let entry = data
         .mods
         .iter_mut()
@@ -787,7 +787,7 @@ pub fn enrich_metadata(store: &Store) -> AppResult<crate::schema::NexusEnrichRep
     let matched = pending.len();
     let updated = results.len();
     if !results.is_empty() {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for item in results {
             // 请求期间库可能被改动，按 id 定位而不是下标。
             let Some(entry) = data.mods.iter_mut().find(|m| m.id == item.id) else {
@@ -868,7 +868,7 @@ pub fn update_metadata(
     if trimmed_name.is_empty() {
         return Err(CommandError::new("MOD_NAME_EMPTY", "模组名称不能为空。"));
     }
-    let mut data = store.data.lock().expect("state mutex poisoned");
+    let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let entry = data
         .mods
         .iter_mut()
@@ -1036,7 +1036,7 @@ pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
 
     // 回写检查痕迹：哪条查过、查到的最新版本、什么时候查的。
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for (entry_id, latest_version, checked_at) in checked_ids.iter() {
             if let Some(entry) = data.mods.iter_mut().find(|item| &item.id == entry_id) {
                 if let Some(reference) = entry.nexus.as_mut() {
@@ -1339,7 +1339,7 @@ pub fn download_and_install(
         installer::apply_nexus_category(&mut entry, category);
     }
     {
-        let mut data = store.data.lock().expect("state mutex poisoned");
+        let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         data.mods.push(entry.clone());
         if let Err(err) = store.save(&data) {
             // Keep the staging directory; it is harmless and the user can retry.

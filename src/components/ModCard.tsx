@@ -7,6 +7,7 @@ import { useMotionEnabled } from "../lib/preferences";
 import { CoverArt } from "./CoverArt";
 import { Toggle } from "./ui";
 import { categoryLabel, t } from "../i18n";
+import { isContextMenuKey, keyboardContextMenuEvent } from "../lib/contextMenuKey";
 
 type CardState = "deployed" | "staged" | "conflict";
 
@@ -18,7 +19,7 @@ const STATE_LABEL: Record<CardState, string> = {
 
 export function ModCard({
   mod,
-  conflicts,
+  modConflicts,
   missingDeps = [],
   translationCount = 0,
   aiLocated = false,
@@ -33,7 +34,8 @@ export function ModCard({
   onSelectedChange,
 }: {
   mod: ModEntry;
-  conflicts: ConflictInfo[];
+  /** 只属于这一条模组的冲突（上层按 id 分好组；卡片自己不再全表扫描）。 */
+  modConflicts: ConflictInfo[];
   missingDeps?: string[];
   /** 已绑定的汉化子包数量：>0 时封面上打「中」徽标。 */
   translationCount?: number;
@@ -51,9 +53,6 @@ export function ModCard({
   selected?: boolean;
   onSelectedChange?: (checked: boolean) => void;
 }) {
-  const modConflicts = conflicts.filter(
-    (conflict) => conflict.modId === mod.id || conflict.otherModId === mod.id,
-  );
   const hasConflict = modConflicts.length > 0;
   const state: CardState = hasConflict ? "conflict" : mod.enabled ? "deployed" : "staged";
   const stateLabel = STATE_LABEL[state];
@@ -90,6 +89,13 @@ export function ModCard({
       onContextMenu={onContextMenu}
       data-selected={selectable && selected ? "true" : undefined}
       onKeyDown={(event) => {
+        // 菜单键 / Shift+F10：与鼠标右键等价，菜单里的键盘导航负责后续操作。
+        if (onContextMenu && isContextMenuKey(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          onContextMenu(keyboardContextMenuEvent(event.currentTarget));
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpen();

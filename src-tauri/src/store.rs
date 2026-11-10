@@ -9,6 +9,13 @@ pub struct Store {
     pub data_dir: PathBuf,
     pub state_file: PathBuf,
     pub backups_dir: PathBuf,
+    /// 全局状态。
+    ///
+    /// **全部取锁点都用 `unwrap_or_else(|e| e.into_inner())`，不传播中毒**：中毒只说明
+    /// 「上一次持锁时 panic 了」，而这里装的是纯数据（Vec / HashMap / String），panic
+    /// 不会把它变成非法状态。反过来，一旦拒绝继续，一次偶发 panic 就会让后续所有命令
+    /// 连锁 panic，应用永久不可用（2026-11-10 自检 P1-4）。宁可带着可能有半截修改的
+    /// 状态继续跑，也不要让用户只能重装。
     pub data: Mutex<AppStateData>,
     /// 暂存区位置可被用户改动（设置页「更改位置」），所以不能是普通字段。
     /// 单独一把锁：绝不与 `data` 的锁嵌套持有，避免与其他模块的加锁顺序打架。
@@ -48,13 +55,13 @@ impl Store {
     pub fn staging_dir(&self) -> PathBuf {
         self.staging_dir
             .read()
-            .expect("staging dir lock poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
     }
 
     /// 切换暂存区位置。调用方负责先把文件搬过去、并同步 `data.staging_dir`。
     pub fn set_staging_dir(&self, next: PathBuf) {
-        *self.staging_dir.write().expect("staging dir lock poisoned") = next;
+        *self.staging_dir.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
     }
 
     pub fn load(data_dir: PathBuf) -> AppResult<Self> {
@@ -157,7 +164,7 @@ impl Store {
     }
 
     pub fn snapshot_data(&self) -> AppStateData {
-        self.data.lock().expect("state mutex poisoned").clone()
+        self.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
     }
 
     /// 本次启动是否从损坏的状态文件恢复过（返回保留的 `.broken-*.json` 路径）。
@@ -351,6 +358,54 @@ pub fn sanitize_folder(raw: &str, fallback: &str) -> String {
     } else {
         result
     }
+}
+
+/// 原子写一个小文件：同目录临时名 → `sync_all` → `rename` 覆盖。
+///
+/// `Store::save` 是主状态文件的专用实现（带 `.bak`、`broken-*` 兜底）；词表、快照、
+/// 待同步队列这些「顺手一写」的文件以前直接 `fs::write`，断电或崩溃会留下半个 JSON：
+/// 下次启动解析失败 → 被 `unwrap_or_default()` 当成空 → 用户看到「设置/队列凭空没了」。
+/// 2026-11-10 自检 P1-5 统一走这里。
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    // 并发写同一个文件时各线程用各自临时名，避免互相把对方还没 rename 的文件搬走。
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let mut temp_os = path.as_os_str().to_owned();
+    temp_os.push(format!(".tmp-{}-{seq}", std::process::id()));
+    let temp = PathBuf::from(temp_os);
+
+    let written = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = written {
+        let _ = fs::remove_file(&temp);
+        return Err(CommandError::new(
+            "ATOMIC_WRITE",
+            format!("无法写入 {}：{err}", path.display()),
+        ));
+    }
+    if let Err(rename_err) = fs::rename(&temp, path) {
+        // 杀软 / 网盘占用会让 rename 失败；退回到「就地覆盖」，至少不丢数据。
+        if let Err(copy_err) = fs::copy(&temp, path) {
+            let _ = fs::remove_file(&temp);
+            return Err(CommandError::new(
+                "ATOMIC_WRITE",
+                format!(
+                    "无法替换 {}：{rename_err}（回退复制也失败：{copy_err}）",
+                    path.display()
+                ),
+            ));
+        }
+    }
+    let _ = fs::remove_file(&temp);
+    Ok(())
 }
 
 pub fn now_iso() -> String {

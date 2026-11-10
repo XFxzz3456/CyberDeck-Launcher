@@ -5,6 +5,7 @@ import type {
   AdoptScanReport,
   AdoptStagingHealth,
   LibraryNormalizeReport,
+  VortexCoverageReport,
   VortexTakeoverPreflight,
   VortexMappingReport,
   VortexPrelaunchReport,
@@ -108,6 +109,18 @@ export function normalizeError(error: unknown): ApiError {
   }
   if (error instanceof Error) return new ApiError(error.message);
   return new ApiError(String(error));
+}
+
+/**
+ * 后台轮询 / 预读失败：不打断用户，但也不能完全静默。
+ *
+ * 这两类读（Nexus 账号状态、待投递链接、固定工具列表）失败时用户看不到任何异常，
+ * 只会觉得「功能时好时坏」。给控制台留一条可检索的轨迹，界面不弹窗
+ * （2026-11-10 自检 P1-6）。
+ */
+export function reportBackgroundFailure(scope: string, error: unknown): void {
+  const detail = normalizeError(error);
+  console.warn(`[CDL] background.read.failed scope=${scope} code=${detail.code} message=${detail.message}`); // i18n-ignore
 }
 
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -283,6 +296,12 @@ export const api = {
   async vortexSyncRestore(name: string): Promise<number> {
     if (!isTauri) return mockApi.vortexSyncRestore(name);
     return call<number>("vortex_sync_restore", { name });
+  },
+
+  /** P3（只读）：接管覆盖率——多少条能双写回 Vortex、漏的是谁。 */
+  async vortexCoverage(): Promise<VortexCoverageReport> {
+    if (!isTauri) return mockApi.vortexCoverage();
+    return call<VortexCoverageReport>("vortex_coverage");
   },
 
   /** P3：全库重新配准 Vortex 目录身份并持久化到 state。 */

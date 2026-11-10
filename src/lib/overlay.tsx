@@ -76,8 +76,18 @@ export function OverlayProvider(props: { children: ReactNode }): ReactElement {
  * 登记一个顶层浮层。active 为 true 时压栈，变 false / 卸载时出栈。
  * - Esc：只关栈顶那一层，并 stopPropagation（同一监听链上不会一次 Esc 连关两层）；
  * - 焦点：记录触发元素，active 时把焦点移入浮层，卸载时归还给触发元素。
+ *
+ * `esc` / `manageFocus` 供「已经有自己那套」的浮层关掉重复职责：`Modal` 用了
+ * `useEscLayer` + `useFocusTrap`，若这里再来一遍，Esc 会连发两次、焦点也会被
+ * 两次「归还」抢来抢去。此时传 `{ esc: false, manageFocus: false }`，只借栈。
  */
-export function useOverlayLayer(id: string, active: boolean, onClose: () => void): void {
+export function useOverlayLayer(
+  id: string,
+  active: boolean,
+  onClose: () => void,
+  options: { esc?: boolean; manageFocus?: boolean } = {},
+): void {
+  const { esc = true, manageFocus = true } = options;
   const ctx = useContext(OverlayContext);
   const stackRef = ctx?.stackRef;
   const setActiveId = ctx?.setActiveId;
@@ -95,10 +105,12 @@ export function useOverlayLayer(id: string, active: boolean, onClose: () => void
     setActiveId(id);
 
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const root = findLayerRoot(id);
-    if (root && !root.contains(document.activeElement)) {
-      const first = root.querySelector<HTMLElement>(FOCUSABLE);
-      (first ?? root).focus();
+    if (manageFocus) {
+      const root = findLayerRoot(id);
+      if (root && !root.contains(document.activeElement)) {
+        const first = root.querySelector<HTMLElement>(FOCUSABLE);
+        (first ?? root).focus();
+      }
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -108,17 +120,17 @@ export function useOverlayLayer(id: string, active: boolean, onClose: () => void
       event.stopPropagation();
       closeRef.current();
     };
-    window.addEventListener("keydown", onKeyDown);
+    if (esc) window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
+      if (esc) window.removeEventListener("keydown", onKeyDown);
       const index = stack.lastIndexOf(layer);
       if (index >= 0) stack.splice(index, 1);
       setActiveId(stack.length > 0 ? stack[stack.length - 1].id : null);
       // 归还焦点：触发按钮可能已被卸载（点列表项顺手删掉了它），用 isConnected 兜底。
-      if (trigger?.isConnected) trigger.focus();
+      if (manageFocus && trigger?.isConnected) trigger.focus();
     };
-  }, [active, id, stackRef, setActiveId]);
+  }, [active, esc, id, manageFocus, stackRef, setActiveId]);
 }
 
 /** 全局快捷键用：判断有没有浮层、关掉最上面那层、读当前栈顶 id。 */

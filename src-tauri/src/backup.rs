@@ -11,16 +11,18 @@ const BACKUP_ITEMS: [&str; 3] = [
     "r6/config",
 ];
 
-pub fn ensure_backup(store: &Store, game_root: &Path, state: &mut AppStateData) -> AppResult<BackupInfo> {
-    if let Some(existing) = &state.backup {
-        if Path::new(&existing.game_dir) == game_root && Path::new(&existing.root).is_dir() {
-            return Ok(existing.clone());
-        }
-    }
-    create_backup(store, game_root, state)
+pub fn create_backup(store: &Store, game_root: &Path, state: &mut AppStateData) -> AppResult<BackupInfo> {
+    let info = create_backup_files(store, game_root)?;
+    state.backup = Some(info.clone());
+    Ok(info)
 }
 
-pub fn create_backup(store: &Store, game_root: &Path, state: &mut AppStateData) -> AppResult<BackupInfo> {
+/// 只做磁盘复制 + 写 manifest，**不碰 state**。
+///
+/// 拆出来是为了让部署路径能在**不持全局锁**的时候做备份：首次部署要把游戏目录里
+/// 的配置/存档复制几百 MB，持锁做完等于让所有读状态的命令一起排队
+/// （2026-11-10 自检 P1-3）。调用方拿到 `BackupInfo` 后自己写回状态。
+pub fn create_backup_files(store: &Store, game_root: &Path) -> AppResult<BackupInfo> {
     validate_game_dir(game_root)?;
     let stamp = now_stamp();
     let root = store.backup_root(&stamp);
@@ -70,8 +72,7 @@ pub fn create_backup(store: &Store, game_root: &Path, state: &mut AppStateData) 
     };
     let manifest = serde_json::to_string_pretty(&info)
         .map_err(|e| CommandError::new("BACKUP_SERIALIZE", e.to_string()))?;
-    fs::write(root.join("manifest.json"), manifest)?;
-    state.backup = Some(info.clone());
+    crate::store::write_atomic(&root.join("manifest.json"), manifest.as_bytes())?;
     Ok(info)
 }
 

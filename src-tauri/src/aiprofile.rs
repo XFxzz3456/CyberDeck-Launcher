@@ -42,7 +42,7 @@ fn normalize(mut profile: AiProfile) -> AiProfile {
 
 /// 读列表；顺手完成一次**幂等迁移**：老状态没有配置列表时，用当前端点补一条。
 fn ensure(store: &Store) -> AiProfileList {
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut dirty = false;
     if state.settings.ai_profiles.is_empty() {
         // 先把值取出来再 push：同一个结构体里既借可变又借不可变会被借用检查器拦住。
@@ -126,7 +126,7 @@ pub fn save(store: &Store, profile: AiProfile, key: Option<String>) -> AppResult
         }
     }
 
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if profile.id.trim().is_empty() {
         profile.id = format!("p-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
     }
@@ -161,7 +161,7 @@ pub fn save(store: &Store, profile: AiProfile, key: Option<String>) -> AppResult
 /// 删除一套配置：至少保留一套；删掉的若是当前激活的，自动切到第一条。
 pub fn delete(store: &Store, id: &str) -> AppResult<AiProfileList> {
     ensure(store);
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if state.settings.ai_profiles.len() <= 1 {
         return Err(CommandError::new(
             "AI_PROFILE_LAST",
@@ -190,7 +190,7 @@ pub fn delete(store: &Store, id: &str) -> AppResult<AiProfileList> {
 /// 切换当前使用的配置。
 pub fn activate(store: &Store, id: &str) -> AppResult<AiProfileList> {
     ensure(store);
-    let mut state = store.data.lock().expect("state mutex poisoned");
+    let mut state = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(profile) = state
         .settings
         .ai_profiles

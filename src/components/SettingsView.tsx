@@ -28,7 +28,7 @@ import {
 import type { DownloadQueueSettings, DriveSuggestion, LaunchCheck, NxmStatus, Settings, Snapshot } from "../types";
 import { compactPath, formatBytes, relativeTime } from "../lib/format";
 import { useAppVersion } from "../lib/appVersion";
-import { api, normalizeError } from "../lib/api";
+import { api, normalizeError, reportBackgroundFailure } from "../lib/api";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Badge, Spinner, SwitchRow } from "./ui";
 import { ExternalToolsCard } from "./ExternalToolsCard";
@@ -308,7 +308,13 @@ export function SettingsView({
         setQueueSettings(loaded);
         setProxyDraft(loaded.proxy ?? "");
       })
-      .catch(() => {});
+      .catch((error) => {
+        // 读失败必须说出来：以前这里静默吞掉，用户接着改并发/目录时
+        // `commitQueueSettings` 因为没有基线值直接 return，改动全部白做
+        // 且毫无提示（2026-11-10 自检 P1-6）。
+        if (!alive) return;
+        setQueueNote(t("downloads.settingsLoadFailed", { reason: normalizeError(error).message }));
+      });
     return () => {
       alive = false;
     };
@@ -329,7 +335,11 @@ export function SettingsView({
   }, [queueSettings]);
   const commitQueueSettings = (patch: Partial<DownloadQueueSettings>): Promise<void> => {
     const base = queueSettingsRef.current;
-    if (!base) return Promise.resolve();
+    if (!base) {
+      // 没有基线 = 上面那次读取失败过。以前这里直接 return，用户点了开关没有任何反应。
+      flashQueue(t("downloads.settingsUnavailable"));
+      return Promise.resolve();
+    }
     const merged: DownloadQueueSettings = { ...base, ...patch };
     queueSettingsRef.current = merged;
     setQueueSettings(merged);
@@ -369,7 +379,7 @@ export function SettingsView({
       .then((status) => {
         if (alive) setNxmState(status);
       })
-      .catch(() => {});
+      .catch((error) => reportBackgroundFailure("settings.nxmStatus", error));
     return () => {
       alive = false;
     };
@@ -379,7 +389,8 @@ export function SettingsView({
       setNxmState(await api.nxmTakeover());
       flashQueue(t("downloads.nxmRepaired"));
     } catch (error) {
-      flashQueue(error instanceof Error ? error.message : String(error));
+      // 后端结构化错误是 `{ code, message }` 对象，`String(error)` 会显示 [object Object]。
+      flashQueue(normalizeError(error).message);
     }
   };
   const pickDownloadDir = async () => {

@@ -1043,6 +1043,14 @@ pre {
   padding: 0 6px 17px;
   cursor: pointer;
   user-select: none;
+  /* 从 <div> 改成 <button>（键盘可达）：把浏览器默认的按钮外观全部清掉，
+     视觉与改之前完全一致。 */
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
 }
 
 .logo-mark {
