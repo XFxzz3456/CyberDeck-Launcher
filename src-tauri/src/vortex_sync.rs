@@ -270,6 +270,34 @@ fn build_writes(
 
 /// 与开关无关的前置校验：状态库可写 + 活动 profile 正确。开启接管的那一刻也要跑。
 pub fn precheck(dir: &Path) -> AppResult<()> {
+    // 只读「活动 profile 归不归本游戏」这一步需要的两个键。
+    //
+    // 为什么不直接复用 `read_pairs_from`：那个函数要把整个状态库遍历一遍，
+    // 其中 `persistent###mods###cyberpunk2077###*` 在真实库里是上万条带大 value
+    // 的记录，实测一次几十秒。保存加载顺序是高频操作（拖一下、整理一次都会写），
+    // 每次保存都全表扫一遍等于每次都假死——用户在 2026-11-11 报的「未响应」
+    // 就是这么来的。能精确 get 就不要遍历。
+    let mut db = open_db(dir, false)?;
+    let active = db
+        .get(b"settings###profiles###activeProfileId")
+        .map(|raw| String::from_utf8_lossy(&raw).trim().trim_matches('"').to_string())
+        .unwrap_or_default();
+    if !active.is_empty() {
+        let key = format!("persistent###profiles###{active}###gameId");
+        let game = db
+            .get(key.as_bytes())
+            .map(|raw| String::from_utf8_lossy(&raw).trim().trim_matches('"').to_string())
+            .unwrap_or_default();
+        if game == GAME_ID {
+            return Ok(());
+        }
+        return Err(CommandError::new(
+            "VORTEX_PROFILE_MISMATCH",
+            format!("Vortex 活动 profile（{active}）不属于 {GAME_ID}，为避免写错配置已停止本次变更。请先在 Vortex 里切回赛博朋克 2077 的 profile。"),
+        ));
+    }
+
+    // 老版本 Vortex 没写 activeProfileId 时退回全表解析（慢，但只在缺键时走）。
     let pairs = read_pairs_from(dir)?;
     let (pid, ok) = active_profile(&pairs);
     if !ok || pid.is_empty() {

@@ -2169,6 +2169,7 @@ export const zhCN = {
     coverCache: {
       filled: "已把 {count} 张封面缓存到本机",
     },
+    orderSavedWithWarnings: "加载顺序已保存，但游戏侧 modlist 没写",
     metadata: {
       attachedDetail: "名称、作者、版本、封面都已更新。",
       attachedTitle: "已按 Nexus 链接补全",

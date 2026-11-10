@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { hashCode } from "../lib/format";
 import { isTauri } from "../lib/api";
@@ -28,10 +29,22 @@ function assetUrl(path: string): string {
  * same way controls do. The seed still drives composition, so cards stay varied.
  */
 export function CoverArt({ id, name, category, coverPath, className }: CoverArtProps) {
-  if (coverPath) {
+  // 本地图不是「给了路径就一定有图」：asset 协议没放行（便携版换盘、暂存区搬家）、
+  // 缓存被清掉、包内那张图本身损坏，都会让 <img> 加载失败。失败时如果只留一个
+  // 空 img + 遮罩，用户看到的就是一块纯黑——比没有图更难看。记住失败并回落到
+  // 生成图，是这里唯一可接受的降级。
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [coverPath]);
+
+  if (coverPath && !broken) {
     return (
       <div className={`cover-art ${className ?? ""}`}>
-        <img src={assetUrl(coverPath)} alt="" draggable={false} />
+        <img
+          src={assetUrl(coverPath)}
+          alt=""
+          draggable={false}
+          onError={() => setBroken(true)}
+        />
         <div className="cover-shade" />
       </div>
     );

@@ -228,7 +228,14 @@ export function normalizeSnapshot(raw: Snapshot | null | undefined): Snapshot {
     return {
       state: normalizeState(null, FALLBACK_SETTINGS),
       game: null,
-      loadOrder: { archives: [], redmods: [], modlistPath: null, modlistExists: false, managedModlist: false },
+      loadOrder: {
+        archives: [],
+        redmods: [],
+        modlistPath: null,
+        modlistExists: false,
+        managedModlist: false,
+        warnings: [],
+      },
       conflicts: [],
       demoMode: false,
       stateRecoveredFrom: null,
@@ -246,9 +253,17 @@ export function normalizeSnapshot(raw: Snapshot | null | undefined): Snapshot {
             redmods: list(raw.loadOrder.redmods),
             modlistPath: typeof raw.loadOrder.modlistPath === "string" ? raw.loadOrder.modlistPath : null,
             modlistExists: bool(raw.loadOrder.modlistExists, false),
+            warnings: Array.isArray(raw.loadOrder.warnings) ? raw.loadOrder.warnings.filter((w): w is string => typeof w === "string") : [],
             managedModlist: bool(raw.loadOrder.managedModlist, false),
           }
-        : { archives: [], redmods: [], modlistPath: null, modlistExists: false, managedModlist: false },
+        : {
+            archives: [],
+            redmods: [],
+            modlistPath: null,
+            modlistExists: false,
+            managedModlist: false,
+            warnings: [],
+          },
     conflicts: list(raw.conflicts),
     demoMode: bool(raw.demoMode, false),
   };

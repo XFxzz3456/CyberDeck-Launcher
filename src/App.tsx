@@ -1967,6 +1967,12 @@ function AppShell() {
               }
             : current,
         );
+        // 顺序本身已经存进状态库了，只是游戏侧的 modlist.txt 没写成（被 Vortex
+        // 占着、或者不是本启动器写的）。这种情况必须说清「哪半成了」，否则用户
+        // 会以为整次保存失败，重新拖一遍也还是同样结果。
+        if (viewNext.warnings.length > 0) {
+          toast("warn", t("toast.orderSavedWithWarnings"), viewNext.warnings.join("；"));
+        }
       } catch (error) {
         showError(error, t("err.saveOrder"));
         await refresh();

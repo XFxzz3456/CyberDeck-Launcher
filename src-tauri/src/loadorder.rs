@@ -216,6 +216,8 @@ pub fn build_view(state: &AppStateData, game_root: Option<&Path>) -> LoadOrderVi
         modlist_path,
         modlist_exists,
         managed_modlist,
+        // 只有保存动作会往里写内容；单纯读视图时没有话要说。
+        warnings: Vec::new(),
     }
 }
 

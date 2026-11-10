@@ -1009,4 +1009,5 @@ mod tests {
         let suggestion = build_suggestion(&state, &[], false, None);
         assert!(suggestion.moves.is_empty());
     }
+
 }

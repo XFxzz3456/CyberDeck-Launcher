@@ -1007,6 +1007,12 @@ pub struct LoadOrderView {
     pub modlist_path: Option<String>,
     pub modlist_exists: bool,
     pub managed_modlist: bool,
+    /// 保存过程中「没做成但不影响顺序已存下」的事，例如 modlist.txt 被别家占着。
+    ///
+    /// 以前这类情况直接让整条命令返回错误，可顺序其实已经写进状态库了——用户看到
+    /// 「保存失败」，实际重启后顺序又确实变了，是最容易失去信任的那种表现。
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// 「一键整理」里真正移动了位置的一行。

@@ -770,6 +770,7 @@ function buildLoadOrder(state: AppStateData): LoadOrderView {
     })),
     redmods,
     modlistPath: state.gameDir ? `${state.gameDir}\\archive\\pc\\mod\\modlist.txt` : null,
+    warnings: [],
     modlistExists: state.settings.writeModlist,
     managedModlist: state.settings.writeModlist,
   };

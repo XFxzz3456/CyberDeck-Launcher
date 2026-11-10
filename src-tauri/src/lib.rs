@@ -1445,9 +1445,26 @@ fn get_load_order(store: State<'_, Store>) -> AppResult<LoadOrderView> {
     Ok(loadorder::build_view(&data, game_root.as_deref().map(Path::new)))
 }
 
+/// 保存加载顺序。
+///
+/// **必须走 `spawn_blocking`**：这条链路里有 Vortex 状态库（LevelDB）的打开与
+/// 读取、`modlist.txt` 落盘、整库写入（近 3 MB），任何一步都是几百毫秒到几十秒
+/// 的磁盘活。从前它是同步命令，跑在 UI 线程上，用户点「应用」后窗口直接被
+/// Windows 判定「未响应」——2026-11-11 报的就是这个。
 #[tauri::command]
-fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<LoadOrderView> {
-    let vdir = vortex_guard(store.inner())?;
+async fn save_load_order(app: tauri::AppHandle, order: Vec<String>) -> AppResult<LoadOrderView> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = app.state::<Store>();
+        save_load_order_blocking(store.inner(), order)
+    })
+    .await
+    .map_err(|err| CommandError::new("SAVE_ORDER_TASK", format!("保存加载顺序线程异常：{err}")))?
+}
+
+fn save_load_order_blocking(store: &Store, order: Vec<String>) -> AppResult<LoadOrderView> {
+    let clock = std::time::Instant::now();
+    let vdir = vortex_guard(store)?;
+    let guard_ms = clock.elapsed().as_millis();
     let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let valid: std::collections::HashSet<String> = loadorder::deployed_archives(&data)
         .into_iter()
@@ -1483,19 +1500,25 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
         Vec::new()
     };
     store.save(&data)?;
-    let view = loadorder::build_view(&data, data.game_dir.as_deref().map(Path::new));
-    if !warnings.is_empty() {
-        return Err(CommandError::new(
-            "MODLIST_WRITE_FAILED",
-            warnings.join("\n"),
-        ));
-    }
+    let mut view = loadorder::build_view(&data, data.game_dir.as_deref().map(Path::new));
+    // modlist.txt 写不成（被 Vortex 占着、或者不是本启动器写的）不影响顺序本身
+    // 已经可靠落进状态库——降级成 warning 回传。以前这里返回 Err，用户看到
+    // 「保存失败」，可重启后顺序又确实变了，这比不提示更糟。
+    view.warnings = warnings;
     let synced_order = data.load_order.clone();
     drop(data);
     let _ = vortex_apply(
-        store.inner(),
+        store,
         vdir,
         vortex_sync::changes_for_archive_order(&synced_order),
+    );
+    log_startup(
+        &store.data_dir,
+        &format!(
+            "stage=save_order rows={} guard={guard_ms}ms total={}ms",
+            view.archives.len(),
+            clock.elapsed().as_millis()
+        ),
     );
     Ok(view)
 }
@@ -1881,6 +1904,10 @@ async fn change_staging_dir(
         }
         // `staging_dir` 是另一把锁，刻意不与 `data` 嵌套持有（见 store.rs 字段注释）。
         store.set_staging_dir(target.clone());
+        // 搬到新盘之后，旧 scope 覆盖不到新位置——封面会立刻全黑。
+        if let Err(err) = handle.asset_protocol_scope().allow_directory(&target, true) {
+            log_lifecycle(&handle, &format!("stage=asset_scope_failed err={err}"));
+        }
         log_lifecycle(
             &handle,
             &format!(
@@ -4359,6 +4386,22 @@ pub fn run() {
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 covers::refresh_paths(&mut data, &store.data_dir);
+            }
+
+            // asset 协议默认只放行 `$APPDATA/**` 与 `$APPLOCALDATA/**`（见 tauri.conf.json），
+            // 而便携版把数据目录放在 exe 同级（可能在任意盘符），暂存区还能被用户改到别的盘。
+            // 不把这两处加进 scope，`convertFileSrc` 生成的地址会被一律拒绝：包内封面、
+            // 本地缓存封面全都加载不出来，界面表现就是「封面一片黑」。
+            {
+                let store = app.state::<Store>();
+                let scope = app.asset_protocol_scope();
+                if let Err(err) = scope.allow_directory(&store.data_dir, true) {
+                    eprintln!("CyberDeck Launcher: asset scope (data dir) = {err}");
+                }
+                let staging = store.staging_dir();
+                if let Err(err) = scope.allow_directory(&staging, true) {
+                    eprintln!("CyberDeck Launcher: asset scope (staging) = {err}");
+                }
             }
 
             let store = app.state::<Store>();

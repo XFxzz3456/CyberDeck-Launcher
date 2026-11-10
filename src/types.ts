@@ -504,6 +504,8 @@ export interface LoadOrderView {
   modlistPath: string | null;
   modlistExists: boolean;
   managedModlist: boolean;
+  /** 顺序已存下、但有没做成的事（如 modlist.txt 被别家占着）。 */
+  warnings: string[];
 }
 
 /** 「一键整理」里真正移动了位置的一行。 */
