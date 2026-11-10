@@ -2104,19 +2104,161 @@ pub(crate) fn find_conflicts(
 /// Conflicts caused by two enabled mods claiming the same deployed target.
 /// One row is emitted per target/other-mod pair; `find_conflicts` still returns
 /// the full candidate view when a deploy is actually blocked.
-/// 父子关系表：汉化包 id → 原版 Mod id。
+/// 汉化 / 翻译包的名字关键词。
 ///
-/// 冲突判定要用它区分「两个模组抢同一个文件」（真冲突）和
-/// 「汉化包覆盖自己父级的文本文件」（合法的语言覆盖，不该亮红灯）。
+/// 只在「自动认父」时用，并且必须与「文件确实被某个 MOD 覆盖」同时成立才认——
+/// 单看名字会把 `Translation Department Overhaul` 这类正常 MOD 当汉化包。
+const TRANSLATION_WORDS: &[&str] = &[
+    "simplified chinese",
+    "traditional chinese",
+    "chinese",
+    "汉化",
+    "中文",
+    "简体",
+    "繁体",
+    "translation",
+    "translate",
+    "chs",
+    "cht",
+];
+
+/// 去掉翻译词与标点后的名字，用于「汉化包 ↔ 原 MOD」的名字匹配。
+fn name_core(raw: &str) -> String {
+    let mut text = raw.to_ascii_lowercase();
+    for word in TRANSLATION_WORDS {
+        text = text.replace(word, " ");
+    }
+    text.chars().filter(|ch| ch.is_alphanumeric()).collect()
+}
+
+fn full_name_key(raw: &str) -> String {
+    raw.to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .collect()
+}
+
+/// 看起来像汉化 / 翻译包吗？
+fn looks_like_translation(entry: &ModEntry) -> bool {
+    if entry.is_translation {
+        return true;
+    }
+    let lowered = entry.name.to_ascii_lowercase();
+    TRANSLATION_WORDS.iter().any(|word| lowered.contains(word))
+}
+
+/// 这个 MOD 会落地的全部相对路径（小写、去重）。
+///
+/// 已部署的看 `deployed_files`，还没部署的看 `planned_files`——刚导入还没启用的
+/// 汉化包只有后者，只看前者会漏掉「装完还没启用」的那一半。
+fn entry_paths(entry: &ModEntry) -> Vec<String> {
+    let mut out: Vec<String> = entry
+        .deployed_files
+        .iter()
+        .map(|file| file.relative_path.to_ascii_lowercase())
+        .collect();
+    out.extend(
+        entry
+            .planned_files
+            .iter()
+            .map(|path| path.to_ascii_lowercase()),
+    );
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// 父子关系表：汉化包 id → 原版 MOD id。
+///
+/// 冲突判定用它区分「两个模组抢同一个文件」（真冲突）和「汉化包覆盖父级的文本
+/// 文件」（合法的语言覆盖，不该亮红灯）。
+///
+/// ## 为什么要自动推断
+///
+/// 那条过滤只认 `parent_mod_id`，而实盘数据（2026-11-10）里 8 个汉化包
+/// `parent_mod_id` 全是 `None`——导入时认出了「这是汉化」，却没人给它认父，
+/// 于是每一份汉化都被算成冲突，用户看到的就是「Audioware 和它的汉化包打起来了」。
+///
+/// 认父规则（两条任一成立，且都必须以「确实共享文件」为前提）：
+/// 1. **名字命中**：去掉翻译词后的汉化包名，以某个 MOD 的名字开头（双方 ≥3 字符）；
+/// 2. **文件覆盖**：汉化包 ≥50% 的落地文件由同一个 MOD 提供。
+///
+/// 只看名字会误伤同名不同物（`Audioware` vs `AudioWare Radio Framework`）；
+/// 只看覆盖会误伤两个都改同一文件的独立 MOD。两条共用同一个硬前提才安全。
 fn parent_links(mods: &[ModEntry]) -> HashMap<String, String> {
-    mods.iter()
+    let mut links: HashMap<String, String> = mods
+        .iter()
         .filter_map(|entry| {
             entry
                 .parent_mod_id
                 .as_ref()
                 .map(|parent| (entry.id.clone(), parent.clone()))
         })
-        .collect()
+        .collect();
+
+    // 路径 → 提供它的 MOD（只看已启用：未启用的不参与冲突统计），顺带记每个 MOD 的文件数。
+    let mut owners: HashMap<String, Vec<&str>> = HashMap::new();
+    let mut file_counts: HashMap<&str, usize> = HashMap::new();
+    for entry in mods.iter().filter(|entry| entry.enabled) {
+        let files = entry_paths(entry);
+        file_counts.insert(entry.id.as_str(), files.len());
+        for path in files {
+            owners.entry(path).or_default().push(entry.id.as_str());
+        }
+    }
+
+    let candidates: Vec<&ModEntry> = mods
+        .iter()
+        .filter(|entry| {
+            entry.enabled && !links.contains_key(&entry.id) && looks_like_translation(entry)
+        })
+        .collect();
+
+    for child in candidates {
+        let files = entry_paths(child);
+        if files.is_empty() {
+            continue;
+        }
+        let mut overlap: HashMap<&str, usize> = HashMap::new();
+        for path in &files {
+            for owner in owners.get(path).into_iter().flatten() {
+                if *owner == child.id {
+                    continue;
+                }
+                *overlap.entry(owner).or_insert(0) += 1;
+            }
+        }
+        let core = name_core(&child.name);
+        let total = files.len().max(1);
+        let mut best: Option<(bool, usize, &str)> = None;
+        for (candidate_id, shared) in overlap {
+            let Some(candidate) = mods.iter().find(|entry| entry.id == candidate_id) else {
+                continue;
+            };
+            let candidate_key = full_name_key(&candidate.name);
+            // 候选名太短（"AI" / "HD"）拿来做前缀会乱认，名字这条直接放弃。
+            let name_hit =
+                core.len() >= 3 && candidate_key.len() >= 3 && core.starts_with(&candidate_key);
+            // 纯靠「文件被覆盖」认父时必须两头都严：汉化包的文件**全部**被这个 MOD
+            // 提供，且这个 MOD 的文件严格多于汉化包（说明父是超集，而不是恰好撞上）。
+            // 只按百分比算的话，「只翻一个文件、恰好撞到另一个单文件 MOD」会被误认
+            // 成父子，那等于把真冲突藏起来——比漏认更糟。
+            let candidate_total = *file_counts.get(candidate_id).unwrap_or(&0);
+            let covered = shared == total && candidate_total > total;
+            if !name_hit && !covered {
+                continue;
+            }
+            let score = (name_hit, shared);
+            if best.map_or(true, |(hit, count, _)| score > (hit, count)) {
+                best = Some((name_hit, shared, candidate_id));
+            }
+        }
+        if let Some((_, _, parent)) = best {
+            links.insert(child.id.clone(), parent.to_string());
+        }
+    }
+
+    links
 }
 
 /// 两个模组是不是直接父子。只看直接关系——祖孙关系不成立，
@@ -2842,6 +2984,107 @@ fn prune_empty_dirs(mut current: Option<&Path>, root: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 构造一条最小可用的 ModEntry：只填冲突判定关心的字段。
+    fn mod_with(id: &str, name: &str, files: &[&str], translation: bool) -> ModEntry {
+        ModEntry {
+            id: id.to_string(),
+            raw_name: None,
+            name: name.to_string(),
+            version: None,
+            author: None,
+            category: "其他".to_string(),
+            category_locked: false,
+            description: String::new(),
+            source_zip: None,
+            nexus: None,
+            staging_path: format!("Z:/__cdl_test_missing__/{id}"),
+            cover_path: None,
+            enabled: true,
+            installed_at: "2026-11-10T00:00:00Z".to_string(),
+            updated_at: None,
+            size_bytes: 0,
+            file_count: files.len(),
+            layout: InstallLayout::Archive,
+            mod_folder: None,
+            metadata_source: "filename".to_string(),
+            planned_files: Vec::new(),
+            warnings: Vec::new(),
+            deployed_files: files
+                .iter()
+                .map(|path| DeployedFile {
+                    source: format!("Z:/staging/{id}/{path}"),
+                    target: format!("C:/game/{path}"),
+                    link_type: LinkType::HardLink,
+                    relative_path: (*path).to_string(),
+                    size: None,
+                    modified_time: None,
+                })
+                .collect(),
+            has_archive: true,
+            has_redmod: false,
+            has_cet: false,
+            translated_name: None,
+            translated_at: None,
+            translated_by: None,
+            managed: true,
+            origin: "cyberdeck".to_string(),
+            modpack_id: None,
+            nexus_cover_url: None,
+            is_translation: translation,
+            parent_mod_id: None,
+            ai_loc: None,
+            ai_fix: Vec::new(),
+        }
+    }
+
+    /// 汉化包覆盖父级文件是设计内行为，不该报冲突。
+    ///
+    /// 实盘（2026-11-10）里 8 个汉化包 `parent_mod_id` 全是 None，过滤器一个都没
+    /// 命中，用户看到的是「Audioware 和它的汉化包冲突」。这条用例锁死自动认父。
+    #[test]
+    fn translation_pack_over_parent_is_not_a_conflict() {
+        let parent = mod_with(
+            "audioware",
+            "Audioware",
+            &["r6/scripts/Audioware/Callback.reds", "r6/scripts/Audioware/Config.reds"],
+            false,
+        );
+        let child = mod_with(
+            "audioware-cn",
+            "Audioware Simplified Chinese",
+            &["r6/scripts/Audioware/Config.reds"],
+            true,
+        );
+        let conflicts = all_conflicts(&[parent, child]);
+        assert!(conflicts.is_empty(), "汉化覆盖被误报为冲突：{conflicts:?}");
+    }
+
+    /// 两个普通 MOD 抢同一个文件仍然要报——过滤不能把真冲突一起吃掉。
+    #[test]
+    fn unrelated_overlap_is_still_a_conflict() {
+        let left = mod_with("a", "Factions Evolved", &["r6/scripts/ncto.reds"], false);
+        let right = mod_with("b", "Night City Traffic Overhaul", &["r6/scripts/ncto.reds"], false);
+        let conflicts = all_conflicts(&[left, right]);
+        assert_eq!(conflicts.len(), 1);
+    }
+
+    /// 「只翻一个文件」的汉化包恰好撞上一个单文件 MOD：不能认成父子。
+    ///
+    /// 认父的覆盖条件要求父级文件数严格多于汉化包，就是为了挡住这种误判——
+    /// 误判的代价是把真冲突藏起来，比漏认严重。
+    #[test]
+    fn single_file_translation_hitting_unrelated_mod_stays_conflict() {
+        let unrelated = mod_with("other", "Some Other Mod", &["r6/scripts/other.reds"], false);
+        let child = mod_with(
+            "cn",
+            "Totally Different Simplified Chinese",
+            &["r6/scripts/other.reds"],
+            true,
+        );
+        let conflicts = all_conflicts(&[unrelated, child]);
+        assert_eq!(conflicts.len(), 1, "误把无关 MOD 认成了父级：{conflicts:?}");
+    }
 
     /// 每个用例独立临时目录，避免并行测试互相看见对方的文件。
     fn fixture(tag: &str) -> PathBuf {
