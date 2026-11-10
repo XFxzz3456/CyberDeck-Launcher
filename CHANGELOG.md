@@ -74,6 +74,9 @@
 
 ### 修复
 
+- **点「一键整理 → 应用」后整个窗口「未响应」**：`save_load_order` 是同步命令，跑在 UI 线程上，第一行就进 `vortex_guard` → `precheck` → `read_pairs_from`，而后者会遍历整个 Vortex LevelDB。实盘库 9234 条记录、遍历一次 **69 秒**（rusty-leveldb 迭代器约 7.5ms/条），UI 线程被占住，Windows 5 秒就判定未响应。四处改动：① `precheck` 只精确 `get` 两个键（activeProfileId + 该 profile 的 gameId），实测 33ms；② `mirror` 双写全程改成「精确 get + 精确 put」，不再把整库捞出来当查找表；③ 写前备份从「整库 2.8 MB」改成「只备份这次会被覆盖的键」，还原逻辑不变；④ `save_load_order` 整体移进 `spawn_blocking`。**实测保存从 66 秒降到 175 毫秒**，界面全程可响应。
+- **modlist.txt 写不成时误报「保存失败」**：以前 `write_modlist` 失败会让整条命令返回 Err，可顺序其实已经写进状态库了（`store.save` 在返回 Err 之前执行）。用户看到「保存失败」，重启后顺序却又确实变了——这比不提示更糟。改为 `LoadOrderView.warnings` 回传，界面用一条 warn 提示说清「顺序已保存，游戏侧 modlist 没写」。
+- **封面一片黑**：`assetProtocol.scope` 只有 `$APPDATA/**` 与 `$APPLOCALDATA/**`，而便携版数据目录跟着 exe 走（可能在任意盘），暂存区还能被用户改到别盘。scope 覆盖不到时 `convertFileSrc` 生成的地址一律被拒，包内封面与本地缓存封面全部加载失败，界面就是一片黑。启动时把数据目录与暂存目录 `allow_directory(…, recursive)`，切暂存区时同步放行新位置；`CoverArt` 再加 `onError` 回退到生成图。
 - **汉化包覆盖父级被误报为文件级冲突**（`installer.rs::parent_links`）：加载顺序页显示的冲突里有 35 条是汉化包覆盖自己父级——这是汉化包的正常工作方式。实盘 8 个汉化包的 `parentModId` 全为 `None`，原有显式父子判定一条都没命中。改为：显式 `parent_mod_id` 优先；否则对**名字像汉化包**的已启用 MOD 自动认父（名字前缀命中；或「重合文件数 == 汉化包自己的文件数」**且**「父级文件数 > 汉化包文件数」）。覆盖条件刻意收紧——只要求比例过半会把「只翻一个文件、正好撞到无关单文件 MOD」误认成父子，真冲突反而被藏起来。实测自动认父 6 个，启用态冲突 60 → 25 条。
 
 ### 变更

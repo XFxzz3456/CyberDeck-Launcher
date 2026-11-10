@@ -76,6 +76,30 @@ fn open_db(dir: &Path, create: bool) -> AppResult<DB> {
     })
 }
 
+/// 精确读一个键。库里的 value 都是 UTF-8 JSON 文本，读不出来就当不存在。
+fn read_key(db: &mut DB, key: &str) -> Option<String> {
+    db.get(key.as_bytes())
+        .map(|raw| String::from_utf8_lossy(&raw).to_string())
+}
+
+/// 活动 profile：`(id, 是否属于本游戏)`。只读两个键，不遍历。
+///
+/// 老版本 Vortex 可能没写 `activeProfileId`，此时返回空串，调用方自行决定是否
+/// 退回全表解析（`active_profile`）。
+fn resolve_profile(db: &mut DB) -> AppResult<(String, bool)> {
+    let active = read_key(db, "settings###profiles###activeProfileId")
+        .map(|raw| raw.trim().trim_matches('"').to_string())
+        .unwrap_or_default();
+    if active.is_empty() {
+        return Ok((String::new(), false));
+    }
+    let key = format!("persistent###profiles###{active}###gameId");
+    let game = read_key(db, &key)
+        .map(|raw| raw.trim().trim_matches('"').to_string())
+        .unwrap_or_default();
+    Ok((active, game == GAME_ID))
+}
+
 fn read_pairs_from(dir: &Path) -> AppResult<Vec<(String, String)>> {
     let mut db = open_db(dir, false)?;
     let mut iter = db.new_iter().map_err(|err| {
@@ -184,13 +208,25 @@ fn queue_pending(store: &Store, changes: &SyncChanges) {
 }
 
 /// 写前快照：把全部相关键原样存成 JSON，供一键还原。
-fn write_backup(store: &Store, pairs: &[(String, String)]) -> AppResult<PathBuf> {
+/// 备份「这次会被覆盖的键」的旧值。
+///
+/// 以前是把整库 9000 多条序列化一份（2.8 MB、还要先全表遍历 69 秒）。还原本来
+/// 也只是逐键写回，所以按写入清单备份粒度刚好，还原逻辑一行都不用改。
+fn write_backup(
+    store: &Store,
+    db: &mut DB,
+    writes: &[(String, String)],
+) -> AppResult<PathBuf> {
+    let pairs: Vec<(String, String)> = writes
+        .iter()
+        .filter_map(|(key, _)| read_key(db, key).map(|old| (key.clone(), old)))
+        .collect();
     let dir = backup_dir(store);
     std::fs::create_dir_all(&dir).map_err(|err| {
         CommandError::new("VORTEX_MIRROR_IO", format!("无法创建备份目录：{err}"))
     })?;
     let path = dir.join(format!("{}.json", stamp()));
-    let raw = serde_json::to_string_pretty(pairs)
+    let raw = serde_json::to_string_pretty(&pairs)
         .map_err(|err| CommandError::new("VORTEX_MIRROR_IO", err.to_string()))?;
     let temp = path.with_extension("json.tmp");
     std::fs::write(&temp, raw)
@@ -234,7 +270,7 @@ fn reorder_value(raw: &str, wanted: &[String]) -> String {
 
 /// 把变更变成「键 → 值」写入集合。读不到原顺序键时不凭空造，记 warning。
 fn build_writes(
-    pairs: &[(String, String)],
+    db: &mut DB,
     pid: &str,
     changes: &SyncChanges,
     warnings: &mut Vec<String>,
@@ -251,17 +287,15 @@ fn build_writes(
     }
     if let Some(order) = &changes.archive_order {
         let key = format!("persistent###loadOrders###{pid}###{GAME_ID}-archive");
-        let existing = pairs.iter().find(|(k, _)| k == &key).map(|(_, v)| v.as_str());
-        match existing {
-            Some(raw) => writes.push((key, reorder_value(raw, order))),
+        match read_key(db, &key) {
+            Some(raw) => writes.push((key, reorder_value(&raw, order))),
             None => warnings.push("Vortex 里没有 archive 加载顺序记录，已跳过顺序同步。".to_string()),
         }
     }
     if let Some(order) = &changes.redmod_order {
         let key = format!("persistent###loadOrders###{pid}###{GAME_ID}-redmod");
-        let existing = pairs.iter().find(|(k, _)| k == &key).map(|(_, v)| v.as_str());
-        match existing {
-            Some(raw) => writes.push((key, reorder_value(raw, order))),
+        match read_key(db, &key) {
+            Some(raw) => writes.push((key, reorder_value(&raw, order))),
             None => warnings.push("Vortex 里没有 redmod 加载顺序记录，已跳过顺序同步。".to_string()),
         }
     }
@@ -349,8 +383,14 @@ pub fn mirror(store: &Store, dir: &Path, changes: &SyncChanges) -> VortexSyncRep
     if !store.snapshot_data().settings.vortex_takeover {
         return report;
     }
-    let pairs = match read_pairs_from(dir) {
-        Ok(pairs) => pairs,
+    // 整个流程只做「精确 get + 精确 put」，**不遍历状态库**。
+    //
+    // 以前这里先 `read_pairs_from` 把 9000 多条记录全捞出来当查找表用，而真正
+    // 需要的只有 profileId、gameId 和两个 loadOrder 键。实测那一次遍历要 69 秒
+    // （rusty-leveldb 的迭代器在这个库上约 7.5ms/条），保存一次加载顺序就要
+    // 等一分多钟，界面还因此在旧版本里直接假死。
+    let mut db = match open_db(dir, false) {
+        Ok(db) => db,
         Err(err) => {
             report.ok = false;
             report.reason = err.message;
@@ -359,7 +399,16 @@ pub fn mirror(store: &Store, dir: &Path, changes: &SyncChanges) -> VortexSyncRep
             return report;
         }
     };
-    let (pid, ok) = active_profile(&pairs);
+    let (pid, ok) = match resolve_profile(&mut db) {
+        Ok(pair) => pair,
+        Err(err) => {
+            report.ok = false;
+            report.reason = err.message;
+            queue_pending(store, changes);
+            record_last(store, &report);
+            return report;
+        }
+    };
     if !ok || pid.is_empty() {
         report.ok = false;
         report.reason = format!("活动 profile（{pid}）校验失败，未写入 Vortex。");
@@ -367,7 +416,13 @@ pub fn mirror(store: &Store, dir: &Path, changes: &SyncChanges) -> VortexSyncRep
         record_last(store, &report);
         return report;
     }
-    let backup = match write_backup(store, &pairs) {
+    let writes = build_writes(&mut db, &pid, changes, &mut report.warnings);
+    if writes.is_empty() {
+        report.warnings.push("没有可写入的 Vortex 键，已跳过。".to_string());
+        record_last(store, &report);
+        return report;
+    }
+    let backup = match write_backup(store, &mut db, &writes) {
         Ok(path) => path.to_string_lossy().to_string(),
         Err(err) => {
             report.ok = false;
@@ -379,14 +434,7 @@ pub fn mirror(store: &Store, dir: &Path, changes: &SyncChanges) -> VortexSyncRep
     };
     report.backup = backup;
 
-    let writes = build_writes(&pairs, &pid, changes, &mut report.warnings);
-    if writes.is_empty() {
-        report.warnings.push("没有可写入的 Vortex 键，已跳过。".to_string());
-        record_last(store, &report);
-        return report;
-    }
     let result = (|| -> AppResult<()> {
-        let mut db = open_db(dir, false)?;
         for (key, value) in &writes {
             db.put(key.as_bytes(), value.as_bytes()).map_err(|err| {
                 CommandError::new("VORTEX_DB_WRITE", format!("写入 {key} 失败：{err}"))
@@ -961,5 +1009,6 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
+
 
 }
