@@ -3004,6 +3004,177 @@ pre {
   font-size: 10px;
 }
 
+/* ---------------- 一键整理 / AI 建议预览条 ----------------
+   整理结果只是「预览」，未点「应用」前不落盘，所以这一条必须看起来
+   像待办事项而不是像已完成的状态：左侧竖条 + 明确的 应用/放弃 两个动作。 */
+.order-suggest {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(49, 230, 255, 0.16);
+  border-left: 2px solid var(--cyan);
+  background: rgba(49, 230, 255, 0.04);
+}
+
+.order-suggest.is-ai {
+  border-color: rgba(var(--accent-rgb), 0.22);
+  border-left-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.045);
+}
+
+.order-suggest-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.order-suggest-main > svg {
+  color: var(--cyan);
+  flex: 0 0 auto;
+}
+
+.order-suggest.is-ai .order-suggest-main > svg {
+  color: var(--accent-text);
+}
+
+.order-suggest-main > strong {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-hint);
+  font-weight: var(--fw-title);
+  color: var(--text);
+}
+
+.order-suggest-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* mini-btn 默认是 24×24 的图标方格，这里放的是文字按钮，需要放宽 */
+.order-suggest-actions .mini-btn {
+  width: auto;
+  min-width: 44px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: var(--fw-label);
+  letter-spacing: 0.4px;
+}
+
+.order-suggest-actions .mini-btn:first-child:not(:disabled) {
+  color: var(--accent-text);
+  border-color: rgba(var(--accent-rgb), 0.32);
+}
+
+.order-suggest-note {
+  margin: 5px 0 0;
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.order-suggest-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 7px 10px;
+  border: 1px solid rgba(var(--danger-rgb), 0.24);
+  background: rgba(var(--danger-rgb), 0.06);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--danger);
+}
+
+.order-suggest-error svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.order-suggest-reasons {
+  margin-top: 6px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 6px;
+}
+
+.order-suggest-reasons > summary {
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--muted-2);
+  letter-spacing: 0.3px;
+  list-style: none;
+}
+
+.order-suggest-reasons > summary::-webkit-details-marker {
+  display: none;
+}
+
+.order-suggest-reasons > summary::before {
+  content: "▸ ";
+  color: var(--muted-2);
+}
+
+.order-suggest-reasons[open] > summary::before {
+  content: "▾ ";
+}
+
+.order-suggest-reasons > summary:hover {
+  color: var(--text-2);
+}
+
+.order-suggest-reasons ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.order-suggest-reasons li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.order-suggest-reasons li > b {
+  flex: 0 0 auto;
+  min-width: 54px;
+  font-weight: var(--fw-label);
+  color: var(--text-2);
+}
+
+.order-suggest-reasons li > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-suggest-reasons li.reason-framework > b {
+  color: var(--cyan);
+}
+
+.order-suggest-reasons li.reason-ai > b {
+  color: var(--accent-text);
+}
+
+.order-suggest-reasons li.reason-deployConflict > b,
+.order-suggest-reasons li.reason-conflict > b {
+  color: var(--danger);
+}
+
+.order-suggest-reasons li.reason-conflictManual > b {
+  color: var(--warn);
+}
+
+.order-suggest-reasons li.reason-fallback > b {
+  color: var(--muted-2);
+}
+
 .order-list {
   display: flex;
   flex-direction: column;
@@ -3012,7 +3183,8 @@ pre {
 
 .order-row {
   display: grid;
-  grid-template-columns: 18px 28px minmax(0, 1fr) auto 54px;
+  /* 末列从固定 54px 改为 auto：一行现在有三个按钮（图钉/上移/下移） */
+  grid-template-columns: 18px 28px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   min-height: 53px;
@@ -3109,12 +3281,25 @@ pre {
 .order-actions {
   display: flex;
   gap: 3px;
-  opacity: 0;
-  transition: opacity 0.14s;
 }
 
-.order-row:hover .order-actions {
+/* 三个按钮各自淡入，而不是整块淡入：已锁定的图钉必须常驻可见，
+   否则「我锁了哪几个」只能靠挨行悬停去找。 */
+.order-actions .mini-btn {
+  opacity: 0;
+  transition: opacity 0.14s, color 0.15s, border-color 0.15s;
+}
+
+.order-row:hover .order-actions .mini-btn,
+.order-actions .mini-btn.is-pinned,
+.order-actions .mini-btn:focus-visible {
   opacity: 1;
+}
+
+.pin-btn.is-pinned {
+  color: var(--accent-text);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.07);
 }
 
 .loadorder-side {

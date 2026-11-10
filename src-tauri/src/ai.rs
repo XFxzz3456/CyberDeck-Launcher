@@ -1917,6 +1917,73 @@ const REDSCRIPT_FIX_PROMPT: &str = r#"你是《赛博朋克 2077》Redscript 补
 /// 生成 Redscript 补丁文本。返回 `(代码, 模型, 警告)`。
 ///
 /// 只有「结构合法」由调用方（`aifix::validate_structure`）判定，这里不假装校验。
+/// 加载顺序顾问的系统提示。
+///
+/// 只要**相对约束**、不要全序，是这个功能可用的前提：
+/// 158 行的全序无法验证、无法解释，模型一幻觉就是玩家进游戏看见贴图错乱；
+/// 而「A 先于 B」这种单条约束可以被 `loadsort` 逐条校验，错了丢掉就行。
+const ORDER_SYSTEM_PROMPT: &str = r#"你是《赛博朋克 2077》MOD 加载顺序顾问。
+
+背景：archive/pc/mod 下的 .archive 全部会被游戏挂载，modlist.txt 的行序决定「同名文件谁覆盖谁」——排在后面的覆盖前面的。
+
+用户只会给你「有文件重合的 MOD 对」和「框架清单」，**不要输出完整顺序**，只输出相对约束。
+
+输出 JSON：
+{"rules":[{"before":"名字 A","after":"名字 B","reason":"一句中文解释"}],"notes":["无法判断时的说明"]}
+
+硬规则：
+1. 框架（ArchiveXL / TweakXL / Red4ext / Codeware / redscript / CET / Mod Settings）必须排在最前，永远不能出现在 after 位置。
+2. 基础包在前，补丁 / 兼容补丁在后（后加载才能覆盖基础包）。
+3. 名字必须原样抄用户给的名字，不要翻译、不要编造。
+4. 判断不了就别写这条规则，宁缺勿滥；notes 里说明原因即可。
+5. 最多 60 条。"#;
+
+/// 让模型给出加载顺序的相对约束，返回原始 JSON 文本。
+///
+/// 这里只负责发请求与剥代码围栏；解析和语义校验都在 `loadsort`——
+/// 那边才拿得到「已部署 archive ↔ MOD」的真实映射，能判断约束是否可执行。
+pub(crate) fn suggest_order_constraints(store: &Store, brief: &str) -> AppResult<String> {
+    let settings = store.snapshot_data().settings.clone();
+    let model = settings.ai_model.clone();
+    let key = resolve_chat_key(store, &settings.ai_base_url)?;
+    let client = build_client("AI-LoadOrder")?;
+    let protocol = resolve_protocol(&settings.ai_protocol);
+    let url = match protocol {
+        ApiProtocol::OpenAi => normalize_base_url(&settings.ai_base_url),
+        ApiProtocol::Anthropic => anthropic_messages_endpoint(&settings.ai_base_url),
+    };
+    let request = ChatRequest {
+        model,
+        messages: vec![
+            ChatMessage {
+                role: "system",
+                content: ORDER_SYSTEM_PROMPT.to_string(),
+            },
+            ChatMessage {
+                role: "user",
+                content: brief.to_string(),
+            },
+        ],
+        // 排序判断需要一致性而不是创造力：同一批 MOD 反复点整理应得到同一结果。
+        temperature: 0.0,
+        max_tokens: 1500,
+        response_format: ResponseFormat { kind: "json_object" },
+    };
+    // 部分服务商（尤其本地 Ollama）对 json_object 支持不好：先按 JSON 要，失败退回纯文本。
+    let content = match chat_completion(&client, &url, key.as_deref(), protocol, &request) {
+        Ok(content) => content,
+        Err(err) if err.code == "AI_HTTP" => {
+            let fallback = ChatRequest {
+                response_format: ResponseFormat { kind: "text" },
+                ..request
+            };
+            chat_completion(&client, &url, key.as_deref(), protocol, &fallback)?
+        }
+        Err(err) => return Err(err),
+    };
+    Ok(strip_code_fence(&content).trim().to_string())
+}
+
 pub(crate) fn propose_redscript_patch(
     store: &Store,
     brief: &str,

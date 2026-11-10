@@ -844,6 +844,12 @@ pub struct AppStateData {
     pub mods: Vec<ModEntry>,
     #[serde(default)]
     pub load_order: Vec<String>,
+    /// 「一键整理」时不允许被移动的 MOD（存 mod id，不存 archive 路径）。
+    ///
+    /// 为什么锁 mod 而不是锁某一行：一个 MOD 常常带多个 archive，用户想钉住的是
+    /// 「这个 MOD 待在原地」，而 archive 文件名会随更新变化，存路径会让锁悄悄失效。
+    #[serde(default)]
+    pub load_order_pins: Vec<String>,
     /// REDmod 的加载顺序（存 mod id，先加载的先赢）。
     ///
     /// 为什么不复用 `load_order`：那个列表的元素是 archive 的相对路径，REDmod 进去
@@ -900,6 +906,7 @@ impl AppStateData {
             staging_dir,
             mods: Vec::new(),
             load_order: Vec::new(),
+            load_order_pins: Vec::new(),
             redmod_order: Vec::new(),
             modpacks: Vec::new(),
             profiles: vec![ProfileEntry::default_profile()],
@@ -990,6 +997,47 @@ pub struct LoadOrderView {
     pub modlist_path: Option<String>,
     pub modlist_exists: bool,
     pub managed_modlist: bool,
+}
+
+/// 「一键整理」里真正移动了位置的一行。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderMove {
+    /// archive 相对路径，与 `load_order` 的元素同一口径。
+    pub id: String,
+    pub from: usize,
+    pub to: usize,
+}
+
+/// 一条「为什么这么排」的依据。
+///
+/// 可解释性是硬要求：用户点完整理必须能回答「凭什么动我这几行」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderReason {
+    /// framework | conflict | conflictManual | ai | fallback
+    pub kind: String,
+    pub note: String,
+    /// 涉及的 MOD 显示名（前端直接渲染成 chips，不必再回查）。
+    pub subjects: Vec<String>,
+}
+
+/// 一次整理的产出。**只是建议**，落盘要用户点「应用」走 `save_load_order`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadOrderSuggestion {
+    /// rules = 纯规则整理；ai = 规则 + AI 约束。
+    pub mode: String,
+    pub order: Vec<String>,
+    pub moves: Vec<OrderMove>,
+    pub reasons: Vec<OrderReason>,
+    /// 被锁定的 archive（位置没动）。
+    pub skipped: Vec<String>,
+    pub ai_used: bool,
+    /// AI 没生效时的原因（未配置 / 超时 / 输出不合法）。为空表示没走 AI。
+    pub ai_note: Option<String>,
+    /// 未纳入整理的「未启用模组」冲突条数：界面据此解释为什么与冲突横幅数字对不上。
+    pub pending_conflicts: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

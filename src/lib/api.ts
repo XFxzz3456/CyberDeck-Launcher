@@ -43,6 +43,7 @@ import type {
   LaunchResult,
   NxmLink,
   NxmStatus,
+  LoadOrderSuggestion,
   LoadOrderView,
   LogFileInfo,
   LogTail,
@@ -420,6 +421,23 @@ export const api = {
   async getLoadOrder(): Promise<LoadOrderView> {
     if (!isTauri) return mockApi.getLoadOrder();
     return call<LoadOrderView>("get_load_order");
+  },
+
+  /**
+   * 让后端算一份「一键整理」建议。**只返回建议，不落盘**。
+   *
+   * `ai = true` 时后端会先问模型要相对约束；模型不可用会降级成规则整理，
+   * 原因放在返回值的 `aiNote` 里，不会抛错。
+   */
+  async suggestLoadOrder(ai = false): Promise<LoadOrderSuggestion> {
+    if (!isTauri) return mockApi.suggestLoadOrder(ai);
+    return call<LoadOrderSuggestion>("suggest_load_order", { ai });
+  },
+
+  /** 保存「整理时不许移动」的 MOD 清单，返回最新视图。 */
+  async setLoadOrderPins(pins: string[]): Promise<LoadOrderView> {
+    if (!isTauri) return mockApi.setLoadOrderPins(pins);
+    return call<LoadOrderView>("set_load_order_pins", { pins });
   },
 
   async saveLoadOrder(order: string[]): Promise<LoadOrderView> {

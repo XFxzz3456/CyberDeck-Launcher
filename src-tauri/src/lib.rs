@@ -24,6 +24,7 @@ mod gamever;
 mod glossary;
 mod installer;
 mod loadorder;
+mod loadsort;
 mod logs;
 mod environment;
 mod profiles;
@@ -57,7 +58,7 @@ use schema::{
     AiDiagnosis, AiStatus, AppResult, AppStateData, BackupInfo, CommandError, DeployReport,
     DiagnosticsReport, EnvDiagnosis, GameInfo, HealReport, InstallOutcome,
     ProfileList, SwitchProfileReport,
-    LaunchResult, LoadOrderView,
+    LaunchResult, LoadOrderSuggestion, LoadOrderView,
     LogFileInfo, LogTail, ModEntry, ModSettingsView, NexusCoverRefresh,
     NexusUpdateReport,
     NexusDownloadResult, NexusModDetail, NexusModSummary, NexusStatus, PhysicalSyncReport,
@@ -1495,6 +1496,87 @@ fn save_load_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<Loa
         vdir,
         vortex_sync::changes_for_archive_order(&synced_order),
     );
+    Ok(view)
+}
+
+/// 给出「一键整理」的建议顺序。**只返回建议，不落盘**。
+///
+/// 为什么要在后端算：冲突聚合、框架判定、MOD 分组用的全是 `state.mods` 的原始字段，
+/// 前端只拿到已排序的 158 行，自己再算一遍必然与后端口径漂移（第一版前端推断
+/// 缺前置时就踩过这个坑，后来统一改成后端出表）。
+///
+/// `ai = true` 时先问模型要相对约束，失败/超时/输出不合法都**降级到规则版**并把
+/// 原因写进 `aiNote`——排序功能不能因为模型没配好就整个不可用。
+#[tauri::command]
+async fn suggest_load_order(
+    app: tauri::AppHandle,
+    ai: Option<bool>,
+) -> AppResult<LoadOrderSuggestion> {
+    let want_ai = ai.unwrap_or(false);
+    let snapshot = app.state::<Store>().snapshot_data();
+
+    let mut constraints = Vec::new();
+    let mut ai_used = false;
+    let mut ai_note: Option<String> = None;
+
+    if want_ai {
+        let brief = loadsort::build_ai_brief(&snapshot);
+        let handle = app.clone();
+        // 网络请求是阻塞的（reqwest blocking），必须离开事件循环线程。
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            let store = handle.state::<Store>();
+            ai::suggest_order_constraints(store.inner(), &brief)
+        })
+        .await
+        .map_err(|err| {
+            CommandError::new("LOAD_ORDER_AI_TASK", format!("AI 排序线程异常：{err}"))
+        })?;
+
+        match outcome {
+            Ok(raw) => {
+                let (rules, warnings) = loadsort::parse_constraints(&raw);
+                ai_used = !rules.is_empty();
+                if !warnings.is_empty() {
+                    ai_note = Some(warnings.join("；"));
+                }
+                constraints = rules;
+            }
+            Err(err) => {
+                ai_note = Some(format!("{}（已改用规则整理）", err.message));
+            }
+        }
+    }
+
+    Ok(loadsort::build_suggestion(
+        &snapshot,
+        &constraints,
+        ai_used,
+        ai_note,
+    ))
+}
+
+/// 保存「整理时不许移动」的 MOD 清单。
+///
+/// 存 mod id 而非 archive 路径：一个 MOD 常带多个 archive，且文件名会随更新变化，
+/// 存路径的锁会在下次更新后悄悄失效。未知 id 直接丢弃，不让脏数据进状态文件。
+#[tauri::command]
+fn set_load_order_pins(store: State<'_, Store>, pins: Vec<String>) -> AppResult<LoadOrderView> {
+    let mut data = store
+        .data
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let known: std::collections::HashSet<&str> =
+        data.mods.iter().map(|entry| entry.id.as_str()).collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut cleaned = Vec::new();
+    for id in pins {
+        if known.contains(id.as_str()) && seen.insert(id.clone()) {
+            cleaned.push(id);
+        }
+    }
+    data.load_order_pins = cleaned;
+    store.save(&data)?;
+    let view = loadorder::build_view(&data, data.game_dir.as_deref().map(Path::new));
     Ok(view)
 }
 
@@ -4388,6 +4470,8 @@ pub fn run() {
             uninstall_mod,
             update_mod,
             get_load_order,
+            suggest_load_order,
+            set_load_order_pins,
             save_load_order,
             save_redmod_order,
             export_modlist,

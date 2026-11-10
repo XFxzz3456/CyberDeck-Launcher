@@ -8,14 +8,33 @@ import {
   GripVertical,
   Info,
   ListOrdered,
+  Pin,
+  PinOff,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Trash2,
+  Wand2,
 } from "lucide-react";
-import type { ConflictInfo, LoadOrderItem, Snapshot } from "../types";
-import { api } from "../lib/api";
-import { categoryLabel, t } from "../i18n";
+import type { ConflictInfo, LoadOrderItem, LoadOrderSuggestion, Snapshot } from "../types";
+import { api, normalizeError } from "../lib/api";
+import { categoryLabel, t, type MessageKey } from "../i18n";
 import { Badge, EmptyState, Spinner, Toggle } from "./ui";
+
+/**
+ * 整理依据的类型 → 词条。
+ *
+ * 用静态映射而不是 `t(`loadOrder.reason.${kind}`)`：动态拼 key 在 i18n 门禁里查不出
+ * 缺失词条，新增一种 reason 就会静默显示成 key 本身。
+ */
+const REASON_LABEL: Record<string, MessageKey> = {
+  framework: "loadOrder.reasonFramework",
+  conflict: "loadOrder.reasonConflict",
+  conflictManual: "loadOrder.reasonManual",
+  deployConflict: "loadOrder.reasonDeploy",
+  ai: "loadOrder.reasonAi",
+  fallback: "loadOrder.reasonFallback",
+};
 
 export function LoadOrderView({
   snapshot,
@@ -85,6 +104,65 @@ export function LoadOrderView({
     [conflicts],
   );
 
+  const [suggestion, setSuggestion] = useState<LoadOrderSuggestion | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [pins, setPins] = useState<string[]>(snapshot.state.loadOrderPins ?? []);
+
+  /**
+   * 求一份整理建议并**只做预览**：本地按建议顺序重排，不落盘。
+   *
+   * 直接写盘会让人没法反悔——158 行的顺序改完再想撤回，只能靠记忆拖回去。
+   */
+  const runSuggest = async (ai: boolean) => {
+    if (saving || suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await api.suggestLoadOrder(ai);
+      setSuggestion(result);
+      const byId = new Map(items.map((item) => [item.id, item]));
+      const next = result.order
+        .map((id) => byId.get(id))
+        .filter((item): item is LoadOrderItem => Boolean(item));
+      // 长度对不上说明建议里带了已不存在的项（期间卸载过），此时不预览，
+      // 让用户重新点一次，而不是展示一个少了行的列表。
+      if (next.length === items.length) {
+        setItems(next.map((item, index) => ({ ...item, order: index })));
+      }
+    } catch (error) {
+      setSuggestError(normalizeError(error).message);
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const discardSuggestion = () => {
+    setSuggestion(null);
+    setItems(view.archives);
+  };
+
+  const applySuggestion = async () => {
+    if (!suggestion || suggestion.moves.length === 0) {
+      setSuggestion(null);
+      return;
+    }
+    await onSave(suggestion.order);
+    setSuggestion(null);
+  };
+
+  const togglePin = async (modId: string) => {
+    const next = pins.includes(modId) ? pins.filter((id) => id !== modId) : [...pins, modId];
+    const previous = pins;
+    setPins(next);
+    try {
+      await api.setLoadOrderPins(next);
+    } catch (error) {
+      setPins(previous);
+      setSuggestError(normalizeError(error).message);
+    }
+  };
+
   const commit = async (next: LoadOrderItem[]) => {
     setItems(next);
     await onSave(next.map((item) => item.id));
@@ -108,7 +186,8 @@ export function LoadOrderView({
     await onSaveRedmodOrder(next.map((item) => item.modId));
   };
 
-  const startDrag = (event: ReactPointerEvent<HTMLSpanElement>, item: LoadOrderItem, index: number) => {    if (event.button !== 0 || saving) return;
+  const startDrag = (event: ReactPointerEvent<HTMLSpanElement>, item: LoadOrderItem, index: number) => {
+    if (event.button !== 0 || saving) return;
     const row = (event.currentTarget as HTMLElement).closest(".order-row") as HTMLDivElement | null;
     if (!row) return;
     event.preventDefault();
@@ -199,6 +278,23 @@ export function LoadOrderView({
           </p>
         </div>
         <div className="head-actions">
+          <button
+            className="btn btn-primary"
+            onClick={() => void runSuggest(false)}
+            disabled={saving || suggesting || items.length === 0}
+            title={t("loadOrder.autoArrangeHint")}
+          >
+            <Wand2 size={15} /> {t("loadOrder.autoArrange")}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => void runSuggest(true)}
+            disabled={saving || suggesting || items.length === 0}
+            title={t("loadOrder.autoArrangeAiHint")}
+          >
+            {suggesting ? <Spinner size={13} /> : <Sparkles size={15} />}{" "}
+            {t("loadOrder.autoArrangeAi")}
+          </button>
           <button className="btn btn-ghost" onClick={onExport} disabled={items.length === 0}>
             <FileText size={15} /> {t("loadOrder.writeModlist")}
           </button>
@@ -249,6 +345,65 @@ export function LoadOrderView({
                   {t("loadOrder.hintB")}
                 </span>
               </div>
+
+              {suggestError ? (
+                <p className="order-suggest-error">
+                  <AlertTriangle size={13} /> {suggestError}
+                </p>
+              ) : null}
+
+              {suggestion ? (
+                <div className={`order-suggest ${suggestion.aiUsed ? "is-ai" : ""}`}>
+                  <div className="order-suggest-main">
+                    {suggestion.aiUsed ? <Sparkles size={15} /> : <Wand2 size={15} />}
+                    <strong>
+                      {suggestion.moves.length > 0
+                        ? t("loadOrder.suggestMoves", { count: suggestion.moves.length })
+                        : t("loadOrder.suggestNone")}
+                    </strong>
+                    <div className="order-suggest-actions">
+                      <button
+                        className="mini-btn"
+                        onClick={() => void applySuggestion()}
+                        disabled={saving || suggestion.moves.length === 0}
+                      >
+                        {t("loadOrder.apply")}
+                      </button>
+                      <button className="mini-btn" onClick={discardSuggestion} disabled={saving}>
+                        {t("loadOrder.discard")}
+                      </button>
+                    </div>
+                  </div>
+                  {suggestion.aiNote ? (
+                    <p className="order-suggest-note">{suggestion.aiNote}</p>
+                  ) : null}
+                  {suggestion.skipped.length > 0 ? (
+                    <p className="order-suggest-note">
+                      {t("loadOrder.skippedNote", { count: suggestion.skipped.length })}
+                    </p>
+                  ) : null}
+                  {suggestion.pendingConflicts > 0 ? (
+                    <p className="order-suggest-note">
+                      {t("loadOrder.pendingNote", { count: suggestion.pendingConflicts })}
+                    </p>
+                  ) : null}
+                  {suggestion.reasons.length > 0 ? (
+                    <details className="order-suggest-reasons">
+                      <summary>
+                        {t("loadOrder.reasons", { count: suggestion.reasons.length })}
+                      </summary>
+                      <ul>
+                        {suggestion.reasons.map((reason, index) => (
+                          <li key={`${reason.kind}-${index}`} className={`reason-${reason.kind}`}>
+                            <b>{t(REASON_LABEL[reason.kind] ?? "loadOrder.reasonFallback")}</b>
+                            <span>{reason.note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </div>
+              ) : null}
 
               {liveConflicts.length > 0 || pendingConflicts.length > 0 ? (
                 <div className="order-conflict-banner">
@@ -333,6 +488,16 @@ export function LoadOrderView({
                       </div>
                       <Badge tone={isConflict ? "red" : "muted"}>{categoryLabel(item.category)}</Badge>
                       <div className="order-actions">
+                        <button
+                          className={`mini-btn pin-btn ${pins.includes(item.modId) ? "is-pinned" : ""}`}
+                          aria-label={t("loadOrder.pinTitle")}
+                          aria-pressed={pins.includes(item.modId)}
+                          title={t("loadOrder.pinTitle")}
+                          onClick={() => void togglePin(item.modId)}
+                          disabled={saving}
+                        >
+                          {pins.includes(item.modId) ? <Pin size={13} /> : <PinOff size={13} />}
+                        </button>
                         <button
                           className="mini-btn"
                           aria-label={t("loadOrder.moveUp")}

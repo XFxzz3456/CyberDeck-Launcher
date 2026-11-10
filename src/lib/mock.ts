@@ -32,6 +32,7 @@ import type {
   GameInfo,
   InstallOutcome,
   InstallLayout,
+  LoadOrderSuggestion,
   LoadOrderView,
   LogFileInfo,
   LogTail,
@@ -527,6 +528,7 @@ function createInitial(): DemoDb {
     stagingDir: `${DEMO_DATA}\\staging`,
     mods,
     loadOrder: [...new Set(loadOrder)],
+    loadOrderPins: [],
     // 演示库里先给「按文件夹名」的默认顺序，调整之后才出现自定义顺序。
     redmodOrder: [],
     modpacks: [],
@@ -583,6 +585,7 @@ function loadDb(): DemoDb {
         // 旧版本存下来的状态没有播放集字段，这里补一个默认集，
         // 否则设置页与顶栏会拿到 undefined 直接白屏。
         if (!Array.isArray(parsed.state.profiles) || parsed.state.profiles.length === 0) {
+          parsed.state.loadOrderPins = parsed.state.loadOrderPins ?? [];
           const enabledIds = parsed.state.mods.filter((mod) => mod.enabled).map((mod) => mod.id);
           parsed.state.profiles = [
             {
@@ -1818,6 +1821,55 @@ export const mockApi = {
   async getLoadOrder(): Promise<LoadOrderView> {
     await sleep(120);
     return buildLoadOrder(loadDb().state);
+  },
+
+  /**
+   * 演示模式的「一键整理」。
+   *
+   * 刻意只做「框架前置 + 其余保持现状」：浏览器预览里没有真实冲突数据和模型，
+   * 装出「AI 排好了」的假象只会让人在真机上失望。
+   */
+  async suggestLoadOrder(ai = false): Promise<LoadOrderSuggestion> {
+    await sleep(ai ? 900 : 220);
+    const db = loadDb();
+    const view = buildLoadOrder(db.state);
+    const frameworks = new Set(
+      db.state.mods.filter((mod) => mod.category === "框架").map((mod) => mod.id),
+    );
+    const ordered = [...view.archives].sort((left, right) => {
+      const rank = (modId: string) => (frameworks.has(modId) ? 0 : 1);
+      if (rank(left.modId) !== rank(right.modId)) return rank(left.modId) - rank(right.modId);
+      return left.order - right.order;
+    });
+    const moves = ordered
+      .map((item, index) => ({ id: item.id, from: item.order, to: index }))
+      .filter((move) => move.from !== move.to);
+    return {
+      mode: ai ? "ai" : "rules",
+      order: ordered.map((item) => item.id),
+      moves,
+      reasons: frameworks.size
+        ? [
+            {
+              kind: "framework",
+              note: `${frameworks.size} 个框架/核心 MOD 置于最前`,
+              subjects: [],
+            },
+          ]
+        : [],
+      skipped: [],
+      aiUsed: false,
+      aiNote: ai ? "演示模式没有真实模型，以上为规则整理结果" : null,
+      pendingConflicts: 0,
+    };
+  },
+
+  async setLoadOrderPins(pins: string[]): Promise<LoadOrderView> {
+    await sleep(140);
+    const db = loadDb();
+    db.state.loadOrderPins = pins;
+    saveDb(db);
+    return buildLoadOrder(db.state);
   },
 
   async saveLoadOrder(order: string[]): Promise<LoadOrderView> {

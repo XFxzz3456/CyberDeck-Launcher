@@ -439,6 +439,8 @@ export interface AppStateData {
   stagingDir: string;
   mods: ModEntry[];
   loadOrder: string[];
+  /** 「一键整理」时不许移动的 MOD id。存 id 不存路径：archive 名会随更新变化。 */
+  loadOrderPins: string[];
   /**
    * REDmod 的加载顺序（存 mod id，先加载的先赢）。
    *
@@ -498,6 +500,35 @@ export interface LoadOrderView {
   modlistPath: string | null;
   modlistExists: boolean;
   managedModlist: boolean;
+}
+
+/** 「一键整理」里真正移动了位置的一行。 */
+export interface OrderMove {
+  id: string;
+  from: number;
+  to: number;
+}
+
+/** 一条「为什么这么排」的依据。 */
+export interface OrderReason {
+  /** framework | conflict | conflictManual | deployConflict | ai | fallback */
+  kind: string;
+  note: string;
+  subjects: string[];
+}
+
+export interface LoadOrderSuggestion {
+  /** rules = 纯规则整理；ai = 规则 + AI 约束。 */
+  mode: string;
+  order: string[];
+  moves: OrderMove[];
+  reasons: OrderReason[];
+  /** 被锁定、整理时跳过的 archive。 */
+  skipped: string[];
+  aiUsed: boolean;
+  aiNote: string | null;
+  /** 未纳入整理的「未启用模组」冲突条数。 */
+  pendingConflicts: number;
 }
 
 export interface DeployReport {
