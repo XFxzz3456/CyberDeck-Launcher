@@ -129,8 +129,13 @@ if (!SKIP_BUILD) {
     key: "sync",
     title: "同步到 release 目录（备份 + md5）",
     run() {
-      const built = newestExe(join(ROOT, "src-tauri", "target", "release"));
-      if (!built) throw new Error("target/release 下找不到 exe，构建可能没真正执行");
+      // 产物目录要跟着 CARGO_TARGET_DIR 走：本机为省 C 盘空间把它指到 D:/cdbuild。
+      // 以前硬编码 src-tauri/target，结果读到上一轮的旧 exe，被下面的时间校验拦下（2026-11-10 踩过）。
+      const releaseProfile = process.env.CARGO_TARGET_DIR
+        ? join(resolve(process.env.CARGO_TARGET_DIR), "release")
+        : join(ROOT, "src-tauri", "target", "release");
+      const built = newestExe(releaseProfile);
+      if (!built) throw new Error(`${releaseProfile} 下找不到 exe，构建可能没真正执行`);
       const info = statSync(built);
       // 硬校验：产物必须是这一轮构建出来的。tauri build 命中缓存时会秒退，
       // 只靠「命令返回 0」判断会把人骗过去。

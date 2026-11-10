@@ -6,8 +6,17 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.5.0`（2026-11-10）。** 三处 `version` 一致、tag `v1.5.0`；`release/CyberDeck Launcher.exe` 已是 1.5.0 包（10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`），旧版备份 `.prev.exe`（10,787,840 B / `b4659eae…` = 1.4.0）。冒烟 `startup.log` stage=frontend mods=106，PE 版本资源 `1.5.0`。便携版 `发布产物/CyberDeck Launcher 1.5.0 便携版.zip`（5,554,854 B（5.30 MiB））已打并上传 GitHub Release。
+**本仓库的实际版本是 `1.6.0`（2026-11-10）。** 三处 `version` 一致、tag `v1.6.0`；`release/CyberDeck Launcher.exe` 已是 1.6.0 包（10,831,872 B（10.33 MB） / md5 `a61beb73e218f706b61df2dc9e6fd198`），旧版备份 `.prev.exe`（10,795,520 B / `e038614f…` = 1.5.0）。PE 版本资源 `1.6.0`（`FileVersion` / `ProductVersion` 均为 1.6.0）。便携版：1.6.0 的 ZIP 尚未打包（按规则需单独确认）。
 
+- **2026-11-10 23:07 发布 1.6.0（「收尾」= 全流程授权）**：用户「收尾吧」并明确「以后说收尾就包括所有后续流程，
+  包括升版本还有构建 exe」——此口径已写入长期记忆，后续说收尾即直接升版 + 构建 + 替换 release，不再回头问。
+  `npm run release -- --skip-gate --level=minor`（门禁刚跑过 38/38 全绿）→ 三处版本号 1.5.0 → 1.6.0、
+  `tauri build` 3m51s（`CARGO_TARGET_DIR=D:/cdbuild`）。构建后第 4 步「同步 release」被脚本拦下：它硬编码
+  `src-tauri/target/release`，读到 21:22 的旧 exe 并报「产物时间早于构建开始」。已改为跟随 `CARGO_TARGET_DIR`，
+  并按同逻辑手工完成同步（旧 exe → `.prev.exe`，新 exe md5 `a61beb73…`，PE 版本 1.6.0 已验证）。
+  1.6.0 内容 = 自检报告 P0/P1/P2 全量落地（见 CHANGELOG 该段）+ `vortex_coverage` 命令与覆盖率区块 +
+  此前未发布的右键菜单坐标修复、快捷任务分区调整。**`main` 领先 origin 6 个提交，需 push + tag `v1.6.0`。**
+
 - **2026-11-10 22:50（全方面自检报告 P0/P1/P2 全量落地，未升版、未构建）**：用户「好，全部修复」。
   报告 `CyberDeck-全方面自检报告-2026-11-10.md`（313 行，只读）里 3 个 P0 + 7 个 P1 + 全部可落地 P2 已逐条改完：
   换暂存盘内存回写（`change_staging_dir` 持锁改写 + 失败回滚）、浮层栈真正生效（`useOverlayLayer` 第 4 参，
