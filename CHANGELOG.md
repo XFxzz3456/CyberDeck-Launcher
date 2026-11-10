@@ -78,6 +78,12 @@
 - `check-deepseek` 的「固定工具区 1 项」断言排除新增快捷任务按钮（`.quick-nav-item`）。
 - 清理 3 条死文案（`importDialog.summaryHint`、`library.groupByCycle`、`toast.aiLoc.partialDetail`）。
 - 恢复被误删的 `toast.adopt.partialDetail` / `toast.import.partialDetail`（同名跨命名空间）。
+- **卡片右键菜单错位**（2026-11-10 21:35 补丁）：`body { zoom: var(--ui-scale) }` 会把
+  `position: fixed` 的 `left/top` 再放大一次，而 `contextmenu` 里的 `clientX/clientY` 已经是视觉
+  坐标——125% 缩放下菜单整体右飘上百像素，用户看到的就是「右键菜单和右键的位置不在一起」。
+  新增 `src/lib/uiScale.ts`（`currentUiZoom()`），右键菜单与播放集下拉共用一份缩放口径，写坐标前
+  统一除以缩放；菜单 `max-height` 同步除以缩放，避免高缩放下底边出窗、末尾两项点不到。
+  `check-context-menu.mjs` 增加 80 / 100 / 125% 三档「菜单左上角贴住鼠标落点」断言（Δ≤1px）。
 
 ### 验证
 
@@ -85,6 +91,7 @@
 - 全量门禁 **38/38 全绿**（工时 325s）
 - `tsc --noEmit` 0 错误；`check-i18n --fail` 0 处；`--unused` 0 条
 - 命令契约 163/163 定义注册，missing 0
+- 2026-11-10 21:32 补丁复验：`gate --only=context` 通过（三档缩放 Δ=0）、`--only=profiles` 通过、`gate --fast` 全绿。
 
 ### 已知边界
 

@@ -9,6 +9,13 @@
 **本仓库的实际版本是 `1.5.0`（2026-11-10）。** 三处 `version` 一致、tag `v1.5.0`；`release/CyberDeck Launcher.exe` 已是 1.5.0 包（10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`），旧版备份 `.prev.exe`（10,787,840 B / `b4659eae…` = 1.4.0）。冒烟 `startup.log` stage=frontend mods=106，PE 版本资源 `1.5.0`。便携版 `发布产物/CyberDeck Launcher 1.5.0 便携版.zip`（5,554,854 B（5.30 MiB））已打并上传 GitHub Release。
 
 - **2026-11-10 发布 1.5.0**：用户先要求「UI/UX 全量调研 + 三期改造」，中途插入新任务「CyberDeck 内置 Nexus 浏览窗口」。两个提交：`e93d8a8`（UI/UX 一期：导入闭环、OverlayProvider、toast action/ARIA、任务中心停止与展开、跳转带 tab、侧栏快捷区、设计令牌）+ `2df5387`（`open_nexus_browser`：独立 WebView、导航白名单 `nexusmods.com` 及子域、`nxm://` 转 `intake_nxm`、发现页入口、4 条单测）。全量门禁 **38/38 全绿**（325s），`cargo test --lib` 285 passed / 2 ignored，命令契约 163/163。按用户一次性授权跳过逐项验收直接出包；**内置窗口端到端（登录 → Mod Manager Download → 任务条）需真机点一次**。方案 `docs/NEXUS-INAPP-BROWSER.md`、术语 `docs/UI-TERMS.md`。
+- **2026-11-10 21:35（右键菜单定位补丁，未升版、未构建）**：用户截图报「右击菜单和右键的位置不在一起」。
+  真因是 `body { zoom: var(--ui-scale) }` 会把 `position: fixed` 的 `left/top` 再放大一次，而 `contextmenu`
+  里的 `clientX/clientY` 已经是视觉坐标——实测 125% 档 `inlineLeft=765px` 渲染到 956px（Δ191px，与截图偏移量吻合）。
+  抽出 `src/lib/uiScale.ts` 的 `currentUiZoom()`（`ProfileMenu` 原实现改为引用），右键菜单夹取后统一除以缩放；
+  `max-height` 同步除以缩放，避免高缩放下底边出窗。`check-context-menu.mjs` 补 80 / 100 / 125% 三档「菜单左上角
+  贴住鼠标落点」断言并入 gate。验证：`gate --only=context`（三档 Δ=0）、`--only=profiles`、`gate --fast` 全绿。
+  **未构建 exe、未打包**，等 localhost 验收。
 - **2026-11-07 发布 1.3.0**：#8 修复本地 Ollama「Key 留空」实际不可用（`ai.rs` 四条业务链路改可选 Key，仅回环地址放行匿名）；#6 按架构评审签字落地 M1（新增 `ailabel.rs` 启动器内配置项标签覆盖层：独立 JSON、源文件指纹、可撤销、不写游戏目录）。用户 localhost 验收确认「没问题」后跑 `npm run release`：二次门禁 42/42 全绿、release profile 3m45s、总耗时 439s。评审结论 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`，复盘 `docs/INCIDENT-2026-11-07-ollama-no-key.md`。**便携 ZIP 未打**（对外分发需单独确认）。用户明确**不装 Ollama** → 实机双端验收未做，#8 保持 open。
 - **2026-11-08（P0，未升版、未构建）**：用户确认**放宽 P1 红线**（允许覆盖型汉化层，**必须备份原文档**），并明确 AI 由用户自接 API、启动器不内置模型。全类型汉化方案定稿 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`（含 §5.1 备份规范、§5.2 AI 通道口径）。本轮只落 P0：`ailoc.rs` 按载体分类扫描 + 真实 `blocked` 原因（`RESOURCE_TEXT` / `SCRIPT_TEXT` / `CONFIG_TEXT` / `UNSUPPORTED_FORMAT`）+ 单测；**不写游戏目录、不做覆盖**。P1（归档解包）/ P2（覆盖 + 备份恢复）需真机样本，另起一轮。设计判断：能力平台化可做，但过程必须可审计，不做隐形 agent 平台。用户 22:55 确认「没问题」后跑 `npm run release`：判定 **PATCH**（只改既有文件）→ 1.3.1，二次门禁 42/42 全绿、总耗时 350s，exe 已构建并替换 release。**便携 ZIP 未打**（需单独确认）。
 - **2026-11-09（P1/P2，未升版、未构建）**：用户要求「把 p1 和 p2 做了」。新增 `ailoc_full.rs`：P1 `.archive` 内文本走 WolvenKit `unbundle → serialize → 翻译 → deserialize → pack → .xl → 部署`；P2 `.lua`/`.reds` 显示类字符串覆盖型汉化层，**写入前原子备份 + 独立 manifest 登记 + 按 size/mtime 校验恢复**。`ai_loc_apply` 支持纯载体 Mod（无本地化 JSON 也能汉化），`revert` 先恢复备份再删产物；计划页回显将被覆盖的文件清单。新增 3 条单测。**真机样本未提供，CLI 参数形态与游戏内效果待实机校准**；P3 全库批量未做。方案 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`。
