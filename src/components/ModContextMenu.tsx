@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { ModEntry } from "../types";
 import { t } from "../i18n";
+import { currentUiZoom } from "../lib/uiScale";
 
 export interface ModContextMenuState {
   mod: ModEntry;
@@ -53,12 +54,20 @@ export function ModContextMenu({
 }) {
   const { mod, x, y } = state;
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
+  // x/y 是鼠标的视觉坐标（body 上还有 zoom），写进 style 前必须先除一次缩放。
+  const [pos, setPos] = useState(() => {
+    const zoom = currentUiZoom();
+    return { left: x / zoom, top: y / zoom };
+  });
 
   // 边缘检测：接近右/下边界时向内翻，留 10px 安全边距。
+  // 夹取全程在视觉坐标里做（鼠标坐标、rect、innerWidth 同属一套坐标系），
+  // 最后一次性除以 body 的 zoom 换回浮层自己的坐标系——否则 125% 下菜单会
+  // 落在鼠标右下方几十到上百像素处，看起来就是「菜单和右键位置不在一起」。
   useLayoutEffect(() => {
     const node = menuRef.current;
     if (!node) return;
+    const zoom = currentUiZoom();
     const rect = node.getBoundingClientRect();
     const margin = 10;
     let left = x;
@@ -69,7 +78,7 @@ export function ModContextMenu({
     if (top + rect.height + margin > window.innerHeight) {
       top = Math.max(margin, window.innerHeight - rect.height - margin);
     }
-    setPos({ left, top });
+    setPos({ left: left / zoom, top: top / zoom });
   }, [x, y]);
 
   useEffect(() => {

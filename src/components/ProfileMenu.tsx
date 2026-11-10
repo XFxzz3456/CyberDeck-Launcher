@@ -4,6 +4,7 @@ import { Check, ChevronDown, Layers } from "lucide-react";
 import type { ProfileList } from "../types";
 import { Spinner } from "./ui";
 import { t } from "../i18n";
+import { currentUiZoom } from "../lib/uiScale";
 
 /** 菜单最小宽度：名字短的时候也要有可读的点击区，同时保证不会窄成一条。 */
 const MENU_MIN_WIDTH = 216;
@@ -15,18 +16,15 @@ const MENU_MAX_HEIGHT = 320;
 const MENU_GAP = 6;
 
 /**
- * 当前 UI 缩放系数。
+ * 缩放口径统一走 `lib/uiScale`。
  *
- * `body` 上有 `zoom: var(--ui-scale)`（设置页 90 / 100 / 110% 三档）。浮层挂在 body
- * 里，它的 `position: fixed` 坐标是在 **zoom 之后**的坐标系里解释的；而
- * `getBoundingClientRect()` 给的却是屏幕视觉坐标（已经缩放过了）。直接把视觉坐标
- * 写进 `style.left` 等于把缩放算两遍：110% 下浮层右飘 80px、90% 下左飘 66px，
- * 这正是「播放集下拉歪了」的真因（改锚点只修好了 100% 那一档）。
+ * 这里的浮层挂在 body 里、用 `position: fixed`，它的坐标是在 **zoom 之后**的坐标系
+ * 里解释的；而 `getBoundingClientRect()` 给的却是屏幕视觉坐标（已经缩放过了）。
+ * 直接把视觉坐标写进 `style.left` 等于把缩放算两遍：110% 下浮层右飘 80px、
+ * 90% 下左飘 66px，这正是「播放集下拉歪了」的真因（改锚点只修好了 100% 那一档）。
+ * 卡片右键菜单踩的是同一个坑，所以系数只留一份。
  */
-function currentZoom(): number {
-  const raw = Number.parseFloat(getComputedStyle(document.body).zoom || "1");
-  return Number.isFinite(raw) && raw > 0 ? raw : 1;
-}
+const currentZoom = currentUiZoom;
 
 type MenuPos = { top: number; left: number; width: number; maxHeight: number };
 

@@ -16854,7 +16854,9 @@ body::before {
 }
 
 .mod-context-menu {
-  max-height: calc(100vh - 24px);
+  /* body 上有 `zoom: var(--ui-scale)`：100vh 是视口高（未缩放），而这里的长度
+     会被再放大一次，不除缩放的话 125% 下菜单底边会跑出窗口、最后两项点不到。 */
+  max-height: calc((100vh - 24px) / var(--ui-scale));
   overflow-y: auto;
 }
 

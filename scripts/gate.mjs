@@ -579,7 +579,10 @@ const UI_SCRIPTS = [
   {
     name: "卡片右键菜单",
     script: "check-context-menu.mjs",
-    expect: ["menu=1", "items>=3", "afterEsc=0"],
+    // scaleMaxDelta：80 / 100 / 125% 三档缩放下，菜单左上角相对鼠标落点的最大偏差。
+    // body 上有 zoom，fixed 坐标会被二次缩放——曾经 125% 下菜单整体右飘上百像素，
+    // 用户看到的就是「右键菜单和右键的位置不在一起」。
+    expect: ["menu=1", "items>=3", "afterEsc=0", "scaleMaxDelta=0", "scaleCases=3"],
   },
   {
     name: "播放集切换",
