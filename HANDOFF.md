@@ -8,6 +8,23 @@
 
 **本仓库的实际版本是 `1.5.0`（2026-11-10）。** 三处 `version` 一致、tag `v1.5.0`；`release/CyberDeck Launcher.exe` 已是 1.5.0 包（10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`），旧版备份 `.prev.exe`（10,787,840 B / `b4659eae…` = 1.4.0）。冒烟 `startup.log` stage=frontend mods=106，PE 版本资源 `1.5.0`。便携版 `发布产物/CyberDeck Launcher 1.5.0 便携版.zip`（5,554,854 B（5.30 MiB））已打并上传 GitHub Release。
 
+- **2026-11-10 22:50（全方面自检报告 P0/P1/P2 全量落地，未升版、未构建）**：用户「好，全部修复」。
+  报告 `CyberDeck-全方面自检报告-2026-11-10.md`（313 行，只读）里 3 个 P0 + 7 个 P1 + 全部可落地 P2 已逐条改完：
+  换暂存盘内存回写（`change_staging_dir` 持锁改写 + 失败回滚）、浮层栈真正生效（`useOverlayLayer` 第 4 参，
+  `Ctrl+Enter` / `Ctrl+K` 不再穿透浮层）、配置包敏感项默认不写只登记（`ImportReport.sensitive` + `ai::validate_base_url`）、
+  rar 解压前条目白名单校验、内置 Nexus 浏览器去掉 `--no-sandbox` + 只外抛 http(s)、四个重命令 `spawn_blocking`、
+  首次部署备份移出状态锁、全库 `fs::write` → `write_atomic`、`find_conflicts` 不再吞路径错误、
+  新增 `vortex_coverage` 命令 + 设置页接管覆盖率区块（实测 176/251 = 70.1%）。
+  前端：`useDismissableMenu` 收掉 5 段重复 effect、`missingDepsById` / `conflictsById` 两张表消除卡片级全扫、
+  滚动锚点提到模块作用域（修「从设置页回来回到顶部」）、Sidebar Logo / NexusCard / CommandPalette / 右键菜单
+  （`ContextMenu` + `F10`）四处键盘可达、`aiPresets` 定位描述入词表 32 条、`hiddenView` 动态 key 改
+  `Record<HideableView, MessageKey>`、`MODE_OPTIONS` 改存 key。
+  清理：删 `src/styles.css.bak-uiscale`（git 跟踪，走 `git rm` 留历史）、`release/cyberdeck-data` 下 7 个历史状态
+  快照移入 `backups/incidents/`。
+  验证：`cargo test --lib` 346 passed / 2 ignored、`cargo check` 0 warning、`tsc` 0 错误、`check-i18n` 0 处、
+  `gate --fast` 全绿、命令契约 164/164。**未构建 exe、未打包**，等 localhost 验收。
+  结构性未做项（`App.tsx` 拆分、卡片 `memo` 需上游回调稳定、表单 `aria-invalid`、断点/裸 hex/小字号）已在
+  CHANGELOG「本批次未做」登记原因。
 - **2026-11-10 发布 1.5.0**：用户先要求「UI/UX 全量调研 + 三期改造」，中途插入新任务「CyberDeck 内置 Nexus 浏览窗口」。两个提交：`e93d8a8`（UI/UX 一期：导入闭环、OverlayProvider、toast action/ARIA、任务中心停止与展开、跳转带 tab、侧栏快捷区、设计令牌）+ `2df5387`（`open_nexus_browser`：独立 WebView、导航白名单 `nexusmods.com` 及子域、`nxm://` 转 `intake_nxm`、发现页入口、4 条单测）。全量门禁 **38/38 全绿**（325s），`cargo test --lib` 285 passed / 2 ignored，命令契约 163/163。按用户一次性授权跳过逐项验收直接出包；**内置窗口端到端（登录 → Mod Manager Download → 任务条）需真机点一次**。方案 `docs/NEXUS-INAPP-BROWSER.md`、术语 `docs/UI-TERMS.md`。
 - **2026-11-10 21:35（右键菜单定位补丁，未升版、未构建）**：用户截图报「右击菜单和右键的位置不在一起」。
   真因是 `body { zoom: var(--ui-scale) }` 会把 `position: fixed` 的 `left/top` 再放大一次，而 `contextmenu`

@@ -52,6 +52,81 @@
 > 发布：2026-11-10 01:02 构建，exe 10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`；冒烟 `stage=frontend mods=106`，PE 版本资源 `1.5.0`。
 > 授权：用户「本次一次性豁免逐项验收 + 自动收尾（构建 exe、上传等）」。
 
+
+### 修复（全方面自检报告 · P0/P1/P2 逐条落地）
+
+> 来源：`CyberDeck-全方面自检报告-2026-11-10.md`（313 行，只读审计，零改动）。用户指令「全部修复」。
+
+**P0**
+
+- **换暂存盘后内存没回写**（`lib.rs::change_staging_dir`）：原先改的是 `snapshot_data()` 的副本，
+  落盘了但 `store.data` 里 `staging_dir` 与各模组 `stagingPath` 仍是旧值——切盘后本会话内再点「启用」
+  会按旧路径找不到目录，直接触发 `forget_mod` 丢条目。改为持锁改写 → 失败整体回滚内存 → 再写盘。
+- **浮层栈形同虚设**（`lib/overlay.tsx`）：`Modal` / `ModDetailDrawer` / `CommandPalette` 各自另装了
+  Esc 与焦点陷阱，但没登记进浮层栈，`hasOverlay()` 恒为 false。结果是抽屉打开时 `Ctrl+Enter`
+  仍会直接启动游戏、`Ctrl+K` 还会叠一层命令面板。`useOverlayLayer` 增加第 4 参
+  `{ esc?, manageFocus? }`，三处改为「登记浮层 + 自行处理 Esc/焦点」，职责不再重复。
+- **配置包可静默改敏感项**（`config_pack.rs`）：`aiBaseUrl / wolvenkitCliPath / archiveToolPath /
+  launchArgs` 四类原先跟着配置包直接写入。改为默认 `apply_sensitive=false` 只登记
+  `ImportReport.sensitive`（`{key from to}`），由界面展示「从 → 到」后二次确认；`aiBaseUrl` 写入前
+  过新增的 `ai::validate_base_url`（只接受 http(s) + 有主机名，不拦回环，Ollama 照用）。
+
+**P1**
+
+- **rar 解压前无预校验**（`installer.rs`）：新增 `list_archive_entries`（7z `l -slt` / unrar `lb`）与
+  `validate_archive_entries`，解压前逐条过 `safe_join`，并把含 `L` 属性的条目（符号链接）挡掉。
+- **内置 Nexus 浏览器沙箱关闭 + scheme 无白名单**（`nexus_browser.rs`）：删掉
+  `--no-sandbox`；新增 `is_external_link`（仅 http/https），`on_navigation` 只把 http(s) 交给系统
+  浏览器，其余 scheme 丢弃。
+- **重命令阻塞主线程**：`install_mods` / `set_mod_enabled` / `uninstall_mod` / `repair_mod` 改为
+  `async` + `spawn_blocking`（内部 `*_blocking` 实现），`busy` 在闭包内取 `BusyTasks`。
+- **首次部署备份占用状态锁**：备份改在锁外做（`backup::create_backup_files`，不碰 `state`），
+  锁内只回填 `state.backup`。
+- **写文件不原子**：`glossary / vortex_sync / snapshots / safemode / ailoc / aifix / secret` 全部
+  改用 `store::write_atomic`（临时名 + `sync_all` + `rename` + 失败退回复制，不先删目标）。
+- **`find_conflicts` 在 `safe_join` 上 `unwrap_or_default()`**：改为返回 `AppResult`，路径异常
+  如实上报而不是静默当「无冲突」。
+- **接管覆盖率不可见**（报告 P1-7：实测 176/251 = 70.1%）：新增 `vortex_coverage` 命令（只读，最多
+  列 300 条未配准）+ 设置页「接管覆盖率」区块，徽标显示 `已配准/总数（百分比）`，可展开看漏在哪。
+
+**P2（前端）**
+
+- **渲染性能**：`LibraryView` 里 5 段逐字重复的 outside-click + Esc 抽成 `useDismissableMenu`；
+  `conflictTargets` / `updateIds` 改 `useMemo`；搜索改 `useDeferredValue`；缺前置清单上提为
+  `missingDepsById` 一张表（原先每张可见卡片每次渲染重算）；冲突按 mod id 预先分组
+  （`conflictsById`），卡片只取自己那份，不再全表扫描；滚动锚点表从组件 `ref` 提到模块作用域并用
+  `useLayoutEffect` 恢复——修掉「从设置页回来滚动位置丢失」（换页是 `key={view}`，组件会重新挂载）。
+- **可访问性**：`Sidebar` Logo 由 `<div onClick>` 改为 `<button aria-label>`；`NexusCard` 补
+  Enter / Space；`CommandPalette` 补焦点陷阱；右键菜单补键盘入口（`ContextMenu` 键 / `Shift+F10`，
+  新增 `lib/contextMenuKey.ts`）+ 焦点进入、↑↓/Home/End 导航、卸载后焦点归还。
+- **i18n 死角**：`aiPresets.ts` 的模型定位描述从字面量改为 `aiPreset.note.*` 词条（32 条，豁免块
+  只剩商业名与模型 ID）；`hiddenView.${id} as MessageKey` 改为
+  `HIDEABLE_VIEW_LABEL_KEYS: Record<HideableView, MessageKey>`（少一个视图不补词条就是编译错误）；
+  `MODE_OPTIONS` 改存 `labelKey`，不再在模块加载时固化 `t()` 结果。
+- **后台失败不再静默**：新增 `reportBackgroundFailure`，`App.tsx` 三处后台读取、关窗 exit/hide、
+  NXM 忽略、队列设置读取失败都改成可见反馈。
+- **遗留文件与数据目录卫生**：删除被 git 跟踪的 `src/styles.css.bak-uiscale`（16,887 行备份）；
+  `release/cyberdeck-data/` 下 7 个历史状态快照（含 2 个 `launcher-state.broken-*`）移入
+  `backups/incidents/`，目录根只留 `launcher-state.json` 与其 `.bak`。
+
+### 验证（自检修复批次）
+
+- `cargo test --lib` **346 passed / 0 failed / 2 ignored**（新增 `config_pack` 2 条：敏感项需显式确认、
+  非 http(s) 的 base_url 被拒）
+- `cargo check` 0 warning；`tsc --noEmit` 0 错误；`check-i18n --fail` 0 处、`--unused` 0 条
+- `gate --fast` 全绿；命令契约 164/164（新增 `vortex_coverage`）
+
+### 本批次未做（结构性，单独排期）
+
+- `App.tsx` 3,535 行拆分（`useImportQueue` → `<AppOverlays>` → `GameFolderTab` / `ToolsTab`）。
+- 卡片 `memo` 化：`App` 传给 `LibraryView` 的回调全是现造箭头函数，上游不稳定时 `memo` 不会命中，
+  只会多一层浅比较；要和 `App.tsx` 拆分、回调 `useCallback` 一起做。
+- 表单 `aria-invalid / aria-errormessage`：现有校验反馈是 toast 级（已有 `aria-live` + `role=alert`），
+  没有字段级错误态，要做得先引入字段级校验状态。
+- 9 个断点收口、217 处裸 hex、`tinyFonts=24`（`logo-sys` 7.5px 等）：属「风格化 > 可读性」的既有
+  取舍，标注为已知项。
+
+
 ### 新增（内置 Nexus 浏览器）
 
 - **`src-tauri/src/nexus_browser.rs`**：`open_nexus_browser` 创建 `nexus-browser` 独立 WebView，加载 `https://www.nexusmods.com/cyberpunk2077`；与主窗口共用 `EBWebView` 数据目录，Cookie / 登录态共享；重复调用只聚焦不重开。
