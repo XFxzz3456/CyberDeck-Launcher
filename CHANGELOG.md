@@ -77,6 +77,12 @@
 - 1440 / 1150 / 1000 三档截图核对：三个顶部按钮完整、无重叠、无横向溢出。
 - `ui-test.mjs` / `ui-polish-test.mjs` / `check-motion.mjs` 里按旧文案定位导入按钮的选择器同步改为 `{ name: "导入模组", exact: true }`。
 
+### 图标
+
+- `src-tauri/icons/icon.ico` 六个尺寸帧与 `icon.png`(512) 源图统一加**微圆角**（256px 下 rx=12，其余尺寸等比），只裁四角 alpha：右下角原有的大斜切、黄底黑线芯片图案、透明背景全部保持原样。原文件备份在 `.test-tmp/icons-before-rounded/`（不入库）。
+- 用户本轮明确「算了不改了，只把桌面 ico 加一点微圆角就够了」，故**撤回了同批未提交的黄底芯片 SVG 组件与「关于」页预览**（`CyberChipIcon.tsx` / `SettingsView.tsx` / `i18n` / `styles.css` 全部还原到 HEAD）。
+- 桌面快捷方式目前指向 `release/CyberDeck Launcher.exe` 的内嵌图标，圆角要在**下一次构建 exe**后才会显示；本批按「只改 ico」要求未重建 exe、未升版。
+
 ### 已知边界
 
 - 截图顶部那个「自建整合包 ▾」是用户自建的**播放集名称**（`ProfileMenu`），不是功能入口，本次不动。

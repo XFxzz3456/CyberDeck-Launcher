@@ -26,6 +26,10 @@
   `check-toolbar.mjs` 直接超时，故改放没有降档机制的顶部栏。复盘 `docs/INCIDENT-2026-11-12-pack-entry.md`，
   见 `CHANGELOG.md` [未发布]。**未升版、未构建 exe**，等 localhost 验收。
 
+- **2026-11-12 00:40（未发版，仅图标资源）**：用户放弃本轮绘制的新芯片图标方案，改为只要「现有桌面 ico 加一点微圆角」。
+  `src-tauri/icons/icon.ico` 六帧 + `icon.png` 源图按 256px→rx=12 等比裁出微圆角，保留右下斜切与黄底黑线图案；
+  新图标组件与「关于」页预览的未提交改动全部撤回。**快捷方式指向 exe 内嵌图标，圆角要下次构建 exe 才显示**，本批未构建。
+
 - **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
   `release/CyberDeck Launcher.exe` 已替换（旧包备份为 `.prev.exe`），PE 版本 1.7.1 已验证，冒烟启动正常。
