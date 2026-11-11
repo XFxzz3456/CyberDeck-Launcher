@@ -393,3 +393,7 @@ P2 七项保持记录在案、暂不动。修复后：`cargo test` 105 passed、
 20. **高频入口别放进有密度降档的容器**（2026-11-12）：`.library-toolbar` 会按实测宽度把
     `is-low-frequency` 整组收进「更多」，加常驻按钮会让既有低频入口消失（规则 15 的复发）。
     顶部全局栏没有降档机制，高频主操作优先放那里；窄屏用「收起快捷键提示」这类小代价腾宽度。
+21. **改了打包资源要确认 build script 会重跑**（2026-11-12）：`src-tauri/build.rs` 一旦输出任何
+    `cargo:rerun-if-changed`，Cargo 就只监视列出的路径。替换图标资源后必须同步声明
+    `cargo:rerun-if-changed=icons/icon.ico`，否则 exe 会静默内嵌旧资源；判据是 build 输出目录里
+    `resource.lib` 的大小/时间戳有没有变（本次 7232 B → 6992 B 才确认圆角真的进了产物）。

@@ -6,7 +6,12 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.0`（2026-11-11）。** 三处 `version` 一致、tag `v1.8.0`；`release/CyberDeck Launcher.exe` 已是 1.8.0 包（11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B（5.45 MiB） / md5 `679a342d82c00f8668328019c5dd4b4d`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)（资产 `CyberDeck.Launcher.1.8.0.zip`，远端回读字节一致）。
+**本仓库的实际版本是 `1.8.0`（2026-11-12 补发：同版本重构建，用户明确「这个改动也算是1.8版本的」）。** 三处 `version` 一致、tag `v1.8.0` 未动；`release/CyberDeck Launcher.exe` 已是补发包（11,138,560 B / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源仍为 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B / md5 `679a342d82c00f8668328019c5dd4b4d`；GitHub Release [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0) 的资产 `CyberDeck.Launcher.1.8.0.zip` 已删旧传新，远端回读字节一致。**同版本号不会有更新提示，已下载首发版的用户需手动重下。**
+
+- **2026-11-12 00:4x 1.8.0 补发（用户「构建+收尾，同时这个改动也算是1.8版本的，把github上的便携版重新打包上传」）**：
+  用 `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（全量门禁 → **跳过升版** → 构建 → 同步 release），把「整合包入口收口」与「ico 微圆角」两批源码一起打进产物。
+  三处版本号、tag `v1.8.0` 全部保持不变；按 1.5.0 口径重打便携 ZIP 并**删除后重新上传**同名 Release 资产（不是新建 Release），同步更新 Release 说明里的哈希。
+  详见 `CHANGELOG.md` `[1.8.0] 补发 - 2026-11-12`。
 
 - **2026-11-11 23:39 发布 1.8.0（用户「确定，不用 dev 验收你直接收尾」= 全流程授权）**：
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-gate`（门禁刚跑过 39/39 全绿 → 升版 → 构建 260s → 同步一条链，总 261s）。
@@ -19,16 +24,16 @@
   **网络口径补充**：`api.github.com` 与 `uploads.github.com` 走会话环境代理可通；`git` 走 `127.0.0.1:7897`，该代理对 uploads 域名做 MITM（证书不被系统信任），Python urllib 会报 SSL EOF —— 上传不要走 7897。
   根目录 `https://uploads.github.com/` 返回 302，urllib 自动跟随到 `github.com` 会 502，那是根路径跳转的假象，不代表上传端点不可达。
 
-- **2026-11-12 00:0x（未发版，仅源码）**：用户反馈「整合包这个高频操作怎么被隐藏到更多里了，而且导入整合包的入口太多了」。
+- **2026-11-12 00:0x（已并入 1.8.0 补发）**：用户反馈「整合包这个高频操作怎么被隐藏到更多里了，而且导入整合包的入口太多了」。
   整合包提升为**顶部全局栏常驻按钮**（与「导入模组」并列），删掉「导入方式」下拉两个整合包项、「更多」里的整合包项、
   以及左侧分类栏底部与顶部重复的 `.rail-import` 按钮；普通导入改名「导入模组」以区分。
   **工具栏零改动**——先试过在库工具栏加常驻按钮，多占 80px 会让密度档从 full 掉到 compact、「补全」整组被收起，
   `check-toolbar.mjs` 直接超时，故改放没有降档机制的顶部栏。复盘 `docs/INCIDENT-2026-11-12-pack-entry.md`，
-  见 `CHANGELOG.md` [未发布]。**未升版、未构建 exe**，等 localhost 验收。
+  见 `CHANGELOG.md` `[1.8.0] 补发 - 2026-11-12`。本批已随补发构建进 exe。
 
-- **2026-11-12 00:40（未发版，仅图标资源）**：用户放弃本轮绘制的新芯片图标方案，改为只要「现有桌面 ico 加一点微圆角」。
+- **2026-11-12 00:40（已并入 1.8.0 补发）**：用户放弃本轮绘制的新芯片图标方案，改为只要「现有桌面 ico 加一点微圆角」。
   `src-tauri/icons/icon.ico` 六帧 + `icon.png` 源图按 256px→rx=12 等比裁出微圆角，保留右下斜切与黄底黑线图案；
-  新图标组件与「关于」页预览的未提交改动全部撤回。**快捷方式指向 exe 内嵌图标，圆角要下次构建 exe 才显示**，本批未构建。
+  新图标组件与「关于」页预览的未提交改动全部撤回。快捷方式指向 exe 内嵌图标，**圆角已随本次补发重构建生效**。
 
 - **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
@@ -88,9 +93,9 @@
 
 以下三处互相一致（`node scripts/check-version-sync.mjs` 把关）：
 
-- `package.json` → `"version": "1.3.1"`
-- `src-tauri/Cargo.toml` → `version = "1.3.1"`
-- `src-tauri/tauri.conf.json` → `"version": "1.3.1"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
+- `package.json` → `"version": "1.8.0"`
+- `src-tauri/Cargo.toml` → `version = "1.8.0"`
+- `src-tauri/tauri.conf.json` → `"version": "1.8.0"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
 - ⚠️ **构建产物目录必须放在仓库外**：`CARGO_TARGET_DIR=D:/cdbuild` 后再跑 `cargo build` / `npm run tauri:dev` / `npm run gate`。原因见 `docs/MEMORY-CANON.md` §2.5「`src-tauri/target` 会被会话级文件备份拖死」——备份进程持有 `.o` 句柄会让 `rustc` 报 `os error 5`，并把 C 盘吃到 0 字节。
 - **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。
   之后 **2026-11-01 09:58 重建（含 P5）**：exe 11,168,256 B / md5 `bc1ef81eeb5e1a2e56c7392c0aa2bae0`，冒烟 `stage=frontend mods=186`；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,313,934 B，覆盖首发包）。版本号按用户要求保持 1.0.0，CHANGELOG 用「1.0.0 追加批次」区分。

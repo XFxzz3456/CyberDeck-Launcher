@@ -42,6 +42,7 @@
 | `1.7.0` | 2026-11-10 | 加载顺序一键整理 + AI 建议 + 锁定；汉化包覆盖父级不再误报冲突；屏蔽 WebView2 原生右键菜单 |
 | `1.7.1` | 2026-11-11 | 弹窗在 UI 缩放下溢出视口（含冲突矩阵）；冷启动白屏 1.2s |
 | `1.8.0` | 2026-11-11 | 整合包导出/导入（轻量清单 + 完整包）、Nexus 编号回填、主题重构与全量自定义调色、收编重叠判定根因修复 |
+| `1.8.0` 补发 | 2026-11-12 | 整合包入口提到顶部常驻并清除重复导入入口；桌面 ico 微圆角；同版本重新构建 exe 与便携 ZIP |
 
 ### 版本号规则
 
@@ -53,10 +54,17 @@
 
 ---
 
-## [未发布]（2026-11-12 · 整合包入口收口）
+## [1.8.0] 补发 - 2026-11-12（整合包入口收口 · 图标微圆角）
 
-> 来源：用户「整合包这个高频操作怎么被隐藏到更多里了，而且现在导入整合包的入口太多了有点冗余」（附截图，圈出顶部「导入压缩包」、左下「+ 导入压缩包」与「更多」里的「整合包」）。
-> 复盘见 `docs/INCIDENT-2026-11-12-pack-entry.md`。本批只改前端入口与文案，**未升版、未构建 exe**，等 localhost 验收。
+> 来源：用户「整合包这个高频操作怎么被隐藏到更多里了，而且现在导入整合包的入口太多了有点冗余」（附截图）+「算了算了，不改了，你只需要把目前的这个图标桌面ico加一点微圆角就够了」+「构建+收尾，同时这个改动也算是1.8版本的，把github上的便携版重新打包上传」。
+> 复盘见 `docs/INCIDENT-2026-11-12-pack-entry.md`。**按用户口径这两批仍算 1.8.0**：不升版本号、不新建 tag，重新构建 exe 替换 release，并覆盖 GitHub `v1.8.0` Release 的同名便携包资产。
+> 产物 `release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `2bb48fd7b954cf8067ee378220f5f3aa`，PE 版本资源仍为 1.8.0；旧包备份为 `.prev.exe`。
+> 便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,819 B（5.45 MiB） / md5 `8d203a9b843e104d7ed7468e1dda9e68`（内含 exe、WebView2Loader.dll、使用说明与数据目录说明；UTF-8 文件名，包内 exe 与 release 版 md5 一致）。已删除并重新上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0) 的资产 `CyberDeck.Launcher.1.8.0.zip`，远端回读字节与本地一致。
+
+### 产物（1.8.0 补发）
+
+- 本段产物哈希对应 **2026-11-12 重发的 1.8.0**；下方 `[1.8.0] - 2026-11-11` 记录的是首发那次的哈希，已被覆盖，仅作历史留痕。
+- 桌面快捷方式指向 `release/CyberDeck Launcher.exe` 的内嵌图标，ico 的微圆角随本次重构建生效。
 
 ### 变更
 
@@ -81,16 +89,18 @@
 
 - `src-tauri/icons/icon.ico` 六个尺寸帧与 `icon.png`(512) 源图统一加**微圆角**（256px 下 rx=12，其余尺寸等比），只裁四角 alpha：右下角原有的大斜切、黄底黑线芯片图案、透明背景全部保持原样。原文件备份在 `.test-tmp/icons-before-rounded/`（不入库）。
 - 用户本轮明确「算了不改了，只把桌面 ico 加一点微圆角就够了」，故**撤回了同批未提交的黄底芯片 SVG 组件与「关于」页预览**（`CyberChipIcon.tsx` / `SettingsView.tsx` / `i18n` / `styles.css` 全部还原到 HEAD）。
-- 桌面快捷方式目前指向 `release/CyberDeck Launcher.exe` 的内嵌图标，圆角要在**下一次构建 exe**后才会显示；本批按「只改 ico」要求未重建 exe、未升版。
+- 桌面快捷方式指向 `release/CyberDeck Launcher.exe` 的内嵌图标；本次 1.8.0 补发已重新构建 exe，圆角随之生效（改 ico 文件本身不会立刻改变桌面图标）。
+- **`src-tauri/build.rs` 补 `cargo:rerun-if-changed=icons/icon.ico`**：build script 一旦输出过任何 `rerun-if-changed`，Cargo 就只监视列出的路径；原先只声明了 `../dist` 与 `WebView2Loader.dll`，改 ico 而 build script 不重跑时 exe 会继续内嵌旧图标。本次补发前补上，确保圆角真的进产物。
 
 ### 已知边界
 
 - 截图顶部那个「自建整合包 ▾」是用户自建的**播放集名称**（`ProfileMenu`），不是功能入口，本次不动。
-- 便携 ZIP / release exe 仍是 1.8.0，本批变更尚未进产物。
+- 版本号与 tag 保持 `1.8.0` / `v1.8.0` 不变；GitHub 上仍是同一个 Release，只是资产被同名覆盖。**已下载首发版的用户不会收到更新提示**（同版本号），需手动重新下载。
+- 整合包「导出 3.5 GB 完整包 → 另一台机器导入」的端到端实跑、GraphQL 名字检索的真实联调仍未做，见 `[1.8.0] - 2026-11-11` 段的已知边界。
 
 ## [1.8.0] - 2026-11-11（整合包导出/导入 · 主题重构 · 收编根因修复）
 
-> 产物 `release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`，PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0）。旧包备份为 `.prev.exe`。
+> 首发产物（已被 2026-11-12 补发覆盖，最新哈希见上方补发段）`release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`，PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0）。旧包备份为 `.prev.exe`。
 > 便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B（5.45 MiB） / md5 `679a342d82c00f8668328019c5dd4b4d`（内含 exe、WebView2Loader.dll、使用说明与数据目录说明；UTF-8 文件名，包内 exe 与 release 版 md5 一致）。已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)，资产名 `CyberDeck.Launcher.1.8.0.zip`，远端回读字节与本地完全一致。
 > 来源：用户「为什么有几个 mod 重复出现」（附截图）+「加个功能，实现像 vortex 那样同一个 mod 可以切换不同版本」+「怎么没有直接删除 mod 的选项」+「把遗留的也修复吧」+「mod 详情页这个编辑按钮怎么单独在中间」+「精简主题风格卡片，解耦风格与配色，开放全量自定义调色」+「再加一个一键导出整合包的功能吧……对方只用下几 MB 甚至几 KB」+「我 mod 全是在 N 网下的啊」+「确定，不用 dev 验收你直接收尾」。
 > 设计决策与踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`。
