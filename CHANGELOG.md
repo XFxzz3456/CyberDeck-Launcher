@@ -92,6 +92,15 @@
 - 桌面快捷方式指向 `release/CyberDeck Launcher.exe` 的内嵌图标；本次 1.8.0 补发已重新构建 exe，圆角随之生效（改 ico 文件本身不会立刻改变桌面图标）。
 - **`src-tauri/build.rs` 补 `cargo:rerun-if-changed=icons/icon.ico`**：build script 一旦输出过任何 `rerun-if-changed`，Cargo 就只监视列出的路径；原先只声明了 `../dist` 与 `WebView2Loader.dll`，改 ico 而 build script 不重跑时 exe 会继续内嵌旧图标。本次补发前补上，确保圆角真的进产物。
 
+### 工具链与仓库规范
+
+- `package.json` 补 `license: MIT` / `repository` / `packageManager: pnpm@12.8.1` / `engines.node >= 20`，与根目录 `LICENSE`、git remote、CI（`pnpm/action-setup` 12.8.1 + Node 20）三方对齐。
+- `scripts/check-version-sync.mjs` 新增三处「当前版本」文档横幅校验：README 顶部、`docs/SESSION-START.md` §3、`HANDOFF.md` §0。历史上 README 停在 1.0.0、SESSION-START 停在 1.5.0 都是没人核对造成的；以后漏改会让门禁直接变红。
+- `scripts/release.mjs` 预检从「只打印提示」改为「默认拦截」：工作区有未提交改动、最新 tag 与版本不一致、非 git 仓库三种情况都会中止发版（`--dry-run` 同样中止），确实要在这种状态下发版必须显式加 `--allow-dirty` / `--allow-no-tag`。
+- `README` 构建前置对齐 CI：Node.js 20+（CI 用 20，本地建议 22）、pnpm 12.8.1（取 `packageManager`），原来的「Node 22+」与 CI 不符。
+- `CONTRIBUTING` 把原「禁止倒卖」拆成两条：**MIT 的硬要求**是再分发保留 `LICENSE` 与版权声明；**「不授权付费打包分发」是作者意愿，不是许可证条件**（MIT 本身允许商业使用与收费再分发）。
+- `docs/SESSION-START.md` 快照更新到 1.8.0，并把 exe / ZIP 哈希修正为 2026-11-12 补发版。
+
 ### 已知边界
 
 - 截图顶部那个「自建整合包 ▾」是用户自建的**播放集名称**（`ProfileMenu`），不是功能入口，本次不动。

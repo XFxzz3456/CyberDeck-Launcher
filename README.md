@@ -2,7 +2,9 @@
 
 # CyberDeck Launcher
 
-**v1.0.0 · 首个正式版（STABLE）**
+**v1.8.0 · 最新正式版（STABLE）**
+
+> 版本号的唯一事实源是 `package.json` 的三处 `version`（`node scripts/check-version-sync.mjs` 校验）；本行、`docs/SESSION-START.md` §3、`HANDOFF.md` §0 的「当前版本」由同一脚本一并校验。历史版本见 [CHANGELOG](CHANGELOG.md)。
 
 一个只服务《赛博朋克 2077》的轻量 Mod 启动器。**Tauri 2 + React 19 + TypeScript + Rust**。
 
@@ -174,7 +176,7 @@
 
 ### 从源码构建
 
-前置：Node.js 22+、pnpm、Rust stable、Tauri 2 的 Windows 依赖。
+前置：Node.js 20+（CI 用 20，本地建议 22）、pnpm 12.8.1（见 `package.json` 的 `packageManager`）、Rust stable、Tauri 2 的 Windows 依赖。
 
 ```powershell
 pnpm install

@@ -43,17 +43,17 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 ---
 
-## 3. 当前状态快照（2026-11-10）
+## 3. 当前状态快照（2026-11-12）
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.5.0**（tag `v1.5.0`；exe 已构建并替换 release；便携版 ZIP 已打并上传 GitHub Release） |
-| 远端 | `main` 含 1.5.0 发版提交；tag 最新 **`v1.5.0`** |
+| 版本 | **1.8.0**（tag `v1.8.0`；exe 已构建并替换 release；便携版 ZIP 已打并上传 GitHub Release） |
+| 远端 | `main` 含 1.8.0 发版提交；tag 最新 **`v1.8.0`** |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**，标签 `P0` / `P1` / `P2` / `migrated` |
-| 门禁基线 | `cargo test --lib` **285 passed / 2 ignored**；全量门禁 **38/38 全绿**（325s）；`tsc --noEmit` 0 错误；命令契约 163/163 |
-| release exe | 10,795,520 B（10.30 MB） / md5 `e038614f9a30ef796dec9b046497e3c8`；冒烟 stage=frontend mods=106；PE `1.5.0` |
-| 腾讯文档进度表 | **已同步**（2026-11-10 P4 发版）：https://docs.qq.com/sheet/DR0dWckhvcmRTRUxY?_fid=GGVrHordSELX ，3 个子表 |
-| 未做 | 内置 Nexus 窗口端到端真机（登录 → Mod Manager Download → 任务条）；第三方 OAuth 登录；UI/UX 顺延（首次向导 / 选择态上提 / 技术信息分层 / 样式全量令牌化）；#8 实机双端验收；全类型汉化真机样本；Vortex A1–A10 |
+| 门禁基线 | `cargo test --lib` **382 passed / 2 ignored**；全量门禁 **39/39 全绿**；`tsc --noEmit` 0 错误 |
+| release exe | 11,138,560 B（10.62 MB）/ md5 `2bb48fd7b954cf8067ee378220f5f3aa`；PE `1.8.0`（2026-11-12 补发构建） |
+| 便携版 ZIP | `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,819 B / md5 `8d203a9b843e104d7ed7468e1dda9e68` |
+| 未做 | 内置 Nexus 窗口端到端真机（登录 → Mod Manager Download → 任务条）；第三方 OAuth 登录；UI/UX 顺延（首次向导 / 选择态上提 / 技术信息分层 / 样式全量令牌化）；#8 实机双端验收；全类型汉化真机样本；Vortex A1–A10；腾讯文档进度表停在 1.5.0，是否继续维护待定 |
 
 ---
 
