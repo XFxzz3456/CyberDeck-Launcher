@@ -42,6 +42,11 @@ export function installNativeMenuGuard(): () => void {
  * 状态冲掉（后端还在跑，前端却以为没开始）。这里统一拦掉，刷新走重启。
  */
 export function installReloadGuard(): () => void {
+  // 开发模式下不拦：HMR 偶尔会有漏网的改动（比如只改了 tauri.conf.json、
+  // 或某个模块的热更新链路断了），这时候 Ctrl+R 是唯一的手动兜底，
+  // 拦掉就只能重启进程，反而让人以为改动没生效。
+  if (import.meta.env.DEV) return () => {};
+
   const onKeyDown = (event: KeyboardEvent) => {
     const isReload =
       event.key === "F5" ||

@@ -6,3 +6,17 @@
  *   不要直接读这个常量，也不要再硬编码版本号（见 docs/AGENTS.md 版本更新自动化规范）。
  */
 declare const __APP_VERSION__: string;
+
+/**
+ * `import.meta.env` 的最小声明。
+ *
+ * 项目 tsconfig 只带 `types: ["node"]`，没有引入 `vite/client`（见 raw-import.d.ts
+ * 的取舍说明），但 `import.meta.env.DEV` 是运行时的真实字段。这里只补用得到的
+ * 两个布尔开关，避免把整套 vite/client 全局类型灌进来。
+ */
+interface ImportMeta {
+  readonly env: {
+    readonly DEV: boolean;
+    readonly PROD: boolean;
+  };
+}
