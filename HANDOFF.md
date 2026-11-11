@@ -19,6 +19,13 @@
   **网络口径补充**：`api.github.com` 与 `uploads.github.com` 走会话环境代理可通；`git` 走 `127.0.0.1:7897`，该代理对 uploads 域名做 MITM（证书不被系统信任），Python urllib 会报 SSL EOF —— 上传不要走 7897。
   根目录 `https://uploads.github.com/` 返回 302，urllib 自动跟随到 `github.com` 会 502，那是根路径跳转的假象，不代表上传端点不可达。
 
+- **2026-11-12 00:0x（未发版，仅源码）**：用户反馈「整合包这个高频操作怎么被隐藏到更多里了，而且导入整合包的入口太多了」。
+  整合包提升为**顶部全局栏常驻按钮**（与「导入模组」并列），删掉「导入方式」下拉两个整合包项、「更多」里的整合包项、
+  以及左侧分类栏底部与顶部重复的 `.rail-import` 按钮；普通导入改名「导入模组」以区分。
+  **工具栏零改动**——先试过在库工具栏加常驻按钮，多占 80px 会让密度档从 full 掉到 compact、「补全」整组被收起，
+  `check-toolbar.mjs` 直接超时，故改放没有降档机制的顶部栏。复盘 `docs/INCIDENT-2026-11-12-pack-entry.md`，
+  见 `CHANGELOG.md` [未发布]。**未升版、未构建 exe**，等 localhost 验收。
+
 - **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
   `release/CyberDeck Launcher.exe` 已替换（旧包备份为 `.prev.exe`），PE 版本 1.7.1 已验证，冒烟启动正常。

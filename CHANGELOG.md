@@ -53,6 +53,35 @@
 
 ---
 
+## [未发布]（2026-11-12 · 整合包入口收口）
+
+> 来源：用户「整合包这个高频操作怎么被隐藏到更多里了，而且现在导入整合包的入口太多了有点冗余」（附截图，圈出顶部「导入压缩包」、左下「+ 导入压缩包」与「更多」里的「整合包」）。
+> 复盘见 `docs/INCIDENT-2026-11-12-pack-entry.md`。本批只改前端入口与文案，**未升版、未构建 exe**，等 localhost 验收。
+
+### 变更
+
+- **整合包提升为顶部全局栏常驻按钮**（`TopBar.tsx` + `App.tsx`），与「导入模组」并列、任何窗口宽度都不被收起。点击打开同一个 `ModpackDialog`，导出 / 导入两个页签都在里面，不需要两个菜单项。
+- **普通导入改名**：`topBar.importMods` 从「导入压缩包」改为「导入模组」，空状态引导同步；避免与「整合包」混淆。集合向导里的 `collection.importMods` 保持原词不动。
+- 顶部多一个按钮后，`@media (max-width: 1150px)` 里收起「开始游戏」的 `Ctrl ↵` 提示，给搜索框与播放集下拉让宽度；快捷键本身仍可用。
+
+### 移除
+
+- 「导入方式」下拉里的「导入整合包…」「导出整合包…」两项；「更多」菜单里的「整合包」项（共 3 个重复入口）。
+- 左侧分类栏底部的 `.rail-import`「+ 导入压缩包」按钮：它与顶部全局栏是同一个 `onImport`，纯重复。空库时的引导按钮保留。
+- 相应死文案 `library.modpack` / `modpackOpen` / `modpackExport` / `modpackTitle` 与 `.rail-import` CSS。
+
+### 验证
+
+- `check-modpack.mjs` 入口断言改为直点顶部常驻按钮，新增 6 条：`noDupImportMenu` / `noDupMore` / `noRailImport` / `entryNarrow`（1000 宽仍可见）/ `narrowTopbar`（顶部栏零溢出、搜索框仍可见）/ `clearLabels`（「导入模组」与「整合包」各一个且文案不同）。
+- `check-toolbar.mjs` 全部通过、密度档仍为 `955:full → 859:compact → 707:tight → 607:mini`：**工具栏本身零改动**，这是本方案的关键取舍。
+- 1440 / 1150 / 1000 三档截图核对：三个顶部按钮完整、无重叠、无横向溢出。
+- `ui-test.mjs` / `ui-polish-test.mjs` / `check-motion.mjs` 里按旧文案定位导入按钮的选择器同步改为 `{ name: "导入模组", exact: true }`。
+
+### 已知边界
+
+- 截图顶部那个「自建整合包 ▾」是用户自建的**播放集名称**（`ProfileMenu`），不是功能入口，本次不动。
+- 便携 ZIP / release exe 仍是 1.8.0，本批变更尚未进产物。
+
 ## [1.8.0] - 2026-11-11（整合包导出/导入 · 主题重构 · 收编根因修复）
 
 > 产物 `release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`，PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0）。旧包备份为 `.prev.exe`。
