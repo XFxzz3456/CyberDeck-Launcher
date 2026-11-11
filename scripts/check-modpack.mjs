@@ -20,12 +20,30 @@ await page.waitForTimeout(1200);
 const results = [];
 const check = (label, ok) => results.push(`${label}=${ok ? 1 : 0}`);
 
-// 1) 入口：模组库「更多」菜单里应该有「整合包」。
-await page.getByRole("button", { name: "更多" }).first().click();
-await page.waitForTimeout(200);
-const menuItems = await page.locator(".toolbar-menu-panel [role=menuitem]").allTextContents();
-check("entry", menuItems.some((text) => text.trim() === "整合包"));
-await page.getByRole("menuitem", { name: "整合包", exact: true }).click();
+// 1) 入口：宽屏在「导入方式」下拉里，窄屏收进「更多」。
+//    密度档随容器宽度切换，脚本不能绑死其中一个——曾经在 1440 下写死「更多」，
+//    门禁里那个按钮 display:none，脚本白等 30 秒。
+await page.locator(".toolbar-group--actions").first().waitFor({ state: "attached", timeout: 15000 });
+const moreButton = page.locator(".toolbar-overflow > button").first();
+const importMenu = page
+  .locator(".toolbar-menu.is-low-frequency")
+  .filter({ hasText: "导入方式" })
+  .locator("button")
+  .first();
+let menuItems = [];
+if (await importMenu.isVisible().catch(() => false)) {
+  await importMenu.click();
+  await page.waitForTimeout(200);
+  menuItems = await page.locator(".toolbar-menu-panel [role=menuitem]").allTextContents();
+  check("entry", menuItems.some((text) => text.includes("导出整合包")));
+  await page.getByRole("menuitem", { name: /导出整合包/ }).click();
+} else {
+  await moreButton.click();
+  await page.waitForTimeout(200);
+  menuItems = await page.locator(".toolbar-menu-panel [role=menuitem]").allTextContents();
+  check("entry", menuItems.some((text) => text.trim() === "整合包"));
+  await page.getByRole("menuitem", { name: "整合包", exact: true }).click();
+}
 await page.waitForTimeout(500);
 
 // 2) 结构：两个页签 + 两种包形态。
