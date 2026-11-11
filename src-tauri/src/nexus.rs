@@ -35,7 +35,7 @@ pub fn key_path_from(data_dir: &Path) -> PathBuf {
     data_dir.join("secrets").join("nexus-api.key")
 }
 
-fn client() -> AppResult<Client> {
+pub(crate) fn http_client() -> AppResult<Client> {
     Client::builder()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(12))
@@ -44,7 +44,7 @@ fn client() -> AppResult<Client> {
         .map_err(|e| CommandError::new("NEXUS_HTTP", format!("无法创建网络客户端：{e}")))
 }
 
-fn api_key(store: &Store) -> AppResult<String> {
+pub(crate) fn api_key(store: &Store) -> AppResult<String> {
     secret::load(&key_path(store))?.ok_or_else(|| {
         CommandError::new(
             "NEXUS_NOT_CONFIGURED",
@@ -200,7 +200,7 @@ struct ApiDownloadLink {
 }
 
 fn validate_key(key: &str) -> AppResult<ApiValidate> {
-    let client = client()?;
+    let client = http_client()?;
     get_json::<ApiValidate>(&client, key, &format!("{API_BASE}/users/validate.json"))
 }
 
@@ -346,7 +346,7 @@ pub fn browse(store: &Store, section: &str) -> AppResult<Vec<NexusModSummary>> {
             ))
         }
     };
-    let client = client()?;
+    let client = http_client()?;
     let mods: Vec<ApiMod> = get_json(
         &client,
         &key,
@@ -362,7 +362,7 @@ pub fn browse(store: &Store, section: &str) -> AppResult<Vec<NexusModSummary>> {
 
 pub fn detail(store: &Store, mod_id: u64) -> AppResult<NexusModDetail> {
     let key = api_key(store)?;
-    let client = client()?;
+    let client = http_client()?;
     let raw: ApiMod = get_json(
         &client,
         &key,
@@ -489,7 +489,7 @@ pub fn refresh_covers(store: &Store) -> AppResult<NexusCoverRefresh> {
         });
     }
 
-    let client = client()?;
+    let client = http_client()?;
     let mut updates: Vec<(usize, String, String, bool, u64, Option<u64>)> = Vec::new();
     let mut failed = 0usize;
     for (attempt, (index, entry_id, mod_id, file_id, had_ref)) in pending.into_iter().enumerate() {
@@ -581,7 +581,7 @@ pub fn attach_from_url(store: &Store, entry_id: &str, url: &str) -> AppResult<()
         )
     })?;
     let key = api_key(store)?;
-    let client = client()?;
+    let client = http_client()?;
     let api_url = format!("{API_BASE}/games/{GAME_DOMAIN}/mods/{mod_id}.json");
     let raw: ApiMod = get_json(&client, &key, &api_url)?;
 
@@ -631,7 +631,7 @@ pub fn attach_from_url(store: &Store, entry_id: &str, url: &str) -> AppResult<()
 /// Nexus 的下载文件名形如 `模组名-28099-1-0-0-1772990692`（名称-ModId-FileId-版本-时间戳），
 /// Vortex 的暂存目录也保留同样的数字后缀。这里只认「名称之后第一组 `数字-数字-数字`」，
 /// 且要求 ModId ≥ 100 —— 版本号 `1-0-0` 这类片段不能被误认成 ModId。
-fn parse_nexus_ids(text: &str) -> Option<(u64, Option<u64>)> {
+pub(crate) fn parse_nexus_ids(text: &str) -> Option<(u64, Option<u64>)> {
     let bytes = text.as_bytes();
     let mut index = 0usize;
     while index < bytes.len() {
@@ -744,7 +744,7 @@ pub fn enrich_metadata(store: &Store) -> AppResult<crate::schema::NexusEnrichRep
         });
     }
 
-    let client = client()?;
+    let client = http_client()?;
     struct Enriched {
         id: String,
         name: String,
@@ -913,7 +913,7 @@ struct ApiUpdatedEntry {
 pub fn check_updates(store: &Store) -> AppResult<NexusUpdateReport> {
     const MAX_CHECKS: usize = 40;
     let key = api_key(store)?;
-    let client = client()?;
+    let client = http_client()?;
 
     // updated.json 拿不到不致命：退回「全量详情比对」，只是费配额。
     let updated: std::collections::HashMap<String, ApiUpdatedEntry> = get_json(
@@ -1135,7 +1135,7 @@ pub(crate) fn download_file(
     file_name_hint: Option<String>,
 ) -> AppResult<DownloadedFile> {
     let key = api_key(store)?;
-    let client = client()?;
+    let client = http_client()?;
     let detail: ApiMod = get_json(
         &client,
         &key,
@@ -1284,7 +1284,7 @@ pub(crate) fn download_file(
 /// 这样「可选补丁」「旧版本」不会被误当成更新源。
 pub(crate) fn download_latest(app: &AppHandle, store: &Store, mod_id: u64) -> AppResult<DownloadedFile> {
     let key = api_key(store)?;
-    let client = client()?;
+    let client = http_client()?;
     let files_raw: ApiFiles = get_json(
         &client,
         &key,

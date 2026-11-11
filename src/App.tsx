@@ -82,6 +82,8 @@ import { ConflictCenter } from "./components/ConflictCenter";
 import { NxmIntake, type NxmItem } from "./components/NxmIntake";
 import { CommandPalette } from "./components/CommandPalette";
 import { AdoptPreviewDialog } from "./components/AdoptPreviewDialog";
+import { ModpackDialog } from "./components/ModpackDialog";
+import { isPackPath } from "./lib/pack";
 import { AiToolsDialog } from "./components/AiToolsDialog";
 import { BackgroundCropDialog } from "./components/BackgroundCropDialog";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
@@ -818,6 +820,12 @@ function AppShell() {
   // Premium 决定「能不能直链下载」，必须是 state：以前是 ref，只在挂载时查一次，
   // 用户在设置页当场授权后本会话的自动下载依然不生效，要重启才「突然变好」。
   const [nxmPremium, setNxmPremium] = useState(false);
+  /** 整合包对话框：`path` 非空表示从拖放/选择直接进预览。 */
+  const [packDialog, setPackDialog] = useState<{
+    open: boolean;
+    mode: "export" | "import";
+    path: string | null;
+  }>({ open: false, mode: "export", path: null });
   const nxmBusy = useRef(false);
 
   const patchNxm = useCallback((uri: string, patch: Partial<NxmItem>) => {
@@ -1591,7 +1599,14 @@ function AppShell() {
         setDropActive(false);
         if (payload.paths.length === 0) return;
         const nxmPaths = payload.paths.filter((path) => path.toLowerCase().endsWith(".nxm"));
-        const rest = payload.paths.filter((path) => !path.toLowerCase().endsWith(".nxm"));
+        const others = payload.paths.filter((path) => !path.toLowerCase().endsWith(".nxm"));
+        // 整合包（.cdlist / .cdpack）单独拎出来：交给对话框先预览再决定装什么，
+        // 直接丢进安装队列会因为「清单不是压缩包」当场失败。
+        const packPaths = others.filter((path) => isPackPath(path));
+        const rest = others.filter((path) => !isPackPath(path));
+        if (packPaths.length > 0) {
+          setPackDialog({ open: true, mode: "import", path: packPaths[0] });
+        }
         if (nxmPaths.length > 0) {
           void (async () => {
             let links = 0;
@@ -3082,6 +3097,7 @@ function AppShell() {
                 refreshingCovers={refreshingCovers}
                 onVortexImport={() => void runVortexImport()}
                 onAdopt={() => void handleAdoptScan()}
+                onOpenModpack={(mode) => setPackDialog({ open: true, mode, path: null })}
                 onReclassify={() => void handleReclassify()}
                 reclassifying={reclassifying}
                 view={preferences.libraryView}
@@ -3598,6 +3614,16 @@ function AppShell() {
         onRefresh={() => void handleAdoptScan()}
         onConfirm={(selected) => void handleAdoptExecute(selected)}
         onCancel={handleAdoptCancel}
+      />
+
+      <ModpackDialog
+        open={packDialog.open}
+        mode={packDialog.mode}
+        initialPath={packDialog.path}
+        premium={nxmPremium}
+        onClose={() => setPackDialog((prev) => ({ ...prev, open: false }))}
+        onError={showError}
+        onRefresh={() => void refresh()}
       />
 
       <NxmIntake

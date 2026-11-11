@@ -586,6 +586,23 @@ const UI_SCRIPTS = [
     expect: ["menu=1", "items>=3", "afterEsc=0", "scaleMaxDelta=0", "scaleCases=3"],
   },
   {
+    name: "整合包导出 / 导入",
+    script: "check-modpack.mjs",
+    // kinds / tabs 是结构断言；nameGuard / applyGuard 是「按钮不该能点的时候别能点」；
+    // inViewport 兜住 125% 缩放下弹窗被顶出屏幕的老坑（见 .modal 的 max-height 计算）。
+    expect: [
+      "entry=1",
+      "tabs=1",
+      "kinds=1",
+      "nameGuard=1",
+      "fullSelected=1",
+      "fullNote=1",
+      "emptyState=1",
+      "applyGuard=1",
+      "inViewport=1",
+    ],
+  },
+  {
     name: "播放集切换",
     script: "check-profiles.mjs",
     // alignLeft：浮层左边界 − 外层胶囊左边界。曾经拿内层按钮当锚点，右飘 11px；

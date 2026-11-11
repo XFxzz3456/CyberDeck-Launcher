@@ -76,6 +76,17 @@ import type {
   SwitchProfileReport, StagingMoveReport, ToolProbe,
   DownloadTask, DownloadQueueSettings } from "../types";
 import type { CollectionDeployReport, CollectionPlan } from "./collection";
+import type {
+  BackfillProposal,
+  BackfillReport,
+  PackApplyReport,
+  PackExportInput,
+  PackExportReport,
+  PackInstallReport,
+  PackManualItem,
+  PackPreview,
+  PackQueueReport,
+} from "./pack";
 import { t } from "../i18n";
 import { mockApi } from "./mock";
 import { normalizeSnapshot } from "./normalize";
@@ -723,6 +734,72 @@ export const api = {
   async applyCollectionOrder(ids: string[]): Promise<CollectionDeployReport> {
     if (!isTauri) return mockApi.applyCollectionOrder(ids);
     return call<CollectionDeployReport>("apply_collection_order", { ids });
+  },
+
+  // ── 整合包导出 / 导入 ─────────────────────────────────────────
+
+  /**
+   * 导出一份整合包。
+   *
+   * `list` 只写清单（几十 KB）；`full` 把每个 Mod 的暂存内容各打一个 zip 再套外层
+   * zip（实测库 3.5 GB）。完整包是长任务，进度走 `pack-export-progress` 事件。
+   */
+  async packExport(input: PackExportInput): Promise<PackExportReport> {
+    if (!isTauri) return mockApi.packExport(input);
+    return call<PackExportReport>("pack_export", {
+      kind: input.kind,
+      name: input.name,
+      author: input.author ?? null,
+      includeUnlisted: input.includeUnlisted ?? null,
+      outPath: input.outPath ?? null,
+    });
+  },
+
+  /** 预览：把清单与本地库对一遍（每次现算，所以天然支持断点续传）。 */
+  async packPreview(path: string): Promise<PackPreview> {
+    if (!isTauri) return mockApi.packPreview(path);
+    return call<PackPreview>("pack_preview", { path });
+  },
+
+  /** 安装完整包里的本体（只装缺的 / 版本不符的）。 */
+  async packInstall(path: string, keys?: string[]): Promise<PackInstallReport> {
+    if (!isTauri) return mockApi.packInstall(path, keys);
+    return call<PackInstallReport>("pack_install", { path, keys: keys ?? null });
+  },
+
+  /**
+   * 把缺失项压进下载队列。
+   *
+   * `premium` 为 false 时一个都不入队，只返回需要手动打开的页面——Nexus 不给
+   * 免费账号签 API 直链，硬排只会让每个任务都以 403 收场。
+   */
+  async packQueueDownloads(path: string, premium: boolean): Promise<PackQueueReport> {
+    if (!isTauri) return mockApi.packQueueDownloads(path, premium);
+    return call<PackQueueReport>("pack_queue_downloads", { path, premium });
+  },
+
+  /** 免费号的引导队列：只取「该打开哪些页面」。 */
+  async packManualPages(path: string): Promise<PackManualItem[]> {
+    if (!isTauri) return mockApi.packManualPages();
+    return call<PackManualItem[]>("pack_manual_pages", { path });
+  },
+
+  /** 应用清单：启停 + 加载顺序 + 配置值。 */
+  async packApply(path: string): Promise<PackApplyReport> {
+    if (!isTauri) return mockApi.packApply(path);
+    return call<PackApplyReport>("pack_apply", { path });
+  },
+
+  /** 回填 Nexus 编号（只读提案）。`useRemote` 时对本地没命中的条目联网搜一次。 */
+  async nexusBackfillPropose(useRemote: boolean): Promise<BackfillReport> {
+    if (!isTauri) return mockApi.nexusBackfillPropose(useRemote);
+    return call<BackfillReport>("nexus_backfill_propose", { useRemote });
+  },
+
+  /** 把确认过的提案写回库；已有编号的条目不覆盖。 */
+  async nexusBackfillApply(proposals: BackfillProposal[]): Promise<number> {
+    if (!isTauri) return mockApi.nexusBackfillApply(proposals);
+    return call<number>("nexus_backfill_apply", { proposals });
   },
 
   /**

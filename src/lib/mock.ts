@@ -1,4 +1,16 @@
 import type {
+  BackfillProposal,
+  BackfillReport,
+  PackApplyReport,
+  PackExportInput,
+  PackExportReport,
+  PackInstallReport,
+  PackManualItem,
+  PackPreview,
+  PackPreviewItem,
+  PackQueueReport,
+} from "./pack";
+import type {
   AdoptCandidate,
   AdoptReport,
   AdoptScanReport,
@@ -3007,6 +3019,193 @@ export const mockApi = {
       warnings: ["演示模式：没有真正重写 modlist.txt，也没有部署任何文件。"],
       order: [...ids],
     };
+  },
+
+  // ── 整合包（演示数据）────────────────────────────────────────
+  // 浏览器预览里没有真文件系统，这里给足三种状态（已装 / 版本不符 / 缺失 /
+  // 无编号），让导出与导入两条链路都能点得下去。
+
+  async packExport(input: PackExportInput): Promise<PackExportReport> {
+    await sleep(620);
+    const db = loadDb();
+    const mods = db.state.mods.length;
+    return {
+      path: `C:////演示////${input.name || "整合包"}.${input.kind === "full" ? "cdpack" : "cdlist"}`,
+      sizeBytes: input.kind === "full" ? 3_512_000_000 : 48_120,
+      mods,
+      enabled: db.state.mods.filter((item) => item.enabled).length,
+      configs: input.kind === "full" ? 96 : 96,
+      unresolved: 3,
+      warnings: ["演示模式：没有真的写文件。"],
+    };
+  },
+
+  async packPreview(path: string): Promise<PackPreview> {
+    await sleep(480);
+    const db = loadDb();
+    const items: PackPreviewItem[] = db.state.mods.slice(0, 10).map((item, index) => ({
+      key: item.nexus ? `nxm:${item.nexus.modId}` : `local:${item.name.toLowerCase()}`,
+      name: item.name,
+      version: item.version ?? null,
+      modId: item.nexus?.modId ?? null,
+      fileId: item.nexus?.fileId ?? null,
+      enabled: item.enabled,
+      status: index === 3 ? "version_mismatch" : item.nexus ? "installed" : "local_only",
+      matchedEntryId: item.id,
+      matchedVersion: item.version ?? null,
+      sizeBytes: item.sizeBytes,
+      hasFiles: path.toLowerCase().endsWith(".cdpack"),
+      pageUrl: item.nexus ? `https://www.nexusmods.com/cyberpunk2077/mods/${item.nexus.modId}` : null,
+    }));
+    // 再补两条「对方机器上还没装」的，演示下载与引导队列。
+    items.push({
+      key: "nxm:99001",
+      name: "演示 · 缺失的模组 A",
+      version: "2.1.0",
+      modId: 99001,
+      fileId: 550001,
+      enabled: true,
+      status: "missing",
+      matchedEntryId: null,
+      matchedVersion: null,
+      sizeBytes: 42_000_000,
+      hasFiles: path.toLowerCase().endsWith(".cdpack"),
+      pageUrl: "https://www.nexusmods.com/cyberpunk2077/mods/99001?tab=files&file_id=550001",
+    });
+    items.push({
+      key: "nxm:99002",
+      name: "演示 · 缺失的模组 B",
+      version: "1.0.4",
+      modId: 99002,
+      fileId: null,
+      enabled: false,
+      status: "missing",
+      matchedEntryId: null,
+      matchedVersion: null,
+      sizeBytes: 8_400_000,
+      hasFiles: false,
+      pageUrl: "https://www.nexusmods.com/cyberpunk2077/mods/99002",
+    });
+
+    const installed = items.filter((item) => item.status === "installed").length;
+    const mismatch = items.filter((item) => item.status === "version_mismatch").length;
+    const localOnly = items.filter((item) => item.status === "local_only").length;
+    return {
+      path,
+      name: "演示整合包",
+      author: "CyberDeck",
+      mode: path.toLowerCase().endsWith(".cdpack") ? "full" : "list",
+      createdAt: new Date().toISOString(),
+      appVersion: "1.7.1",
+      gameVersion: "2.2",
+      total: items.length,
+      installed,
+      missing: items.length - installed - mismatch - localOnly,
+      versionMismatch: mismatch,
+      localOnly,
+      enabled: items.filter((item) => item.enabled).length,
+      configs: 96,
+      totalSize: items.reduce((sum, item) => sum + item.sizeBytes, 0),
+      items,
+      warnings: [],
+    };
+  },
+
+  async packInstall(path: string, keys?: string[]): Promise<PackInstallReport> {
+    await sleep(520);
+    void path;
+    return {
+      installed: keys?.length ?? 0,
+      failed: 0,
+      warnings: ["演示模式：没有真的解包安装。"],
+    };
+  },
+
+  async packQueueDownloads(path: string, premium: boolean): Promise<PackQueueReport> {
+    await sleep(420);
+    void path;
+    const manual: PackManualItem[] = premium
+      ? []
+      : [
+          {
+            modId: 99001,
+            fileId: 550001,
+            name: "演示 · 缺失的模组 A",
+            url: "https://www.nexusmods.com/cyberpunk2077/mods/99001?tab=files&file_id=550001",
+          },
+          {
+            modId: 99002,
+            fileId: null,
+            name: "演示 · 缺失的模组 B",
+            url: "https://www.nexusmods.com/cyberpunk2077/mods/99002",
+          },
+        ];
+    return {
+      queued: premium ? 2 : 0,
+      skipped: 0,
+      manual,
+      warnings: premium ? ["演示模式：没有真的入队。"] : [],
+    };
+  },
+
+  async packManualPages(): Promise<PackManualItem[]> {
+    await sleep(320);
+    return [
+      {
+        modId: 99001,
+        fileId: 550001,
+        name: "演示 · 缺失的模组 A",
+        url: "https://www.nexusmods.com/cyberpunk2077/mods/99001?tab=files&file_id=550001",
+      },
+      {
+        modId: 99002,
+        fileId: null,
+        name: "演示 · 缺失的模组 B",
+        url: "https://www.nexusmods.com/cyberpunk2077/mods/99002",
+      },
+    ];
+  },
+
+  async packApply(path: string): Promise<PackApplyReport> {
+    await sleep(640);
+    void path;
+    return {
+      deployed: 0,
+      undeployed: 0,
+      missing: 0,
+      configsWritten: 0,
+      configsFailed: 0,
+      orderApplied: 0,
+      warnings: ["演示模式：没有真的改启用状态与加载顺序。"],
+    };
+  },
+
+  async nexusBackfillPropose(useRemote: boolean): Promise<BackfillReport> {
+    await sleep(useRemote ? 900 : 420);
+    const db = loadDb();
+    const targets = db.state.mods.filter((item) => !item.nexus).slice(0, 3);
+    return {
+      scanned: targets.length + 2,
+      proposals: targets.map((item, index) => ({
+        entryId: item.id,
+        entryName: item.name,
+        modId: 8000 + index,
+        fileId: 5000 + index,
+        matchedName: item.name,
+        matchedVersion: item.version ?? null,
+        source: "vortex",
+        confidence: "exact",
+      })),
+      unmatched: targets.length > 2 ? [] : ["演示 · 匹配不到的条目"],
+      vortexStatus: "ok",
+      vortexMessage: "演示模式：读到 0 条 Vortex 记录。",
+      remoteMessage: useRemote ? "演示模式：没有真的联网检索。" : null,
+    };
+  },
+
+  async nexusBackfillApply(proposals: BackfillProposal[]): Promise<number> {
+    await sleep(360);
+    return proposals.length;
   },
 
   /**

@@ -10,7 +10,9 @@ mod aifix;
 mod ailoc;
 mod ailabel;
 mod ailoc_full;
+mod backfill;
 mod backup;
+mod pack;
 mod category;
 mod collection;
 mod compat;
@@ -307,6 +309,162 @@ fn install_mods_blocking(store: &Store, paths: &[String]) -> AppResult<Vec<Insta
 
 /// 解析一份 Nexus Collection 清单，并和本地模组库比对。
 ///
+// ── 整合包导出 / 导入（2026-11-11）────────────────────────────────
+//
+// 与 Nexus Collections 的关系：`.collection` 我们能读（上面的向导），但导不出
+// 「N 网官网一键添加」的包——那要经 Vortex 上传到 Nexus 审核发布，客户端做不了。
+// 所以自有格式 `.cdlist` / `.cdpack`，同时保留对方的 `.collection` 能装。
+
+/// 联网检索时的限速提示文案：宁可在 UI 上说清楚慢，也不要静默等半天。
+#[tauri::command]
+async fn nexus_backfill_propose(
+    app: tauri::AppHandle,
+    use_remote: bool,
+) -> AppResult<backfill::BackfillReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("回填 Nexus 编号");
+        backfill::propose(store.inner(), use_remote)
+    })
+    .await
+    .map_err(|err| CommandError::new("BACKFILL_TASK", format!("回填线程异常：{err}")))?
+}
+
+#[tauri::command]
+async fn nexus_backfill_apply(
+    app: tauri::AppHandle,
+    proposals: Vec<backfill::BackfillProposal>,
+) -> AppResult<usize> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        backfill::apply(store.inner(), &proposals)
+    })
+    .await
+    .map_err(|err| CommandError::new("BACKFILL_TASK", format!("回填线程异常：{err}")))?
+}
+
+/// 导出一份整合包。`kind` 传 `list` / `full`。
+///
+/// 完整包是重活（实测库 3.5 GB），放 blocking 线程 + 进度事件，前端据此画进度条。
+#[tauri::command]
+async fn pack_export(
+    app: tauri::AppHandle,
+    kind: pack::PackKind,
+    name: String,
+    author: Option<String>,
+    include_unlisted: Option<bool>,
+    out_path: Option<String>,
+) -> AppResult<pack::PackExportReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("导出整合包");
+        let author = author.unwrap_or_default();
+        let include_unlisted = include_unlisted.unwrap_or(kind == pack::PackKind::Full);
+        let app_version = env!("CARGO_PKG_VERSION");
+        let manifest = pack::build_manifest(
+            store.inner(),
+            kind,
+            &name,
+            &author,
+            app_version,
+            include_unlisted,
+        )?;
+        let out = out_path.map(PathBuf::from);
+        let mut emit = |done: usize, total: usize, label: &str| {
+            let _ = handle.emit(
+                "pack-export-progress",
+                serde_json::json!({
+                    "done": done,
+                    "total": total,
+                    "label": label,
+                    "kind": match kind { pack::PackKind::List => "list", pack::PackKind::Full => "full" },
+                }),
+            );
+        };
+        let report = match kind {
+            pack::PackKind::List => pack::export_list(store.inner(), manifest, out.as_deref()),
+            pack::PackKind::Full => {
+                pack::export_full(store.inner(), manifest, out.as_deref(), &mut emit)
+            }
+        }?;
+        Ok(report)
+    })
+    .await
+    .map_err(|err| CommandError::new("PACK_TASK", format!("导出线程异常：{err}")))?
+}
+
+#[tauri::command]
+fn pack_preview(store: State<'_, Store>, path: String) -> AppResult<pack::PackPreview> {
+    pack::preview(store.inner(), Path::new(&path))
+}
+
+/// 安装完整包里的本体。`keys` 为空表示「缺什么装什么」。
+#[tauri::command]
+async fn pack_install(
+    app: tauri::AppHandle,
+    path: String,
+    keys: Option<Vec<String>>,
+) -> AppResult<pack::PackInstallReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("安装整合包");
+        let mut emit = |done: usize, total: usize, label: &str| {
+            let _ = handle.emit(
+                "pack-install-progress",
+                serde_json::json!({ "done": done, "total": total, "label": label }),
+            );
+        };
+        pack::install_missing(
+            store.inner(),
+            Path::new(&path),
+            keys.as_deref(),
+            &mut emit,
+        )
+    })
+    .await
+    .map_err(|err| CommandError::new("PACK_TASK", format!("安装线程异常：{err}")))?
+}
+
+/// 把缺失项压进下载队列。`premium` 为 false 时只返回需要手动打开的页面列表。
+#[tauri::command]
+fn pack_queue_downloads(
+    store: State<'_, Store>,
+    path: String,
+    premium: bool,
+) -> AppResult<pack::PackQueueReport> {
+    pack::queue_downloads(store.inner(), Path::new(&path), premium)
+}
+
+/// 免费号的引导队列：只拿「该打开哪些页面」。
+#[tauri::command]
+fn pack_manual_pages(store: State<'_, Store>, path: String) -> AppResult<Vec<pack::PackManualItem>> {
+    pack::manual_pages(store.inner(), Path::new(&path))
+}
+
+/// 应用清单：启停 + 加载顺序 + 配置值。全部就位后再统一调用，避免半截状态。
+#[tauri::command]
+async fn pack_apply(
+    app: tauri::AppHandle,
+    path: String,
+) -> AppResult<pack::PackApplyReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        let busy = handle.state::<BusyTasks>();
+        let _guard = busy.begin("应用整合包");
+        pack::apply(store.inner(), Path::new(&path))
+    })
+    .await
+    .map_err(|err| CommandError::new("PACK_TASK", format!("应用线程异常：{err}")))?
+}
+
 /// `path` 指向 `collection.json`。清单里写错游戏（domainName 不是
 /// cyberpunk2077）时直接报 `WRONG_GAME`，不给出半可用的计划。
 #[tauri::command]
@@ -4665,6 +4823,14 @@ pub fn run() {
             repair_mod,
             clear_game_dir,
             install_mods,
+            nexus_backfill_propose,
+            nexus_backfill_apply,
+            pack_export,
+            pack_preview,
+            pack_install,
+            pack_queue_downloads,
+            pack_manual_pages,
+            pack_apply,
             parse_collection_manifest,
             apply_collection_order,
             set_mod_enabled,
@@ -4787,6 +4953,8 @@ pub fn run() {
 
 #[cfg(test)]
 mod adopt_tests;
+#[cfg(test)]
+mod pack_tests;
 #[cfg(test)]
 mod ai_tools_tests;
 #[cfg(test)]
