@@ -6,14 +6,20 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.7.0`（2026-11-11）。** 三处 `version` 一致、tag `v1.7.0`；`release/CyberDeck Launcher.exe` 已是 1.7.0 包（10,933,248 B（10.43 MB） / md5 `4c1838983ea3803a96b3653e878774a5`），PE 版本资源 1.7.0（`FileVersion` / `ProductVersion` 均为 1.7.0）。便携版：1.7.0 的 ZIP 尚未打包（按规则需单独确认）。
+**本仓库的实际版本是 `1.7.1`（2026-11-11）。** 三处 `version` 一致、tag `v1.7.1`；`release/CyberDeck Launcher.exe` 已是 1.7.1 包（10,933,248 B（10.43 MB） / md5 `7ed1c21297813142f1f0883f27c590fc`），PE 版本资源 1.7.1（`FileVersion` / `ProductVersion` 均为 1.7.1）。便携版：1.7.1 的 ZIP 尚未打包（按规则需单独确认）。
 
+- **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
+  `release/CyberDeck Launcher.exe` 已替换（旧包备份为 `.prev.exe`），PE 版本 1.7.1 已验证，冒烟启动正常。
+  同批修掉 **dev 窗口热更新失效**（`devCsp` 放行 HMR WebSocket + `import.meta.env.DEV` 下不拦刷新），
+  仅影响开发模式、不进产物。
+  **tag `v1.7.1` 本地已打；push 待代理可用。便携 ZIP 未打。**
 - **2026-11-11 20:55 发布 1.7.0（「收尾」= 全流程授权）**：用户说「收尾」即直接走完发版。三处版本号 1.6.0 → 1.7.0，
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，总耗时 444s，构建 221s），
   `release/CyberDeck Launcher.exe` 已替换（旧包自动备份为 `.prev.exe`），PE 版本 1.7.0 已验证。
   1.7.0 内容 = 加载顺序一键整理（规则 / AI / 锁定三层）+ 封面本地缓存与设置页缓存卡片 + 汉化包认父降噪 +
   屏蔽 WebView2 右键菜单 + 保存 66s→175ms 性能修复 + 封面黑屏 scope 修复（详见 CHANGELOG 该段）。
-  **待办：`git tag v1.7.0` 与 push（脚本不代打 tag）。便携 ZIP 未打。**
+  **tag `v1.7.0` 已打；push 待代理可用。便携 ZIP 未打。**
 
 - **2026-11-10 23:07 发布 1.6.0（「收尾」= 全流程授权）**：用户「收尾吧」并明确「以后说收尾就包括所有后续流程，
   包括升版本还有构建 exe」——此口径已写入长期记忆，后续说收尾即直接升版 + 构建 + 替换 release，不再回头问。

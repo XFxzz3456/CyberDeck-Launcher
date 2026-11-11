@@ -54,7 +54,7 @@
 
 ## [1.7.1] - 2026-11-11（弹窗缩放溢出 · 冷启动白屏）
 
-> 待构建。构建后回填 md5 与大小。
+> 产物 `release/CyberDeck Launcher.exe`：10,933,248 B（10.43 MB） / md5 `7ed1c21297813142f1f0883f27c590fc`，PE 版本资源 1.7.1。
 > 来源：用户「刚打开软件的时候会有一阵子白屏」+「冲突矩阵弹窗超出屏幕显示范围」（附截图）。
 
 ### 修复
@@ -68,6 +68,10 @@
 ### 变更
 
 - **门禁新增 `modalOverflow`**（`scripts/check-ui-audit.mjs` + `gate.mjs`）：注入真实结构的 `.modal-portal > .modal`，在 80% / 100% / 110% / 125% / 150% 五档缩放下断言不溢出视口（上/下/右三个方向）。以后任何浮层上限改回裸 `vh` 都会直接判红。
+
+### 开发体验（不进产物）
+
+- **dev 窗口热更新失效**（`tauri.conf.json` + `src/lib/nativeMenu.ts` + `src/global.d.ts`）：症状是改完代码 dev 窗口永远停在旧版本，只有重新构建 exe 才看得到效果。真因是 `csp` 的 `connect-src` 只有 `ipc:` 与 `http://ipc.localhost`，而 `devCsp` 为 `null`（开发模式沿用生产 CSP），Vite 的 HMR WebSocket（`ws://localhost:1420`）被拦掉；同时 `installReloadGuard` 又拦掉了 F5 / Ctrl+R，连手动刷新都不通。新增 `devCsp` 放行本地 HMR 与 `'unsafe-inline'` 脚本（React Refresh preamble），`installReloadGuard` 在 `import.meta.env.DEV` 下跳过。生产 `csp` 未改动，出货 exe 行为不受影响。
 
 ### 验证
 
