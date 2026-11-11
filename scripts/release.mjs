@@ -23,6 +23,8 @@
 //   npm run release -- --skip-build # 只升版不构建（补 CHANGELOG 与版本号时用）
 //   npm run release -- --level=patch|minor|major   # 强制升版级别，透传给 bump-version
 //   npm run release -- --fast       # 门禁走 --fast（只验静态项，日常迭代可用，发版别用）
+//   npm run release -- --allow-dirty    # 预检放行「工作区有未提交改动」（默认预检失败即停）
+//   npm run release -- --allow-no-tag   # 预检放行「最新 tag 与版本不一致 / 不是 git 仓库」
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -47,6 +49,10 @@ const SKIP_BUMP = flag("skip-bump");
 const SKIP_BUILD = flag("skip-build");
 const FAST = flag("fast");
 const LEVEL = value("level");
+// 预检默认是「拦」而不是「提示」：脏工作区与 tag 不一致都会让升版基点悄悄跑偏，
+// 事后只能靠翻 CHANGELOG 猜。确实要在这种状态下发版，就显式加放行开关。
+const ALLOW_DIRTY = flag("allow-dirty");
+const ALLOW_NO_TAG = flag("allow-no-tag");
 
 const readPkg = () => JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const currentVersion = readPkg().version;
@@ -72,21 +78,39 @@ steps.push({
   title: "预检（版本 / tag / 工作区）",
   run() {
     if (!existsSync(join(ROOT, ".git"))) {
-      console.log("    这不是 git 仓库：版本追踪只能靠 CHANGELOG，升版判定会退化成 HEAD~1 比对");
+      if (!ALLOW_NO_TAG) {
+        console.error("    ✗ 这不是 git 仓库：版本追踪只能靠 CHANGELOG，升版判定会退化成 HEAD~1 比对");
+        console.error("      确认要这样发版，就加 --allow-no-tag。");
+        return false;
+      }
+      console.log("    这不是 git 仓库（已放行）：版本追踪只能靠 CHANGELOG，升版判定会退化成 HEAD~1 比对");
       return true;
     }
     const tag = sh("describe --tags --abbrev=0");
     const dirty = sh("status --porcelain").split("\n").filter(Boolean);
     console.log(`    当前版本 ${currentVersion} · 最新 tag ${tag || "（无）"}`);
+    let ok = true;
     if (tag && tag !== `v${currentVersion}`) {
-      console.log(`    注意：最新 tag ${tag} 与当前版本 v${currentVersion} 不一致，升版基点可能不是你以为的那个`);
+      if (ALLOW_NO_TAG) {
+        console.log(`    注意（已放行）：最新 tag ${tag} 与当前版本 v${currentVersion} 不一致`);
+      } else {
+        console.error(`    ✗ 最新 tag ${tag} 与当前版本 v${currentVersion} 不一致，升版基点可能不是你以为的那个。`);
+        console.error("      先处理 tag，或确认无误后加 --allow-no-tag。");
+        ok = false;
+      }
     }
     if (dirty.length) {
-      console.log(`    工作区有 ${dirty.length} 个未提交改动（升版判定会把它们算进本次发布）`);
-      for (const line of dirty.slice(0, 8)) console.log(`      ${line}`);
-      if (dirty.length > 8) console.log(`      …还有 ${dirty.length - 8} 项`);
+      if (ALLOW_DIRTY) {
+        console.log(`    注意（已放行）：工作区有 ${dirty.length} 个未提交改动`);
+      } else {
+        console.error(`    ✗ 工作区有 ${dirty.length} 个未提交改动，升版判定会把它们算进本次发布：`);
+        for (const line of dirty.slice(0, 8)) console.error(`      ${line}`);
+        if (dirty.length > 8) console.error(`      …还有 ${dirty.length - 8} 项`);
+        console.error("      先提交或 stash，或确认无误后加 --allow-dirty。");
+        ok = false;
+      }
     }
-    return true;
+    return ok;
   },
 });
 
@@ -217,7 +241,11 @@ if (DRY) {
   console.log("\n（--dry-run：预检 + 预演升版判定，不构建、不动任何文件）\n");
   const preflight = steps[0];
   console.log(`▸ ${preflight.title}`);
-  preflight.run();
+  const preflightOk = preflight.run();
+  if (!preflightOk) {
+    console.error("\n✗ 预检未通过，--dry-run 到此为止（真实发版同样会被拦下）。");
+    process.exit(1);
+  }
   if (!SKIP_BUMP) {
     console.log("\n▸ 升版预演（bump-version 不带 --apply，只打印判定）");
     spawnSync(
@@ -260,7 +288,13 @@ for (const [index, step] of steps.entries()) {
     }
   } else {
     try {
-      step.run();
+      const ok = step.run();
+      if (ok === false) {
+        console.error(`\n✗ ${step.title} 未通过`);
+        if (step.onFail) console.error(`  ${step.onFail}`);
+        console.error(`  已耗时 ${((Date.now() - t0) / 1000).toFixed(0)}s，后续步骤未执行。`);
+        process.exit(1);
+      }
     } catch (error) {
       console.error(`\n✗ ${step.title} 失败：${error.message}`);
       process.exit(1);

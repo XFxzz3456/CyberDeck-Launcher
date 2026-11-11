@@ -37,6 +37,24 @@ check(
 );
 check(cargoVersion !== "", "Cargo.toml 能读到 version");
 
+// 文档横幅：README / docs/SESSION-START.md / HANDOFF.md 里写着「当前版本」，长期没人核对就会
+// 停在旧值（历史上 README 停在 1.0.0、SESSION-START 停在 1.5.0 都是这么来的）。这里让脚本
+// 顺手把它们跟 package.json 对一遍，发版漏改文档会直接红。
+const docBanners = [
+  { file: "README.md", re: /\*\*v(\d+\.\d+\.\d+)\s*·/, label: "README 顶部版本横幅" },
+  { file: "docs/SESSION-START.md", re: /\|\s*版本\s*\|\s*\*\*(\d+\.\d+\.\d+)\*\*/, label: "docs/SESSION-START.md §3 版本行" },
+  { file: "HANDOFF.md", re: /本仓库的实际版本是\s*`(\d+\.\d+\.\d+)`/, label: "HANDOFF.md §0 实际版本" },
+];
+for (const { file, re, label } of docBanners) {
+  let got = "";
+  try {
+    got = read(file).match(re)?.[1] ?? "";
+  } catch {
+    got = "";
+  }
+  check(got === pkgVersion, `${label}与 package.json 一致`, `${got || "读不到"} vs ${pkgVersion}`);
+}
+
 // tag 只做提示：当前版本没有对应 tag 时提醒一句，不算失败。
 let latestTag = "";
 try {
