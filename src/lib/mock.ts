@@ -1802,6 +1802,27 @@ export const mockApi = {
     return reportFor(mod);
   },
 
+  async switchModVersion(id: string): Promise<DeployReport> {
+    await sleep(420);
+    const db = loadDb();
+    const target = db.state.mods.find((entry) => entry.id === id);
+    if (!target) throw new Error("找不到这个模组。");
+    const identity = (mod: (typeof db.state.mods)[number]) =>
+      mod.nexus && mod.nexus.modId > 0
+        ? `nexus:${mod.nexus.modId}`
+        : `name:${mod.name.trim().toLowerCase()}`;
+    const key = identity(target);
+    for (const mod of db.state.mods) {
+      if (mod.id !== id && !mod.parentModId && !mod.isTranslation && identity(mod) === key) {
+        if (mod.enabled) updateDeployment(mod, false);
+      }
+    }
+    if (!target.enabled) updateDeployment(target, true);
+    refreshLoadOrder(db);
+    saveDb(db);
+    return reportFor(target);
+  },
+
   async uninstallMod(id: string): Promise<void> {
     await sleep(380);
     const db = loadDb();

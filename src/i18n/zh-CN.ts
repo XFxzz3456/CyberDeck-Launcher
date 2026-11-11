@@ -25,6 +25,7 @@ export const zhCN = {
     importStagedFailed: "{ok} 个进入暂存区 · {failed} 个失败",
     modDeployed: "{name} 已部署",
     modUndeployed: "{name} 已撤除",
+    versionSwitched: "{name} 切换版本",
     nxmDownload: "NXM 下载 {modId}",
     profileSwitch: "切换播放集 → {name}",
     profileSwitchDetail: "撤除 {undeployed} · 部署 {deployed}",
@@ -1139,6 +1140,9 @@ export const zhCN = {
     repairFailedDetail: "重新部署失败：{reason}",
     repairing: "正在重新部署「{name}」…",
     resultsLabel: "RESULTS",
+    versionMergedChip: "{count} 个多版本",
+    versionMergedTitle:
+      "同一 mod 的多个版本已合并成一张卡；点卡上的版本号可以切换生效版本（会撤下其它版本再部署选中的那个）。",
     groupModeFlat: "平铺",
     groupModeGrouped: "分组",
     groupModeTitle: "按维度折叠成组；关掉就是一条条的平铺列表",
@@ -1300,6 +1304,16 @@ export const zhCN = {
     noModsToEnrich: "演示模式：没有可补全的模组。",
     noModsToRescan: "演示模式：没有可回查封面的模组。",
     vortexUnavailable: "演示模式：无法读取 Vortex 数据。",
+  },
+  /**
+   * 同一 mod 多版本切换（卡片 / 列表行上的版本胶囊）。
+   * 分组与切换口径见 src/lib/modVersions.ts 与 src-tauri/src/lib.rs 的 version_identity。
+   */
+  version: {
+    switchTitle: "切换版本（共 {count} 个，切换会撤下其它版本）",
+    menuAria: "版本列表",
+    menuTitle: "切换到",
+    activeTag: "当前启用",
   },
   modCard: {
     busyDeploy: "部署硬链接…",
@@ -2121,6 +2135,10 @@ export const zhCN = {
     backup: {
       doneDetail: "已保存 modlist.txt 与 r6/config。",
       doneTitle: "备份已创建",
+    },
+    version: {
+      switchedTitle: "已切换版本",
+      switchedDetail: "「{name}」现在生效的是 {version}，其它版本已撤下。",
     },
     deploy: {
       cetDetail: "进游戏按 `~` 呼出 CET 控制台；出现模组列表即 Lua 已加载。",

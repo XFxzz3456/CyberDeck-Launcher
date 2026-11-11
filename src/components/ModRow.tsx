@@ -2,6 +2,7 @@ import { AlertTriangle, Check, Link2, MoreHorizontal, PackageSearch } from "luci
 import type { ConflictInfo, ModEntry } from "../types";
 import { formatBytes } from "../lib/format";
 import { CoverArt } from "./CoverArt";
+import { VersionChip } from "./VersionChip";
 import { Toggle } from "./ui";
 import { categoryLabel, t } from "../i18n";
 import { isContextMenuKey, keyboardContextMenuEvent } from "../lib/contextMenuKey";
@@ -30,6 +31,8 @@ export function ModRow({
   translationCount = 0,
   hasUpdate = false,
   updateVersion,
+  versions,
+  onSwitchVersion,
   grouped = false,
   busy,
   onToggle,
@@ -46,6 +49,9 @@ export function ModRow({
   translationCount?: number;
   hasUpdate?: boolean;
   updateVersion?: string;
+  /** 同一个 mod 的全部版本（新→旧）。长度 > 1 时版本列换成切换胶囊。 */
+  versions?: ModEntry[];
+  onSwitchVersion?: (mod: ModEntry) => void;
   /** 分组模式下分类已经写在组头上，行里再列一遍是重复信息。 */
   grouped?: boolean;
   busy: boolean;
@@ -207,7 +213,19 @@ export function ModRow({
       {/* 版本 / 分类 / 大小各自成列：挤在第二行的一串文字里根本没法纵向扫视，
           对齐之后眼睛只要沿一条竖线走就能比较大小和版本。 */}
       <span className="row-col row-col-version" title={mod.version ? `v${mod.version}` : undefined}>
-        {mod.version ? `v${mod.version}` : "-"}
+        {versions && versions.length > 1 ? (
+          <VersionChip
+            current={mod}
+            versions={versions}
+            busy={busy}
+            placement="row"
+            onSwitch={(next) => onSwitchVersion?.(next)}
+          />
+        ) : mod.version ? (
+          `v${mod.version}`
+        ) : (
+          "-"
+        )}
       </span>
       {grouped ? null : (
         <span className="row-col row-col-category" title={categoryLabel(mod.category)}>

@@ -410,6 +410,17 @@ export const api = {
     return call<DeployReport>("set_mod_enabled", { id, enabled });
   },
 
+  /**
+   * 切换同一个 mod 的生效版本：撤下其它版本 → 部署这一条。
+   *
+   * 分组口径在 Rust 侧（Nexus modId 优先，其次同名），前端只负责把用户点中的
+   * 那一条 id 送过去，避免前后端各算一套分组规则后对不上。
+   */
+  async switchModVersion(id: string): Promise<DeployReport> {
+    if (!isTauri) return mockApi.switchModVersion(id);
+    return call<DeployReport>("switch_mod_version", { id });
+  },
+
   async uninstallMod(id: string): Promise<void> {
     if (!isTauri) return mockApi.uninstallMod(id);
     return call<void>("uninstall_mod", { id });

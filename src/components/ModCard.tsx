@@ -5,6 +5,7 @@ import { formatBytes } from "../lib/format";
 import { modCardHover, modCardTap, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 import { CoverArt } from "./CoverArt";
+import { VersionChip } from "./VersionChip";
 import { Toggle } from "./ui";
 import { categoryLabel, t } from "../i18n";
 import { isContextMenuKey, keyboardContextMenuEvent } from "../lib/contextMenuKey";
@@ -25,6 +26,8 @@ export function ModCard({
   aiLocated = false,
   hasUpdate = false,
   updateVersion,
+  versions,
+  onSwitchVersion,
   busy,
   onToggle,
   onOpen,
@@ -44,6 +47,9 @@ export function ModCard({
   /** #1 更新检查命中：封面上打 UPD 徽标。 */
   hasUpdate?: boolean;
   updateVersion?: string;
+  /** 同一个 mod 的全部版本（新→旧）。长度 > 1 时封面底栏换成版本切换胶囊。 */
+  versions?: ModEntry[];
+  onSwitchVersion?: (mod: ModEntry) => void;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
   onOpen: () => void;
@@ -198,7 +204,16 @@ export function ModCard({
           </div>
         </div>
         <div className="cover-bottomline">
-          <span className="cover-version">v{mod.version ?? "—"}</span>
+          {versions && versions.length > 1 ? (
+            <VersionChip
+              current={mod}
+              versions={versions}
+              busy={busy}
+              onSwitch={(next) => onSwitchVersion?.(next)}
+            />
+          ) : (
+            <span className="cover-version">v{mod.version ?? "—"}</span>
+          )}
           <span className="cover-category">{categoryLabel(mod.category)}</span>
         </div>
         {busy ? (

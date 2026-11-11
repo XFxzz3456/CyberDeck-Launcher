@@ -53,6 +53,7 @@ import type { LibraryView as LibraryViewMode } from "../lib/preferences";
 import { VirtualModGrid } from "./VirtualModGrid";
 import { ModListHeader } from "./ModListHeader";
 import { buildLibraryList, type GroupBy, type StatusFilter } from "../lib/libraryList";
+import { groupVersions } from "../lib/modVersions";
 import { compareMods, type SortDir, type SortMode } from "../lib/librarySort";
 import { depIgnoresVersion, missingDependencyNames, subscribeDepIgnores } from "../lib/dependencies";
 import { ModContextMenu, type ModContextMenuState } from "./ModContextMenu";
@@ -139,6 +140,7 @@ export function LibraryView({
   onCategory,
   onSort,
   onToggle,
+  onSwitchVersion,
   onOpen,
   onOpenConflicts,
   onImport,
@@ -184,6 +186,8 @@ export function LibraryView({
   /** 只传字段：方向由上层用 nextSort 推导（换列用默认方向、同列翻转）。 */
   onSort: (field: SortMode) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
+  /** 切换同一个 mod 的生效版本（卡片版本下拉的点击回调）。 */
+  onSwitchVersion: (mod: ModEntry) => void;
   onOpen: (mod: ModEntry) => void;
   onOpenConflicts: () => void;
   onImport: () => void;
@@ -341,6 +345,15 @@ export function LibraryView({
     return result;
   }, [mods, category, deferredSearch, sort, sortDir, statusFilter, missingDepsById]);
 
+  /**
+   * 同一 mod 的多版本聚合成一张卡（Vortex 口径：一个 mod 只允许一个版本生效）。
+   *
+   * 只做展示层聚合，不动库里的数据：代表条目 = 正在启用的那个，否则取版本最高的；
+   * 卡上的版本下拉列出全部成员，点击走 `switch_mod_version`（先撤其它版本再部署目标）。
+   * 分组与后端 `version_identity` 逐字对应，两边口径必须一致。
+   */
+  const versionGrouping = useMemo(() => groupVersions(filtered), [filtered]);
+
   // 折叠键带分组维度前缀（status:on / author:xxx / 分类名…），换维度不会误用旧状态。
   const toggleGroup = (key: string) => {
     setCollapsedGroups((prev) => {
@@ -369,12 +382,14 @@ export function LibraryView({
   };
 
   // 只有「列表视图 + 分组模式」才摊成组头行；其余组合沿用原来的平铺渲染。
+  // 传入的是聚合后的代表条目：列表与网格必须同源，否则同一个 mod 在两种视图里
+  // 行数不一致，切换视图时滚动锚点也会错位。
   const listItems = useMemo(
     () =>
       view === "list" && groupMode
-        ? buildLibraryList(filtered, collapsedGroups, true, groupBy)
+        ? buildLibraryList(versionGrouping.display, collapsedGroups, true, groupBy)
         : undefined,
-    [filtered, collapsedGroups, groupMode, view, groupBy],
+    [versionGrouping, collapsedGroups, groupMode, view, groupBy],
   );
 
   // 这两个集合以前每次渲染都重建：`new Set(...)` 引用不同，会让
@@ -764,9 +779,22 @@ export function LibraryView({
             {/* ── 视图与过滤组（控制"怎么看"）────────────────────── */}
             <div className="toolbar-group toolbar-group--view">
               <div className="result-line">
-                <span className="result-count">{String(filtered.length).padStart(2, "0")}</span>
+                {/* 计数与卡片数一致：多版本聚合成一张卡，这里报的也是「卡数」，
+                    否则「显示 251 结果」配 238 张卡会让人以为有卡没渲染出来。
+                    真实条目数在右侧「已安装」里仍然完整。 */}
+                <span className="result-count">
+                  {String(versionGrouping.display.length).padStart(2, "0")}
+                </span>
                 <span className="result-label">{t("library.resultsLabel")}</span>
                 {search ? <span className="result-query">“{search}”</span> : null}
+                {versionGrouping.groups.size > 0 ? (
+                  <span
+                    className="result-merged"
+                    title={t("library.versionMergedTitle", { count: versionGrouping.groups.size })}
+                  >
+                    {t("library.versionMergedChip", { count: versionGrouping.groups.size })}
+                  </span>
+                ) : null}
               </div>
 
               <label className="sort-control" title={t("library.statusFilterTitle")}>
@@ -1345,7 +1373,9 @@ export function LibraryView({
             <VirtualModGrid
               filterKey={`${category}:${sort}:${sortDir}:${statusFilter}:${groupMode ? groupBy : "flat"}`}
               view={view}
-              mods={filtered}
+              mods={versionGrouping.display}
+              versionGroups={versionGrouping.groups}
+              onSwitchVersion={onSwitchVersion}
               listItems={listItems}
               listHeader={
                 <ModListHeader

@@ -1244,6 +1244,117 @@ fn repair_mod_blocking(store: &Store, id: &str) -> AppResult<DeployReport> {
     Ok(report)
 }
 
+/// 版本分组的身份键：优先 Nexus modId，其次同名（去空白、忽略大小写）。
+///
+/// 为什么用这两级：
+/// - 同一 mod 的不同版本在 Nexus 上是同一个 modId，这是最可靠的依据；
+/// - 收编进来的散装条目可能没有 Nexus 元数据，只能退回名字比对。名字是用户
+///   可见的展示名，同名的不同 mod 极少见，且切换前一定会再让用户确认。
+fn version_identity(entry: &ModEntry) -> String {
+    if let Some(nexus) = &entry.nexus {
+        if nexus.mod_id > 0 {
+            return format!("nexus:{}", nexus.mod_id);
+        }
+    }
+    format!("name:{}", entry.name.trim().to_lowercase())
+}
+
+/// 同一 mod 的其它版本（不含自己、不含汉化子包）。
+fn version_siblings(data: &crate::schema::AppStateData, target: &ModEntry) -> Vec<String> {
+    let key = version_identity(target);
+    data.mods
+        .iter()
+        .filter(|item| {
+            item.id != target.id
+                && item.parent_mod_id.is_none()
+                && !item.is_translation
+                && version_identity(item) == key
+        })
+        .map(|item| item.id.clone())
+        .collect()
+}
+
+/// 切换同一个 mod 的生效版本。
+///
+/// 语义与 Vortex 的「同一 mod 只允许一个版本启用」一致：先把其它版本全部撤下来，
+/// 再部署目标版本。顺序不能反 —— 不同版本的 archive 往往落在同一个目标路径，
+/// 先部署会直接撞上既有硬链接（installer 会报「目标已存在」）。
+#[tauri::command]
+async fn switch_mod_version(app: tauri::AppHandle, id: String) -> AppResult<DeployReport> {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = handle.state::<Store>();
+        switch_mod_version_blocking(store.inner(), &id)
+    })
+    .await
+    .map_err(|err| CommandError::new("DEPLOY_TASK", format!("切换版本线程异常：{err}")))?
+}
+
+fn switch_mod_version_blocking(store: &Store, target_id: &str) -> AppResult<DeployReport> {
+    let data = store.snapshot_data();
+    let target = data
+        .mods
+        .iter()
+        .find(|item| item.id == target_id)
+        .cloned()
+        .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
+    let siblings = version_siblings(&data, &target);
+
+    let mut warnings: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+
+    // 段 1：撤掉其它版本。单个失败不中断整批 —— 撤不下来的那条会被记进
+    // warnings，用户至少能看到「哪个旧版本还在游戏目录里」，而不是整次切换失败。
+    for sibling in &siblings {
+        let still_enabled = store
+            .snapshot_data()
+            .mods
+            .iter()
+            .any(|item| item.id == *sibling && item.enabled);
+        if !still_enabled {
+            continue;
+        }
+        match set_mod_enabled_blocking(store, sibling, false) {
+            Ok(report) => warnings.extend(report.warnings),
+            Err(err) => failures.push(format!("{}：{}", sibling, err.message)),
+        }
+    }
+
+    // 段 2：部署目标版本。
+    let already_enabled = store
+        .snapshot_data()
+        .mods
+        .iter()
+        .any(|item| item.id == target_id && item.enabled);
+    let mut report = if already_enabled {
+        let entry = store
+            .snapshot_data()
+            .mods
+            .into_iter()
+            .find(|item| item.id == target_id)
+            .ok_or_else(|| CommandError::new("MOD_NOT_FOUND", "找不到这个模组。"))?;
+        DeployReport {
+            mod_entry: entry,
+            deployed: 0,
+            hard_links: 0,
+            symlinks: 0,
+            copies: 0,
+            warnings: Vec::new(),
+            purged: false,
+        }
+    } else {
+        set_mod_enabled_blocking(store, target_id, true)?
+    };
+
+    report.warnings.append(&mut warnings);
+    for failure in failures {
+        report
+            .warnings
+            .push(format!("旧版本未能撤下（{failure}），请手动禁用后再切换。"));
+    }
+    Ok(report)
+}
+
 /// 单条启用 / 禁用。
 ///
 /// `async` + `spawn_blocking`：部署要建链接、递归备份、跑 redMod 编译，分钟级；
@@ -4557,6 +4668,7 @@ pub fn run() {
             parse_collection_manifest,
             apply_collection_order,
             set_mod_enabled,
+            switch_mod_version,
             uninstall_mod,
             update_mod,
             get_load_order,

@@ -35,6 +35,8 @@ export function VirtualModGrid({
   view = "grid",
   listItems,
   listHeader,
+  versionGroups,
+  onSwitchVersion,
   onToggleGroup,
   onToggle,
   onOpen,
@@ -73,6 +75,10 @@ export function VirtualModGrid({
    * 少算一个表头高度（26px），overscan 有 8 行（≈384px），完全盖得住。
    */
   listHeader?: ReactNode;
+  /** 代表条目 id → 该 mod 的全部版本（新→旧）。只有多版本的 mod 才在表里。 */
+  versionGroups?: Map<string, ModEntry[]>;
+  /** 卡片版本下拉的点击回调：切换生效版本。 */
+  onSwitchVersion?: (mod: ModEntry) => void;
   onToggleGroup?: (key: string) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   onOpen: (mod: ModEntry) => void;
@@ -206,6 +212,16 @@ export function VirtualModGrid({
     virtualizer.measure();
   }, [layoutKey, virtualizer]);
 
+  /**
+   * 卡片是否处于忙碌态。
+   *
+   * 不能只比 `busyId === mod.id`：版本切换时 busyId 是「被点中的那个版本」，
+   * 而卡片上的 mod 是代表条目（通常是另一个 id），只比 id 的话点了老版本
+   * 卡片不会转圈，用户会以为没反应、连点第二次，于是并发部署。
+   */
+  const isBusy = (mod: ModEntry) =>
+    busyId === mod.id || (versionGroups?.get(mod.id)?.some((item) => item.id === busyId) ?? false);
+
   const renderRow = (mod: ModEntry) => (
     <ModCardErrorBoundary modId={mod.id} modName={mod.name}>
       <ModRow
@@ -214,8 +230,10 @@ export function VirtualModGrid({
         missingDeps={missingDepsById.get(mod.id) ?? []}
         translationCount={translationCounts?.get(mod.id) ?? 0}
         hasUpdate={updateIds?.has(mod.id) ?? false}
-        busy={busyId === mod.id}
+        busy={isBusy(mod)}
         grouped={Boolean(list)}
+        versions={versionGroups?.get(mod.id)}
+        onSwitchVersion={onSwitchVersion}
         onToggle={(enabled) => onToggle(mod, enabled)}
         onOpen={() => onOpen(mod)}
         onContextMenu={
@@ -300,7 +318,9 @@ export function VirtualModGrid({
                     translationCount={translationCounts?.get(mod.id) ?? 0}
                     aiLocated={mod.aiLoc != null}
                     hasUpdate={updateIds?.has(mod.id) ?? false}
-                    busy={busyId === mod.id}
+                    busy={isBusy(mod)}
+                    versions={versionGroups?.get(mod.id)}
+                    onSwitchVersion={onSwitchVersion}
                     onToggle={(enabled) => onToggle(mod, enabled)}
                     onOpen={() => onOpen(mod)}
                     onContextMenu={

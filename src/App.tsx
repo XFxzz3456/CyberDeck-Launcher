@@ -1764,6 +1764,52 @@ function AppShell() {
    * 反复重装，比一次性说清楚要痛苦得多。但也不能硬拦——高级玩家可能故意
    * 先启用以排序加载，所以给「仍然启用」并允许在详情页忽略该警告。
    */
+  /**
+   * 切换同一个 mod 的生效版本（卡片上的版本下拉）。
+   *
+   * 与 handleToggle 的区别：这不是「启一个」而是「换一个」——后端会先把同 mod 的
+   * 其它版本撤下来再部署目标版本，前端只负责上锁、刷新与提示。
+   * 走 handleToggle 会弹缺前置拦截，但换版本时前置不会变（同一个 mod），拦它没意义。
+   */
+  const handleSwitchVersion = useCallback(
+    async (mod: ModEntry) => {
+      if (!snapshot?.game) {
+        toast("warn", t("toast.game.notLinkedTitle"), t("toast.game.notLinkedSettingsDetail"), "system", {
+          sticky: true,
+        });
+        handleNavigate("settings", "game");
+        return;
+      }
+      setBusyId(mod.id);
+      try {
+        const report = await api.switchModVersion(mod.id);
+        await refresh();
+        toast(
+          "info",
+          t("toast.version.switchedTitle"),
+          t("toast.version.switchedDetail", {
+            name: mod.name,
+            version: mod.version ? `v${mod.version}` : t("modCard.noVersion"),
+          }),
+          "deploy",
+        );
+        for (const warning of report.warnings.slice(0, 2)) {
+          toast("warn", t("toast.deploy.warningTitle"), warning, "deploy", { sticky: true });
+        }
+        recordActivity(
+          "deploy",
+          t("activity.versionSwitched", { name: mod.name }),
+          mod.version ? `v${mod.version}` : "",
+        );
+      } catch (error) {
+        showError(error, t("err.deploy"));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [handleNavigate, recordActivity, refresh, showError, snapshot?.game, toast],
+  );
+
   const handleToggle = useCallback(
     async (mod: ModEntry, enabled: boolean) => {
       if (enabled) {
@@ -3005,6 +3051,7 @@ function AppShell() {
                 onCategory={setCategory}
                 onSort={handleSort}
                 onToggle={(mod, enabled) => void handleToggle(mod, enabled)}
+                onSwitchVersion={(mod) => void handleSwitchVersion(mod)}
                 onOpen={(mod) => setDetailId(mod.id)}
                 onOpenConflicts={() => setConflictCenterOpen(true)}
                 onRefresh={() => void refresh()}
