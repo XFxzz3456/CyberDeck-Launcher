@@ -4472,6 +4472,18 @@ pre {
   padding: 14px 16px;
 }
 
+/* 编辑 / 关闭作为一组固定在右侧：单独成子元素会被 space-between 摊到中间。 */
+.drawer-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 只有关闭按钮时也靠右，不留中间空格。 */
+.drawer-hero-top > .drawer-hero-actions {
+  margin-left: auto;
+}
+
 .drawer-hero-copy {
   position: absolute;
   z-index: 2;

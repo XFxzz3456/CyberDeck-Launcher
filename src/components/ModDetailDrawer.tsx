@@ -225,19 +225,23 @@ export function ModDetailDrawer({
               </Badge>
               {mod.nexus ? <Badge tone="cyan">{t("modDetail.nexusBadge")}</Badge> : null}
             </div>
-            {onSaveMetadata ? (
-              <button
-                className="icon-btn on-dark"
-                onClick={openEditor}
-                aria-label={t("modDetail.editAria")}
-                title={t("modDetail.editButtonTitle")}
-              >
-                <Pencil size={15} />
+            {/* 编辑与关闭必须同组：.drawer-hero-top 是 space-between，
+                三个直接子元素会被摊成「左 / 中 / 右」三格，编辑按钮就飘到中间。 */}
+            <div className="drawer-hero-actions">
+              {onSaveMetadata ? (
+                <button
+                  className="icon-btn on-dark"
+                  onClick={openEditor}
+                  aria-label={t("modDetail.editAria")}
+                  title={t("modDetail.editButtonTitle")}
+                >
+                  <Pencil size={15} />
+                </button>
+              ) : null}
+              <button className="icon-btn on-dark" onClick={onClose} aria-label={t("common.close")}>
+                <X size={17} />
               </button>
-            ) : null}
-            <button className="icon-btn on-dark" onClick={onClose} aria-label={t("common.close")}>
-              <X size={17} />
-            </button>
+            </div>
           </div>
           <div className="drawer-hero-copy">
             <div className="eyebrow">{categoryLabel(mod.category)} / {t(LAYOUT_LABEL_KEY[mod.layout])}</div>
