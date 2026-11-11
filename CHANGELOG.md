@@ -100,6 +100,7 @@
 - `README` 构建前置对齐 CI：Node.js 20+（CI 用 20，本地建议 22）、pnpm 12.8.1（取 `packageManager`），原来的「Node 22+」与 CI 不符。
 - `CONTRIBUTING` 把原「禁止倒卖」拆成两条：**MIT 的硬要求**是再分发保留 `LICENSE` 与版权声明；**「不授权付费打包分发」是作者意愿，不是许可证条件**（MIT 本身允许商业使用与收费再分发）。
 - `docs/SESSION-START.md` 快照更新到 1.8.0，并把 exe / ZIP 哈希修正为 2026-11-12 补发版。
+- `pnpm-lock.yaml` 记录 `packageManagerDependencies`（由 `packageManager: pnpm@12.8.1` 引入）。**pnpm 12.8.1 会把这段连同 pnpm 自举包以「额外一个 YAML 文档」的形式 prepend 到文件头**，所以文件里有两个 `---` 分隔的文档；手工合并成单一 `importers`（importer 级或顶层都试过）会被 `--frozen-lockfile` 判为 outdated，故按工具原生输出提交。已用 `pnpm install --frozen-lockfile`（与 CI 同款）全量验证通过，pnpm 后续版本修复该输出后可重新生成成单文档。
 
 ### 已知边界
 
