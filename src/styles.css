@@ -2229,25 +2229,6 @@ pre {
   line-height: 1.6;
 }
 
-.rail-import {
-  margin-top: auto;
-  height: 32px;
-  border: 1px dashed #303a46;
-  background: transparent;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 10.5px;
-}
-
-.rail-import:hover {
-  color: var(--accent-text);
-  border-color: rgba(var(--accent-rgb), 0.4);
-  background: rgba(var(--accent-rgb), 0.03);
-}
-
 .library-main {
   min-width: 0;
   min-height: 0;
@@ -5508,6 +5489,12 @@ pre {
   .btn-import {
     padding: 0 10px;
     font-size: 10px;
+  }
+
+  /* 顶部多了「整合包」后，窄屏把开始游戏里的快捷键提示收起来：
+     按钮本体不缩，省下的宽度给搜索框与播放集下拉。Ctrl+Enter 仍然可用。 */
+  .launch-shortcut {
+    display: none;
   }
 
   /* Keep the conflict counter visible on the native 1120-1150 CSS-width

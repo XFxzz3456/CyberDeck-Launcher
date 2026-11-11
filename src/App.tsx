@@ -2963,6 +2963,7 @@ function AppShell() {
               setImportOpen(true);
             }}
             onOpenPalette={() => setPaletteOpen(true)}
+            onOpenModpack={() => setPackDialog({ open: true, mode: "export", path: null })}
             onLaunch={() => void handleLaunch()}
             gameRunning={gameRunning}
             stopping={stoppingGame}
@@ -3097,7 +3098,6 @@ function AppShell() {
                 refreshingCovers={refreshingCovers}
                 onVortexImport={() => void runVortexImport()}
                 onAdopt={() => void handleAdoptScan()}
-                onOpenModpack={(mode) => setPackDialog({ open: true, mode, path: null })}
                 onReclassify={() => void handleReclassify()}
                 reclassifying={reclassifying}
                 view={preferences.libraryView}

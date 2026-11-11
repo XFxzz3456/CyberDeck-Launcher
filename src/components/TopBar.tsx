@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, Play, Search, Square, Upload, X } from "lucide-react";
+import { Bell, Package, Play, Search, Square, Upload, X } from "lucide-react";
 import type { GameInfo, ProfileList } from "../types";
 import type { ActivityItem } from "../lib/tasks";
 import type { View } from "./Sidebar";
@@ -52,6 +52,7 @@ export function TopBar({
   switchingProfile,
   onSwitchProfile,
   onImport,
+  onOpenModpack,
   onOpenPalette,
   onLaunch,
   gameRunning = false,
@@ -70,6 +71,8 @@ export function TopBar({
   switchingProfile: boolean;
   onSwitchProfile: (profileId: string) => void;
   onImport: () => void;
+  /** 整合包（导出 / 导入共用同一个对话框的两个页签）。 */
+  onOpenModpack: () => void;
   onOpenPalette: () => void;
   onLaunch: () => void;
   /** 游戏主进程正在运行：主按钮切换成「关闭游戏」。 */
@@ -200,6 +203,17 @@ export function TopBar({
           <button className="btn btn-ghost btn-import" onClick={onImport}>
             <Upload size={15} />
             {t("topBar.importMods")}
+          </button>
+        ) : null}
+        {modTools ? (
+          <button
+            className="btn btn-ghost btn-import"
+            data-pack-entry
+            onClick={onOpenModpack}
+            title={t("topBar.modpackTitle")}
+          >
+            <Package size={15} />
+            {t("pack.title")}
           </button>
         ) : null}
         {gameRunning ? (

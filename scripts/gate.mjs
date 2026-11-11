@@ -592,6 +592,12 @@ const UI_SCRIPTS = [
     // inViewport 兜住 125% 缩放下弹窗被顶出屏幕的老坑（见 .modal 的 max-height 计算）。
     expect: [
       "entry=1",
+      "noDupImportMenu=1",
+      "noDupMore=1",
+      "noRailImport=1",
+      "entryNarrow=1",
+      "narrowTopbar=1",
+      "clearLabels=1",
       "tabs=1",
       "kinds=1",
       "nameGuard=1",

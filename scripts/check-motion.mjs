@@ -250,7 +250,7 @@ async function sampleHoverMin(styleTheme) {
   const { page, errs } = await openPage();
   check("E 页面无脚本错误", errs.length === 0, errs[0] ?? "");
 
-  await page.getByRole("button", { name: /导入压缩包/ }).first().click();
+  await page.getByRole("button", { name: "导入模组", exact: true }).first().click();
   const scales = [];
   for (let i = 0; i < 8; i += 1) {
     scales.push(

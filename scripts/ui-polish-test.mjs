@@ -66,7 +66,7 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(250);
 
 // Multi-file import queue
-await page.getByRole("button", { name: /导入压缩包/ }).first().click();
+await page.getByRole("button", { name: "导入模组", exact: true }).first().click();
 await page.waitForTimeout(250);
 await page.locator('input[type="file"]').setInputFiles([
   { name: "queue-a.zip", mimeType: "application/zip", buffer: Buffer.from("a") },

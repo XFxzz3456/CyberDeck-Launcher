@@ -14,7 +14,6 @@ import {
   ArrowUp,
   Boxes,
   ChevronDown,
-  FileDown,
   FileJson,
   FolderTree,
   ImageDown,
@@ -27,7 +26,6 @@ import {
   ListChecks,
   MoreHorizontal,
   ListFilter,
-  Package,
   PackageOpen,
   Plus,
   Download,
@@ -163,7 +161,6 @@ export function LibraryView({
   refreshingCovers = false,
   onVortexImport,
   onAdopt,
-  onOpenModpack,
   onRefresh,
   onReclassify,
   reclassifying = false,
@@ -218,8 +215,6 @@ export function LibraryView({
   onVortexImport?: () => void;
   /** 收编游戏目录里未受管的模组（多布局扫描）；不传则入口不显示。 */
   onAdopt?: () => void;
-  /** 整合包导出 / 导入（不传则入口不显示）。 */
-  onOpenModpack?: (mode: "export" | "import") => void;
   /** 智能归类：默认只动「其他 / 工具」；传 true 时重算全部分类。 */
   onReclassify?: (all: boolean) => void;
   reclassifying?: boolean;
@@ -765,9 +760,6 @@ export function LibraryView({
             </p>
           </div>
 
-          <button className="rail-import" onClick={onImport}>
-            <Plus size={15} /> {t("library.import")}
-          </button>
         </aside>
 
         <section className="library-main">
@@ -1109,34 +1101,6 @@ export function LibraryView({
                       <FileJson size={13} />
                       {t("library.importManifest")}
                     </button>
-                    {/* 整合包进出都在这里：导入是「拿到别人的包」，导出是「把自己的发给别人」，
-                        同一件事的两头，拆成两个菜单只会让人找不到。 */}
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setImportMenuOpen(false);
-                        onOpenModpack?.("import");
-                      }}
-                      disabled={!onOpenModpack}
-                      title={t("library.modpackTitle")}
-                    >
-                      <Package size={13} />
-                      {t("library.modpackOpen")}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setImportMenuOpen(false);
-                        onOpenModpack?.("export");
-                      }}
-                      disabled={!onOpenModpack}
-                      title={t("library.modpackTitle")}
-                    >
-                      <FileDown size={13} />
-                      {t("library.modpackExport")}
-                    </button>
                   </div>
                 ) : null}
               </div>
@@ -1186,19 +1150,6 @@ export function LibraryView({
                     >
                       <Layers size={13} />
                       {t("library.adoptExisting")}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setOverflowOpen(false);
-                        onOpenModpack?.("export");
-                      }}
-                      disabled={!onOpenModpack}
-                      title={t("library.modpackTitle")}
-                    >
-                      <Package size={13} />
-                      {t("library.modpack")}
                     </button>
                     <button
                       type="button"

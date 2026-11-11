@@ -85,7 +85,7 @@ await page.locator(".search-clear").click();
 await page.waitForTimeout(250);
 
 // Import a mock archive through the modal (zip/7z/rar share the same UI path).
-await page.getByRole("button", { name: /导入压缩包/ }).first().click();
+await page.getByRole("button", { name: "导入模组", exact: true }).first().click();
 await page.waitForTimeout(250);
 // 现在有多个隐藏的 file input（导入模组 / 导入集合清单），必须指定具体那个
 await page.locator('input[type="file"]').first().setInputFiles({
