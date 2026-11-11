@@ -1025,6 +1025,11 @@ ZIP/7z/RAR
 | 代理 | `http.proxy` / `https.proxy` = `http://127.0.0.1:7897` | 仅本仓库局部配置，见下方 DNS 污染说明 |
 
 **网络坑（2026-10-31 实测，重装或换网络后必查）**：本机对 `github.com` 存在 **DNS 污染**——路由器 `192.168.0.1`、阿里 `223.5.5.5`、腾讯 `119.29.29.29` 全部把 `github.com` 解析成 `::1` / `127.0.0.1`，直连等于打自己。真实 A 记录（DoH 查到）是 `20.205.243.166`。本机 `127.0.0.1:7897`（verge-mihomo / Clash Verge）可正常出网，故 git 走代理。**不要**去改 hosts 或系统 DNS，换 IP 就会失效；也不要认定「代理坏了」——`api.github.com` 一直是通的，只有 `github.com` 被污染。
+**补记（2026-11-11 23:55，便携版上传时实测）**：`git` **只认 `http.proxy`**，仓库/全局里那条 `https.proxy=http://127.0.0.1:7897` 是**无效键**——平时 push 能通靠的是会话环境变量 `HTTPS_PROXY=http://127.0.0.1:60083`（WorkBuddy 会话代理）。本次该环境变量对 `github.com` 返回 `CONNECT tunnel failed, 502`，`api.github.com` 却正常。
+可行组合：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy git -c http.proxy=http://127.0.0.1:7897 push origin main`。
+分工记牢：**REST API（`api.github.com` / `uploads.github.com`）走会话环境代理 60083；git push 走 Clash 7897 且必须写成 `http.proxy`**。7897 对 uploads 域名做 MITM，证书不被系统信任（curl 需 `-k`、Python urllib 报 SSL EOF），所以 API 上传别走它。
+另一个假象：`https://uploads.github.com/` 根路径返回 302，urllib 自动跟到 `github.com` 会拿到 502，不代表上传端点不可达。
+
 
 **推送凭据约定**：不要把 PAT 写进 remote URL 或 `.git/config`。用一次性请求头：
 
