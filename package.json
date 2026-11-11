@@ -4,6 +4,15 @@
   "version": "1.8.0",
   "type": "module",
   "description": "A focused Cyberpunk 2077 mod launcher built with Tauri + React",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XFxzz3456/CyberDeck-Launcher.git"
+  },
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --port 1420",
     "build": "tsc --noEmit && vite build",
