@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ChevronRight, RefreshCw, ShieldAlert, Upload } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -41,6 +41,7 @@ import { translationChildren } from "./lib/translationMatch";
 import { createCoalescer, type Coalescer } from "./lib/feedback";
 import { TranslationBindDialog } from "./components/TranslationBindDialog";
 import { useMotionEnabled, useMotionFactor, usePreferences } from "./lib/preferences";
+import { applyPalette, loadPalette } from "./lib/palette";
 import { useViewportTier } from "./lib/viewportTier";
 import type { ActivityItem, TaskItem } from "./lib/tasks";
 import type { View, SidebarBadges } from "./components/Sidebar";
@@ -178,6 +179,12 @@ function AppShell() {
   const motionFactor = useMotionFactor();
   // 侧栏纵向档位：按「窗口高度 ÷ 缩放」算，让矮窗口 / 大缩放时逐级让位（见 viewportTier.ts）。
   useViewportTier(preferences.scale);
+
+  // 自定义调色板：上次会话的覆盖要在首帧前落地，否则启动会先闪一帧主题原色。
+  // 主题 / 明暗切换后的派生色重算由 lib/theme.ts 的回调负责（palette 注册的 refresher）。
+  useLayoutEffect(() => {
+    applyPalette(loadPalette());
+  }, []);
 
   // 全局浮层栈（lib/overlay.tsx）：useOverlay 必须在 OverlayProvider 内调用，
   // 所以本组件 AppShell 由文件末尾默认导出的 App 包在 <OverlayProvider> 里。
@@ -3203,6 +3210,7 @@ function AppShell() {
                 notificationDuration={notificationDuration}
                 onNotificationDurationChange={handleNotificationDurationChange}
                 onTestNotification={handleTestNotification}
+                onToast={toast}
                 onShowEula={() => setEulaViewerOpen(true)}
                 hiddenViews={hiddenViews}
                 onToggleHiddenView={toggleHiddenView}

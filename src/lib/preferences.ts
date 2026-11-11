@@ -188,7 +188,8 @@ export function savePreferences(preferences: Preferences) {
   }
 }
 
-function rgb(hex: string): [number, number, number] {
+/** 十六进制 → RGB 分量。自定义调色板（palette.ts）也要用，故导出。 */
+export function rgb(hex: string): [number, number, number] {
   return [
     Number.parseInt(hex.slice(1, 3), 16),
     Number.parseInt(hex.slice(3, 5), 16),
@@ -196,13 +197,13 @@ function rgb(hex: string): [number, number, number] {
   ];
 }
 
-function toHex(values: [number, number, number]): string {
+export function toHex(values: [number, number, number]): string {
   return `#${values
     .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0"))
     .join("")}`;
 }
 
-function mix(hex: string, target: string, amount: number): string {
+export function mix(hex: string, target: string, amount: number): string {
   const from = rgb(hex);
   const to = rgb(target);
   return toHex([
@@ -219,7 +220,7 @@ function contrastInk(hex: string): string {
 }
 
 /** WCAG 2.x 相对亮度（sRGB 线性化后加权）。 */
-function relativeLuminance(hex: string): number {
+export function relativeLuminance(hex: string): number {
   const [r, g, b] = rgb(hex).map((value) => {
     const channel = value / 255;
     return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
@@ -228,7 +229,7 @@ function relativeLuminance(hex: string): number {
 }
 
 /** WCAG 2.x 对比度（1 = 完全相同，21 = 纯黑对纯白）。 */
-function contrastRatio(a: string, b: string): number {
+export function contrastRatio(a: string, b: string): number {
   const first = relativeLuminance(a);
   const second = relativeLuminance(b);
   const lighter = Math.max(first, second);

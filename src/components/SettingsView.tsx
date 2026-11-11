@@ -219,6 +219,7 @@ export function SettingsView({
   onNotificationDurationChange,
   onTestNotification,
   onShowEula,
+  onToast,
   initialTab = "appearance",
   tabRequestSeq = 0,
   onTabChange,
@@ -268,6 +269,8 @@ export function SettingsView({
   notificationDuration: NotificationDuration;
   onNotificationDurationChange: (value: NotificationDuration) => void;
   onTestNotification: (category: NotificationCategory) => void;
+  /** 全局 Toast：外观页在配色对比度过低时提醒（同一 tone+标题会被上层合并）。 */
+  onToast?: (tone: "ok" | "error" | "info" | "warn", title: string, message?: string) => void;
   /** 在「关于」里重新打开使用协议（只展示，不拦截）。 */
   onShowEula: () => void;
   /** 打开时默认选中的分区。 */
@@ -739,6 +742,7 @@ export function SettingsView({
             onSelectTheme={onSelectTheme}
             onAccent={onAccent}
             onResetAccent={onResetAccent}
+            onToast={onToast}
             onScale={onScale}
             onUiFont={onUiFont}
             onCodeFont={onCodeFont}

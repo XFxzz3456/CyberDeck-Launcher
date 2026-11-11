@@ -56,7 +56,7 @@ check(
   "panel uses a polygon chamfer",
   (await page.locator(".panel").first().evaluate((el) => getComputedStyle(el).clipPath)).includes("polygon"),
 );
-const selected = page.locator(".theme-option.selected");
+const selected = page.locator(".family-card.selected");
 check(
   "theme cards use a polygon chamfer",
   (await selected.evaluate((el) => getComputedStyle(el).clipPath)).includes("polygon"),

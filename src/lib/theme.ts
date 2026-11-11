@@ -34,6 +34,27 @@ export const STYLE_THEME_IDS: readonly StyleTheme[] = [
 /** 只有这种风格允许在明暗之间切换，其余强制深色。 */
 export const MODE_CAPABLE_STYLES: readonly StyleTheme[] = ["modern"];
 
+/**
+ * 风格大类：UI 上只呈现两个入口。
+ *
+ * 赛博四套（NCPD / NETRUNNER / ARASAKA / MILITECH）共用同一套切角与发光结构，
+ * 差别只在配色 —— 摆成五张平级卡片时用户看不出「风格」的区别，只觉得冗余。
+ * 所以上层按大类呈现，赛博内部再用预设色块切换，底层 CSS 一行都不用改。
+ */
+export type StyleFamily = "cyber" | "modern";
+
+export function themeFamily(styleTheme: StyleTheme): StyleFamily {
+  return styleTheme === "modern" ? "modern" : "cyber";
+}
+
+/** 赛博风预设的展示顺序：经典黄黑 → 荒坂暗红 → 冰蓝黑客 → 军用橄榄绿。 */
+export const CYBER_PRESET_ORDER: readonly StyleTheme[] = [
+  "ncpd",
+  "arasaka",
+  "netrunner",
+  "militech",
+];
+
 export interface StylePreset {
   id: StyleTheme;
   name: string;
@@ -228,6 +249,18 @@ let lastWritten: { styleTheme: StyleTheme; mode: ResolvedMode } | null = null;
 let transitionTimer: number | undefined;
 
 /**
+ * 自定义调色板（palette.ts）的刷新回调。
+ *
+ * 用注册而不是直接 import：palette 依赖 theme（要读当前明暗、要挂主题切换后的
+ * 重算），反向 import 会成环。注册表只有一项，开销可以忽略。
+ */
+let paletteRefresher: (() => void) | null = null;
+
+export function setPaletteRefresher(refresher: (() => void) | null): void {
+  paletteRefresher = refresher;
+}
+
+/**
  * 写 DOM。切换时先挂上 data-theme-transition 并强制一次回流，
  * 让新配色的过渡动画真的跑起来，300ms 后摘掉。
  */
@@ -257,6 +290,10 @@ function writeDom(next: ThemeState) {
   }
 
   lastWritten = { styleTheme: next.styleTheme, mode };
+
+  // 主题或明暗变了，派生色要按新的主题原色重算（玩家只覆盖了一部分颜色时
+  // 尤其重要：只调卡片底色的人，背景与文字仍应跟随新主题）。
+  if (changed) paletteRefresher?.();
 }
 
 export interface ThemeController {

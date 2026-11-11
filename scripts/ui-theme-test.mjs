@@ -59,11 +59,28 @@ check("body uses Inter", (await page.evaluate(() => getComputedStyle(document.bo
 await page.screenshot({ path: path.join(shots, "ui-060-library.png") });
 
 await openSettings();
-check("appearance panel rendered", (await page.locator(".appearance-card").count()) === 1);
-check("five palettes rendered (r20 删除 mono)", (await page.locator(".theme-option").count()) === 5);
+check("appearance panel rendered", await page.locator(".appearance-card").first().isVisible());
+check("two style families rendered", (await page.locator(".family-card").count()) === 2);
+check("four cyber presets rendered", (await page.locator(".preset-chip").count()) === 4);
+
+// 大类切换：现代风收起赛博预设，切回来要回到上次用的那套，而不是重置成 NCPD。
+await page.getByRole("button", { name: /现代风/ }).click();
+await page.waitForTimeout(280);
+check(
+  "modern family applies",
+  (await page.evaluate(() => document.documentElement.dataset.theme)) === "modern",
+);
+check("modern hides cyber presets", (await page.locator(".preset-chip").count()) === 0);
+await page.getByRole("button", { name: /赛博风/ }).click();
+await page.waitForTimeout(280);
+check(
+  "cyber family restores the last preset",
+  (await page.evaluate(() => document.documentElement.dataset.theme)) === "ncpd",
+);
+check("cyber presets come back", (await page.locator(".preset-chip").count()) === 4);
 await page.screenshot({ path: path.join(shots, "ui-060-settings.png") });
 
-await page.locator('[data-theme-preview="netrunner"]').click();
+await page.locator('[data-preset="netrunner"]').click();
 await page.waitForTimeout(250);
 check(
   "Netrunner palette applies",
@@ -77,7 +94,7 @@ check(
 );
 await page.screenshot({ path: path.join(shots, "ui-060-netrunner-settings.png") });
 
-await page.locator(".accent-picker input").evaluate((element) => {
+await page.locator('.palette-field[data-slot="accent"] input').evaluate((element) => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
   setter.call(element, "#ff2e88");
   element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -93,7 +110,7 @@ check(
 check("custom accent is marked as custom", await page.locator(".appearance-badge").innerText().then((text) => text.includes("CUSTOM")));
 await page.screenshot({ path: path.join(shots, "ui-060-custom-accent.png") });
 
-await page.getByRole("button", { name: "主题色" }).click();
+await page.getByRole("button", { name: "还原强调色" }).click();
 await page.waitForTimeout(200);
 check(
   "theme accent can be restored",
@@ -102,6 +119,43 @@ check(
       getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
     )) === "#3df2ff",
 );
+
+// ── 自定义调色（背景 / 卡片 / 文字）──────────────────────────────────
+// 三个槽位必须实时写进根变量、并且刷新后仍在（localStorage ncl.ui.palette.v1）。
+const setSlotColor = async (slot, hex) => {
+  await page.locator(`.palette-field[data-slot="${slot}"] input`).evaluate((element, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }, hex);
+  await page.waitForTimeout(240);
+};
+const rootToken = (name) =>
+  page.evaluate((token) => getComputedStyle(document.documentElement).getPropertyValue(token).trim(), name);
+
+await setSlotColor("background", "#101820");
+check("custom background reaches --bg", (await rootToken("--bg")) === "#101820");
+await setSlotColor("surface", "#18222c");
+check("custom surface reaches --panel-2", (await rootToken("--panel-2")) === "#18222c");
+await setSlotColor("text", "#f2f4f6");
+check("custom text reaches --text", (await rootToken("--text")) === "#f2f4f6");
+check("custom palette has no contrast warning", !(await page.locator(".appearance-hint.is-warn").isVisible()));
+await page.screenshot({ path: path.join(shots, "ui-060-custom-palette.png") });
+
+// 白字白底：必须给出对比度告警，而不是默默让用户读不清。
+await setSlotColor("text", "#141a21");
+await page.waitForTimeout(750);
+check("low contrast raises a warning", await page.locator(".appearance-hint.is-warn").isVisible());
+
+await page.reload({ waitUntil: "networkidle" });
+await page.waitForTimeout(650);
+check("custom palette survives reload", (await rootToken("--bg")) === "#101820" && (await rootToken("--text")) === "#141a21");
+
+await openSettings();
+await page.getByRole("button", { name: "全部还原" }).click();
+await page.waitForTimeout(250);
+check("reset clears every override", (await rootToken("--bg")) !== "#101820" && (await rootToken("--text")) !== "#141a21");
 
 // 2026-10-31：缩放从滑块改成分段按钮组（90/100/110/120 + 自定义），这里点 110%。
 await page.getByRole("button", { name: "110%", exact: true }).click();
@@ -154,7 +208,7 @@ check("app shell fills the viewport at 90%", await page.evaluate(() => {
 await page.setViewportSize({ width: 1120, height: 720 });
 await page.waitForTimeout(450);
 check("no horizontal overflow at 1120 / 90%", await viewportFits());
-check("settings remains reachable at 1120 / 90%", await page.locator(".appearance-card").isVisible());
+check("settings remains reachable at 1120 / 90%", await page.locator(".appearance-card").first().isVisible());
 await page.screenshot({ path: path.join(shots, "ui-060-1120-scale90.png") });
 
 check("no console errors", errors.length === 0);

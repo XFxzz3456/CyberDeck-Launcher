@@ -2,8 +2,10 @@ import {
   Check,
   ChevronDown,
   Crop,
+  Droplet,
   Image as ImageIcon,
   ImageOff,
+  Layers,
   MonitorPlay,
   MonitorSmartphone,
   Moon,
@@ -12,7 +14,9 @@ import {
   PanelLeftClose,
   Pencil,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
+  Square,
   Sun,
   Type,
   ZoomIn,
@@ -29,13 +33,45 @@ import {
 } from "../lib/fonts";
 import type { Preferences, ThemeId } from "../lib/preferences";
 import {
+  EMPTY_PALETTE,
+  applyPalette,
+  loadPalette,
+  readAppliedContrast,
+  readCssColor,
+  savePalette,
+  type PaletteOverrides,
+} from "../lib/palette";
+import {
   HIDEABLE_VIEW_LABEL_KEYS,
   HIDEABLE_VIEWS,
   type HiddenViewsMap,
   type HideableView,
 } from "../lib/uiPrefs";
-import { STYLE_PRESETS, useTheme, type ColorMode } from "../lib/theme";
+import {
+  CYBER_PRESET_ORDER,
+  STYLE_PRESETS,
+  themeFamily,
+  useTheme,
+  type ColorMode,
+  type StyleFamily,
+  type StyleTheme,
+} from "../lib/theme";
 import { Spinner, SwitchRow } from "./ui";
+
+/**
+ * 风格大类。赛博四套共用同一套切角/发光结构，只是配色不同 —— 平铺成五张卡
+ * 会让用户误以为「只有颜色差别」，所以上层只给两个入口，赛博内部用预设切换。
+ */
+const STYLE_FAMILIES: Array<{
+  id: StyleFamily;
+  labelKey: MessageKey;
+  detailKey: MessageKey;
+}> = [
+  { id: "cyber", labelKey: "appearance.familyCyber", detailKey: "appearance.familyCyberDetail" },
+  { id: "modern", labelKey: "appearance.familyModern", detailKey: "appearance.familyModernDetail" },
+];
+
+type ToastPush = (tone: "ok" | "error" | "info" | "warn", title: string, message?: string) => void;
 
 /** 背景图填充模式（与 Settings.backgroundFit 同形）。 */
 export type BackgroundFit = "cover" | "contain" | "stretch";
@@ -106,6 +142,7 @@ export function AppearanceSettings({
   onSelectTheme,
   onAccent,
   onResetAccent,
+  onToast,
   onScale,
   onUiFont,
   onCodeFont,
@@ -127,6 +164,8 @@ export function AppearanceSettings({
   onSelectTheme: (theme: ThemeId) => void;
   onAccent: (accent: string) => void;
   onResetAccent: () => void;
+  /** 全局 Toast：配色对比度过低时提醒一次（同类消息由上层合并，不会堆屏）。 */
+  onToast?: ToastPush;
   onScale: (scale: number) => void;
   onUiFont: (font: UiFontId) => void;
   onCodeFont: (font: CodeFontId) => void;
@@ -151,8 +190,35 @@ export function AppearanceSettings({
   // 「// ADVANCED」默认收起：只有调手感时才会进来，不占日常视野。
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const active = STYLE_PRESETS.find((preset) => preset.id === styleTheme) ?? STYLE_PRESETS[0];
+  const family = themeFamily(styleTheme);
 
-  // 风格自带的强调色由 CSS 决定（不同风格 / 明暗各不相同），这里读回实际生效的值。
+  // 从现代风切回赛博风时恢复用户上次用的预设，而不是一律回到 NCPD。
+  const lastCyber = useRef<StyleTheme>(family === "cyber" ? styleTheme : "ncpd");
+  useEffect(() => {
+    if (family === "cyber") lastCyber.current = styleTheme;
+  }, [family, styleTheme]);
+
+  const pickFamily = (next: StyleFamily) => {
+    if (next === family) return;
+    onSelectTheme(next === "modern" ? "modern" : lastCyber.current);
+  };
+
+  // ── 自定义调色（背景 / 卡片 / 文字）──────────────────────────────────
+  // 存在 localStorage 的 ncl.ui.palette.v1；强调色仍走 preferences 那条老链路，
+  // 两者的作用面完全分开，互不覆盖。
+  const [palette, setPalette] = useState<PaletteOverrides>(() => loadPalette());
+  const paletteCustom = Boolean(palette.background || palette.surface || palette.text);
+  const lowContrastWarned = useRef(false);
+  const [contrast, setContrast] = useState({ ratio: 21, low: false });
+
+  // 未覆盖的槽位要显示「当前主题原色」，色块里点开取色器也是从这个颜色起调。
+  const [themeColors, setThemeColors] = useState(() => ({
+    bg: resolvedMode === "light" ? "#ffffff" : "#07090c",
+    surface: resolvedMode === "light" ? "#ffffff" : "#14161b",
+    text: resolvedMode === "light" ? "#111827" : "#e8e8ea",
+  }));
+
+  // 主题自带的强调色由 CSS 决定（不同风格 / 明暗各不相同），这里读回实际生效的值。
   const [themeAccent, setThemeAccent] = useState(active.swatch[0]);
   useEffect(() => {
     let frame = 0;
@@ -167,6 +233,47 @@ export function AppearanceSettings({
   }, [styleTheme, resolvedMode, preferences.useCustomAccent, preferences.accent]);
 
   const accent = preferences.useCustomAccent ? preferences.accent : themeAccent;
+
+  // 落盘 + 写 CSS 变量 + 复查对比度。放在 passive effect 里：useTheme 的
+  // layoutEffect 已经把 data-style / data-mode 换好，这里读到的是新主题的原色。
+  useEffect(() => {
+    applyPalette(palette);
+    savePalette(palette);
+    setThemeColors({
+      bg: readCssColor("--bg", resolvedMode === "light" ? "#ffffff" : "#07090c"),
+      surface: readCssColor("--panel-2", resolvedMode === "light" ? "#ffffff" : "#14161b"),
+      text: readCssColor("--text", resolvedMode === "light" ? "#111827" : "#e8e8ea"),
+    });
+    setContrast(readAppliedContrast());
+  }, [palette, styleTheme, resolvedMode]);
+
+  // 对比度提醒：防抖 600ms（拖动取色器时 onChange 是连续触发的），且只在
+  // 「从正常掉到不达标」的那一次弹，避免调色过程中反复刷屏。
+  useEffect(() => {
+    if (!contrast.low) {
+      lowContrastWarned.current = false;
+      return;
+    }
+    if (lowContrastWarned.current) return;
+    lowContrastWarned.current = true;
+    const timer = window.setTimeout(() => {
+      onToast?.(
+        "warn",
+        t("appearance.contrastLowTitle"),
+        t("appearance.contrastLowDetail", { ratio: contrast.ratio.toFixed(1) }),
+      );
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [contrast.low, contrast.ratio, onToast]);
+
+  const setSlot = (slot: "background" | "surface" | "text", value: string | null) => {
+    setPalette((current) => ({ ...current, [slot]: value }));
+  };
+
+  const resetPalette = () => {
+    setPalette({ ...EMPTY_PALETTE });
+    onResetAccent();
+  };
 
   // ── 界面缩放：固定档位 + 自定义输入（2026-10-31 重构）──────────────────
   // 滑块难对齐整数、拖动时字体发虚，改成四档 + 自定义。自定义值不在档位里时，
@@ -213,56 +320,86 @@ export function AppearanceSettings({
         eyebrow="// THEME / PALETTE"
         title={t("appearance.groupTheme")}
         hint={t("appearance.groupThemeHint")}
-        aside={<BadgeLabel theme={active.name} custom={preferences.useCustomAccent} />}
+        aside={<BadgeLabel theme={active.name} custom={preferences.useCustomAccent || paletteCustom} />}
       >
         <div className="appearance-block">
           <div className="appearance-label">
-            <Palette size={13} /> {t("appearance.styleLabel")}
+            <Palette size={13} /> {t("appearance.familyLabel")}
           </div>
-          <div className="theme-grid">
-            {STYLE_PRESETS.map((preset) => {
-              const selected = preset.id === styleTheme;
-              // 明暗两套都配了图的风格（modern）跟着当前生效的明暗换缩略图，
-              // 否则用户选了亮色却看到一张暗色缩略图，会以为没生效。
-              const thumb =
-                resolvedMode === "light" && preset.thumbLight ? preset.thumbLight : preset.thumb;
+          <div className="family-grid">
+            {STYLE_FAMILIES.map((item) => {
+              const selected = family === item.id;
+              // 缩略图跟着当前生效的明暗换：选了亮色还看到暗色首屏，会以为没生效。
+              const shot =
+                item.id === "modern"
+                  ? resolvedMode === "light"
+                    ? "/theme-thumbs/modern-light.png"
+                    : "/theme-thumbs/modern-dark.png"
+                  : "/theme-thumbs/ncpd.png";
               return (
                 <button
-                  key={preset.id}
+                  key={item.id}
                   type="button"
-                  className={`theme-option ${selected ? "selected" : ""}`}
-                  onClick={() => onSelectTheme(preset.id)}
+                  className={`family-card ${selected ? "selected" : ""}`}
+                  onClick={() => pickFamily(item.id)}
                   aria-pressed={selected}
-                  data-theme-preview={preset.id}
+                  data-family={item.id}
                 >
-                  <span
-                    className="theme-swatch"
-                    aria-hidden="true"
-                    style={{ "--swatch-accent": preset.swatch[0] } as CSSProperties}
-                  >
-                    {thumb ? (
-                      <img
-                        className="theme-shot"
-                        src={thumb}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <span className="theme-shot theme-shot-flat" />
-                    )}
+                  <span className="family-shot" aria-hidden="true">
+                    <img src={shot} alt="" loading="lazy" decoding="async" />
                   </span>
-                  <span className="theme-copy">
-                    <strong>{preset.name}</strong>
-                    <em>{t(preset.labelKey)}</em>
-                    <small>{t(preset.detailKey)}</small>
+                  <span className="family-copy">
+                    <strong>{t(item.labelKey)}</strong>
+                    <small>{t(item.detailKey)}</small>
                   </span>
-                  {selected ? <Check className="theme-check" size={14} /> : null}
+                  {selected ? <Check className="family-check" size={14} /> : null}
                 </button>
               );
             })}
           </div>
         </div>
+
+        {/* 赛博风内部再分预设：四套共用同一套切角 / 发光，差别只在配色，
+            所以做成一行色块而不是再来四张大卡片。 */}
+        {family === "cyber" ? (
+          <div className="appearance-block">
+            <div className="appearance-label">
+              <Layers size={13} /> {t("appearance.presetLabel")}
+            </div>
+            <div className="preset-row" role="group" aria-label={t("appearance.presetLabel")}>
+              {CYBER_PRESET_ORDER.map((id) => {
+                const preset = STYLE_PRESETS.find((item) => item.id === id);
+                if (!preset) return null;
+                const selected = styleTheme === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`preset-chip ${selected ? "selected" : ""}`}
+                    onClick={() => onSelectTheme(id)}
+                    aria-pressed={selected}
+                    data-preset={id}
+                    title={t(preset.detailKey)}
+                  >
+                    <span
+                      className="preset-dot"
+                      aria-hidden="true"
+                      style={
+                        {
+                          "--preset-accent": preset.swatch[0],
+                          "--preset-bg": preset.swatch[1],
+                        } as CSSProperties
+                      }
+                    >
+                      {selected ? <Check size={11} /> : null}
+                    </span>
+                    <span className="preset-name">{t(preset.labelKey)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <div className="appearance-block appearance-controls">
           {modeCapable ? (
@@ -302,36 +439,59 @@ export function AppearanceSettings({
           )}
 
           <div className="appearance-label appearance-label-spaced">
-            <Type size={13} /> {t("appearance.accentLabel")}
-          </div>
-          <div className="accent-row">
-            <label className="accent-picker" title={t("appearance.accentPickerTitle")}>
-              <input
-                type="color"
-                value={accent}
-                onChange={(event) => onAccent(event.target.value)}
-                aria-label={t("appearance.accentPickerAria")}
-              />
-              <span style={{ background: accent }} />
-            </label>
-            <div className="accent-copy">
-              <strong>
-                {preferences.useCustomAccent
-                  ? t("appearance.accentCustom")
-                  : t("appearance.accentThemeDefault", { theme: active.name })}
-              </strong>
-              <code>{accent.toUpperCase()}</code>
-            </div>
+            <SlidersHorizontal size={13} /> {t("appearance.customPalette")}
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={onResetAccent}
-              disabled={!preferences.useCustomAccent}
+              className="palette-reset-all"
+              onClick={resetPalette}
+              disabled={!paletteCustom && !preferences.useCustomAccent}
             >
-              <RotateCcw size={12} /> {t("appearance.resetAccent")}
+              <RotateCcw size={11} /> {t("appearance.resetPalette")}
             </button>
           </div>
-          <p className="appearance-hint">{t("appearance.accentHint")}</p>
+          <div className="palette-grid">
+            <PaletteField
+              slot="accent"
+              icon={Sparkles}
+              label={t("appearance.slotAccent")}
+              value={accent}
+              custom={preferences.useCustomAccent}
+              onChange={onAccent}
+              onReset={onResetAccent}
+            />
+            <PaletteField
+              slot="background"
+              icon={Droplet}
+              label={t("appearance.slotBackground")}
+              value={palette.background ?? themeColors.bg}
+              custom={Boolean(palette.background)}
+              onChange={(value) => setSlot("background", value)}
+              onReset={() => setSlot("background", null)}
+            />
+            <PaletteField
+              slot="surface"
+              icon={Square}
+              label={t("appearance.slotSurface")}
+              value={palette.surface ?? themeColors.surface}
+              custom={Boolean(palette.surface)}
+              onChange={(value) => setSlot("surface", value)}
+              onReset={() => setSlot("surface", null)}
+            />
+            <PaletteField
+              slot="text"
+              icon={Type}
+              label={t("appearance.slotText")}
+              value={palette.text ?? themeColors.text}
+              custom={Boolean(palette.text)}
+              onChange={(value) => setSlot("text", value)}
+              onReset={() => setSlot("text", null)}
+            />
+          </div>
+          <p className={`appearance-hint ${contrast.low ? "is-warn" : ""}`}>
+            {contrast.low
+              ? t("appearance.contrastInline", { ratio: contrast.ratio.toFixed(1) })
+              : t("appearance.customPaletteHint")}
+          </p>
         </div>
 
         {/* 实况预览讲的是「这套配色长什么样」，所以归主题卡，不跟背景图混在一起。 */}
@@ -868,6 +1028,62 @@ export function AppearanceSettings({
 }
 
 /**
+ * 自定义调色的单个槽位：色块 + 名称 + 当前值 + 单项还原。
+ *
+ * 用原生 `input[type="color"]`：系统取色器已经带吸管与最近使用色，自己再写一个
+ * 色轮既多一堆代码，也拿不到操作系统的取色习惯。色块本身是 label 的装饰层，
+ * 点击落到被铺满的 input 上，所以整块都可点。
+ */
+function PaletteField({
+  slot,
+  icon: Icon,
+  label,
+  value,
+  custom,
+  onChange,
+  onReset,
+}: {
+  /** data-slot：门禁脚本按槽位定位取色器。 */
+  slot: "accent" | "background" | "surface" | "text";
+  icon: typeof Droplet;
+  label: string;
+  value: string;
+  custom: boolean;
+  onChange: (value: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className={`palette-field ${custom ? "is-custom" : ""}`} data-slot={slot}>
+      <label className="palette-field-pick" title={label}>
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={label}
+        />
+        <span style={{ background: value }} />
+      </label>
+      <div className="palette-field-copy">
+        <span className="palette-field-label">
+          <Icon size={11} /> {label}
+        </span>
+        <code>{custom ? value.toUpperCase() : t("appearance.followTheme")}</code>
+      </div>
+      <button
+        type="button"
+        className="palette-field-reset"
+        onClick={onReset}
+        disabled={!custom}
+        title={t("appearance.resetSlot", { slot: label })}
+        aria-label={t("appearance.resetSlot", { slot: label })}
+      >
+        <RotateCcw size={11} />
+      </button>
+    </div>
+  );
+}
+
+/**
  * 个性化页的单张设置卡：沿用其他 Tab 的 `.panel + .panel-head` 结构，
  * 左侧 eyebrow（`// XXX`）+ 大标题 + 灰色副标题，右上角只放图标。
  *
@@ -907,7 +1123,7 @@ function SettingCard({
 function BadgeLabel({ theme, custom }: { theme: string; custom: boolean }) {
   return (
     <span className="appearance-badge">
-      <i /> {theme} {custom ? "+ CUSTOM ACCENT" : "PALETTE"}
+      <i /> {theme} {custom ? "+ CUSTOM" : "PALETTE"}
     </span>
   );
 }
