@@ -233,6 +233,41 @@ for (const scale of [0.8, 1.25, 1.5]) {
   await page.close();
 }
 
+// ── 一.4 弹窗在缩放下的溢出（2026-11-11）──────────────────────
+// 用户报「冲突矩阵弹窗超出屏幕显示范围」。真因是 .modal 用 calc(100vh - 60px)，
+// 而 body 有 zoom: var(--ui-scale) —— 视口单位是「未缩放」的，再被 zoom 放大一次
+// 就超出。实测 1150x720 下 110% 溢出 32px、125% 溢出 135px，底部按钮点不到。
+// 修法是把视口单位除回缩放坐标系（见 styles.css 的 .modal）。
+// 这里注入一个真实结构的 modal 来卡住回归：任何浮层上限类改回裸 vh 都会红。
+{
+  const modalOverflow = [];
+  for (const scale of [0.8, 1, 1.1, 1.25, 1.5]) {
+    const page = await newPage({ width: 1150, height: 720 }, { scale });
+    const m = await page.evaluate(() => {
+      // 用真实的 class 结构：portal 负责居中与留白，modal 负责上限。
+      const host = document.createElement("div");
+      host.className = "modal-portal";
+      host.innerHTML =
+        '<section class="modal" style="width:760px"><div class="modal-body" style="height:2000px">填充</div></section>';
+      document.body.appendChild(host);
+      const modal = host.querySelector(".modal").getBoundingClientRect();
+      const zoom = parseFloat(getComputedStyle(document.body).zoom) || 1;
+      const r = {
+        zoom,
+        bottom: Math.round(modal.y + modal.height - innerHeight),
+        right: Math.round(modal.x + modal.width - innerWidth),
+        top: Math.round(modal.y),
+        height: Math.round(modal.height),
+      };
+      host.remove();
+      return r;
+    });
+    if (m.bottom > 0 || m.right > 0 || m.top < 0) modalOverflow.push({ scale, ...m });
+    await page.close();
+  }
+  result.modalOverflow = modalOverflow;
+}
+
 // ── 三.3 对比度（现代浅色 / 暗色两套）─────────────────────────
 for (const [label, theme] of [
   ["modern-light", { styleTheme: "modern", colorMode: "light" }],
@@ -383,6 +418,7 @@ console.log(`ultraRightGap=${ultra ? ultra.rightGap : 0}`);
 console.log(`narrowHScroll=${narrow ? narrow.hScroll : -1}`);
 console.log(`overflowTotal=${overflowTotal}`);
 console.log(`scaleBroken=${scaleBroken}`);
+console.log(`modalOverflow=${result.modalOverflow.length}`);
 console.log(`contrastFails=${contrastFails}`);
 console.log(`contrastLight=${result.contrast.find((c) => c.theme === "modern-light")?.fails ?? -1}`);
 console.log(`tinyFonts=${tinyFonts}`);

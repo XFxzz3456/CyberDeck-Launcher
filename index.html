@@ -61,7 +61,120 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      首帧骨架（2026-11-11）。
+
+      为什么放在 #root 里、且只用内联 HTML+CSS：
+      窗口 build() 之后就 show()，而 WebView2 要等 JS bundle（≈890 kB）下载、
+      解析、执行完才有第一帧画面。实测这中间约 1.2 秒，用户看到的是系统白底。
+      窗口底色已在 Rust 侧设成 #07090c（见 lib.rs 的 background_color），
+      这里再把「有内容的第一帧」提前到 HTML 解析完的瞬间 —— 不依赖任何脚本、
+      不依赖外部 CSS，也不依赖字体文件。
+
+      React 挂载时 createRoot().render() 会清空 #root 的既有子节点，这块骨架
+      自动消失，不需要手动清理。
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #07090c;
+      }
+      /* 浅色主题下别闪一帧深底：index.html 头部脚本已把 data-mode 写到根节点。 */
+      :root[data-mode="light"] #boot-fallback,
+      :root[data-mode="light"] body {
+        background: #eeebe4;
+      }
+      #boot-fallback {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #07090c;
+        color: #e9eef5;
+        font-family: "Rajdhani", "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      :root[data-mode="light"] #boot-fallback {
+        color: #171614;
+      }
+      #boot-fallback .fb-grid {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(252, 238, 10, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(252, 238, 10, 0.025) 1px, transparent 1px);
+        background-size: 48px 48px;
+        -webkit-mask-image: radial-gradient(circle at center, black, transparent 68%);
+        mask-image: radial-gradient(circle at center, black, transparent 68%);
+        pointer-events: none;
+      }
+      #boot-fallback .fb-mark {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        margin-bottom: 14px;
+        background: #fcee0a;
+        clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #060708;
+        animation: fb-pulse 2s ease-in-out infinite;
+      }
+      :root[data-mode="light"] #boot-fallback .fb-mark {
+        background: #b23a0e;
+        color: #fffdf9;
+      }
+      #boot-fallback .fb-title {
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 4px;
+      }
+      #boot-fallback .fb-sub {
+        margin-top: 4px;
+        font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+        font-size: 8.5px;
+        letter-spacing: 2px;
+        color: #fcee0a;
+        opacity: 0.7;
+      }
+      :root[data-mode="light"] #boot-fallback .fb-sub {
+        color: #b23a0e;
+      }
+      @keyframes fb-pulse {
+        50% {
+          filter: brightness(1.12);
+        }
+      }
+    </style>
+    <div id="root">
+      <div id="boot-fallback" aria-hidden="true">
+        <div class="fb-grid"></div>
+        <div class="fb-mark">
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 40 40"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="butt"
+            stroke-linejoin="miter"
+          >
+            <path d="M8 7.5 H26 L32.5 14 V32.5 H8 Z" />
+            <path d="M3 13 H8 M3 20 H8 M3 27 H8" stroke-width="2.4" />
+            <path d="M32.5 17 H37.5 M32.5 24 H37.5 M32.5 30 H37.5" stroke-width="2.4" />
+            <path d="M13.5 14.5 H20.5 L25.5 20 L20.5 25.5 H13.5 Z" stroke-width="2.6" />
+          </svg>
+        </div>
+        <div class="fb-title">CYBERDECK LOADER</div>
+        <div class="fb-sub">// INITIALIZING MOD RUNTIME</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

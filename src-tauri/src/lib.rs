@@ -4445,6 +4445,12 @@ pub fn run() {
             .decorations(false)
             .shadow(true)
             .theme(Some(Theme::Dark))
+            // WebView2 在渲染出第一帧之前的默认底色是**白色**，而窗口 build()
+            // 之后立刻 show()，于是冷启动能看到约 1.2 秒白屏（实测：进程启动
+            // → 建窗 1s → 前端 bootstrap 完成 2s）。这里把窗口层与 webview 层
+            // 的底色都设成主题暗底 #07090c，白屏变成同色深底；剩下的首帧内容由
+            // index.html 里的内联骨架补上（不依赖 JS bundle 下载与执行）。
+            .background_color(tauri::window::Color(7, 9, 12, 255))
             .data_directory(webview_profile)
             .additional_browser_args("--no-sandbox")
             .build()

@@ -4823,7 +4823,14 @@ pre {
 
 .modal {
   position: relative;
-  max-height: calc(100vh - 60px);
+  /* 不能用 calc(100vh - 60px)：body 上有 `zoom: var(--ui-scale)`，视口单位
+     算出来的是「未缩放」的高度，再被 zoom 放大一次就超出窗口 —— 实测
+     1150x720 下 110% 溢出 32px、125% 溢出 135px，底部按钮直接点不到。
+    也不能用 max-height: 100%：.modal 是 .modal-portal 的 grid 子项，行高由
+     内容撑开属于不定值，百分比会退化成 auto。
+     所以把视口尺寸先除回缩放坐标系，再扣掉 portal 的 padding（48px）。 */
+  max-height: calc(100vh / var(--ui-scale) - 48px);
+  max-width: calc(100vw / var(--ui-scale) - 48px);
   background: var(--bg);
   border: 1px solid #303a47;
   box-shadow: var(--shadow);
@@ -8661,8 +8668,8 @@ body.is-reordering * {
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
-  max-width: min(360px, calc(100vw - 36px));
-  max-height: calc(100vh - 36px);
+  max-width: min(360px, calc(100vw / var(--ui-scale) - 36px));
+  max-height: calc(100vh / var(--ui-scale) - 36px);
   pointer-events: none;
 }
 
@@ -8680,7 +8687,7 @@ body.is-reordering * {
 }
 
 .floating-stack .toast-host {
-  width: min(330px, calc(100vw - 36px));
+  width: min(330px, calc(100vw / var(--ui-scale) - 36px));
 }
 
 /* 详情抽屉打开时，整栈让位到抽屉左侧，避免压住抽屉里的提示与操作。 */
@@ -8720,7 +8727,8 @@ body.is-reordering * {
 
 .command-panel {
   position: relative;
-  width: min(650px, calc(100vw - 48px));
+  /* 视口单位在 body 的 zoom 下会被二次放大，除回缩放坐标系。 */
+  width: min(650px, calc(100vw / var(--ui-scale) - 48px));
   border: 1px solid #3a4654;
   background: var(--bg);
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(var(--accent-rgb), 0.05);
@@ -9377,7 +9385,7 @@ body.is-reordering * {
 @media (max-width: 900px) {
 
   .task-center {
-    width: min(350px, calc(100vw - 24px));
+    width: min(350px, calc(100vw / var(--ui-scale) - 24px));
   }
 
   .conflict-chain {
@@ -14096,7 +14104,7 @@ body::before {
   display: flex;
   flex-direction: column;
   width: min(660px, 100%);
-  max-height: min(760px, calc(100vh - 64px));
+  max-height: min(760px, calc(100vh / var(--ui-scale) - 64px));
   background: var(--bg-2);
   border: 1px solid rgba(var(--accent-rgb), 0.34);
   clip-path: polygon(
@@ -17037,9 +17045,14 @@ body::before {
    只做局部加固，不改既有排版体系：
    1) 弹窗在 960x640 这类小窗口下不许溢出视口；
    2) 右键菜单加了 AI 两项后变高，允许内部滚动；
-   3) 长路径/长文件名不许把容器撑破。 */
+   3) 长路径/长文件名不许把容器撑破。
+   2026-11-11：宽度原来写 calc(100vw - 48px)，与高度同一个坑 —— 100vw 是
+   未缩放视口宽，被 body 的 zoom 再放大一次就横向溢出。这里**必须**用和
+   .modal 主规则一致的除缩放写法；写 100% 反而无效：.modal 的包含块是
+   .modal-portal 的 padding box，而 portal 自己是 fixed inset:0，百分比在
+   zoom 坐标系里的解析结果不是「视口减留白」，125% 以上照样溢出。 */
 .modal {
-  max-width: calc(100vw - 48px);
+  max-width: calc(100vw / var(--ui-scale) - 48px);
 }
 
 .modal-portal {

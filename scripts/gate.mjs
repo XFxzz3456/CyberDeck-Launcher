@@ -501,6 +501,7 @@ const UI_SCRIPTS = [
       "narrowHScroll=0",
       "overflowTotal=0",
       "scaleBroken=0",
+      "modalOverflow=0",
       "contrastFails=0",
       "alignSpread=0",
       "hoverRules=10",
