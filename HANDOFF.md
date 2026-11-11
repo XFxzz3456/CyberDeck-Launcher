@@ -6,13 +6,18 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.0`（2026-11-11）。** 三处 `version` 一致、tag `v1.8.0`；`release/CyberDeck Launcher.exe` 已是 1.8.0 包（11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版：1.8.0 的 ZIP 尚未打包（按规则需单独确认）。
+**本仓库的实际版本是 `1.8.0`（2026-11-11）。** 三处 `version` 一致、tag `v1.8.0`；`release/CyberDeck Launcher.exe` 已是 1.8.0 包（11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B（5.45 MiB） / md5 `679a342d82c00f8668328019c5dd4b4d`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)（资产 `CyberDeck.Launcher.1.8.0.zip`，远端回读字节一致）。
 
 - **2026-11-11 23:39 发布 1.8.0（用户「确定，不用 dev 验收你直接收尾」= 全流程授权）**：
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-gate`（门禁刚跑过 39/39 全绿 → 升版 → 构建 260s → 同步一条链，总 261s）。
   1.8.0 内容 = **整合包导出/导入**（轻量 `.cdlist` 几十 KB / 完整 `.cdpack` zip64 内嵌每 Mod 独立 zip）+ **Nexus 编号回填**（Vortex LevelDB → GraphQL 名字检索）+ 此前的主题重构（Cyber/Modern 两大类 + 预设色块 + 全量自定义调色）、多版本切换、右键删除、收编重叠判定根因修复。
   设计决策与四个踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`；门禁 39/39、`cargo test --lib` 382 passed。
-  **本轮显式跳过 dev 验收**（用户要求直接收尾）。**便携 ZIP 未打；push 待代理可用**（此前 20 个提交 + 十余个 tag 待推）。
+  **本轮显式跳过 dev 验收**（用户要求直接收尾）。`git push origin main --tags` 已成功（积压 33 个提交 + v1.6.0/v1.7.0/v1.7.1/v1.8.0 四个 tag 全部上云）。
+- **2026-11-11 23:53 便携版补发（用户「便携zip也打一下，然后上传github」）**：
+  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`（4 个条目：exe / WebView2Loader.dll / 使用说明.txt / cyberdeck-data/说明-数据目录.txt，UTF-8 文件名，包内 exe md5 与 release 一致）。
+  通过 GitHub REST API 创建 `v1.8.0` Release（沿用历史资产命名 `CyberDeck.Launcher.<版本>.zip`），上传后回读 5,713,404 B 与本地逐字节一致。
+  **网络口径补充**：`api.github.com` 与 `uploads.github.com` 走会话环境代理可通；`git` 走 `127.0.0.1:7897`，该代理对 uploads 域名做 MITM（证书不被系统信任），Python urllib 会报 SSL EOF —— 上传不要走 7897。
+  根目录 `https://uploads.github.com/` 返回 302，urllib 自动跟随到 `github.com` 会 502，那是根路径跳转的假象，不代表上传端点不可达。
 
 - **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），

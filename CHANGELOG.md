@@ -55,7 +55,8 @@
 
 ## [1.8.0] - 2026-11-11（整合包导出/导入 · 主题重构 · 收编根因修复）
 
-> 产物 `release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`，PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0）。旧包备份为 `.prev.exe`。便携 ZIP 未打（按规则需单独确认）。
+> 产物 `release/CyberDeck Launcher.exe`：11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`，PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0）。旧包备份为 `.prev.exe`。
+> 便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B（5.45 MiB） / md5 `679a342d82c00f8668328019c5dd4b4d`（内含 exe、WebView2Loader.dll、使用说明与数据目录说明；UTF-8 文件名，包内 exe 与 release 版 md5 一致）。已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)，资产名 `CyberDeck.Launcher.1.8.0.zip`，远端回读字节与本地完全一致。
 > 来源：用户「为什么有几个 mod 重复出现」（附截图）+「加个功能，实现像 vortex 那样同一个 mod 可以切换不同版本」+「怎么没有直接删除 mod 的选项」+「把遗留的也修复吧」+「mod 详情页这个编辑按钮怎么单独在中间」+「精简主题风格卡片，解耦风格与配色，开放全量自定义调色」+「再加一个一键导出整合包的功能吧……对方只用下几 MB 甚至几 KB」+「我 mod 全是在 N 网下的啊」+「确定，不用 dev 验收你直接收尾」。
 > 设计决策与踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`。
 
