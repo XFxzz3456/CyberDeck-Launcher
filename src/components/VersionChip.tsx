@@ -77,6 +77,11 @@ export function VersionChip({
   }, [open]);
 
   // 先渲染再量高度，才能决定往上还是往下弹。
+  //
+  // 注意：这里**不能**把「测量结果」当作浮层的渲染条件——菜单要先挂上 DOM 才能
+  // 量到高度，用 `open && pos` 当条件就成了死锁（实测：aria-expanded 变 true，
+  // 但菜单永远不出现）。所以首帧先渲染在视口外，layout effect 量完再摆到位，
+  // 因为是在绘制前跑，用户看不到这一帧。
   useLayoutEffect(() => {
     if (!open) {
       setPos(null);
@@ -143,14 +148,20 @@ export function VersionChip({
         <span className="version-chip-count">{versions.length}</span>
         <ChevronDown size={11} />
       </button>
-      {open && pos
+      {open
         ? createPortal(
             <div
               ref={menuRef}
               className="version-menu"
               role="listbox"
               aria-label={t("version.menuAria")}
-              style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
+              style={{
+                // 首帧先放到视口外，量完位置再摆过去（见上方 useLayoutEffect 的说明）。
+                top: pos?.top ?? -9999,
+                left: pos?.left ?? 0,
+                width: pos?.width ?? MENU_MIN_WIDTH,
+                maxHeight: pos?.maxHeight ?? MENU_MAX_HEIGHT,
+              }}
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
             >
@@ -175,7 +186,11 @@ export function VersionChip({
                       {version.version ? `v${version.version}` : t("modCard.noVersion")}
                     </span>
                     <span className="version-item-meta">
-                      {version.enabled ? t("version.activeTag") : formatBytes(version.sizeBytes)}
+                      {active
+                        ? t("version.activeTag")
+                        : version.enabled
+                          ? t("version.alsoEnabledTag", { size: formatBytes(version.sizeBytes) })
+                          : formatBytes(version.sizeBytes)}
                     </span>
                     {active ? <Check size={12} className="version-item-check" /> : null}
                   </button>

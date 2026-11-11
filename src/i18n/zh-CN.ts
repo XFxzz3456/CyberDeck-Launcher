@@ -1313,7 +1313,8 @@ export const zhCN = {
     switchTitle: "切换版本（共 {count} 个，切换会撤下其它版本）",
     menuAria: "版本列表",
     menuTitle: "切换到",
-    activeTag: "当前启用",
+    activeTag: "当前",
+    alsoEnabledTag: "也在启用 · {size}",
   },
   modCard: {
     busyDeploy: "部署硬链接…",
@@ -1353,6 +1354,9 @@ export const zhCN = {
   },
   modContext: {
     copyId: "复制 Mod ID",
+    deleteMod: "删除模组",
+    deleteHint: "删暂存 + 撤链接",
+    deleteBlocked: "Vortex 托管，去那边删",
     deploy: "部署到游戏目录",
     disableOnly: "仅停用，保留文件",
     hintLink: "建立链接",

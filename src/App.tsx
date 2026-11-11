@@ -3052,6 +3052,7 @@ function AppShell() {
                 onSort={handleSort}
                 onToggle={(mod, enabled) => void handleToggle(mod, enabled)}
                 onSwitchVersion={(mod) => void handleSwitchVersion(mod)}
+                onUninstall={(mod) => handleUninstall(mod)}
                 onOpen={(mod) => setDetailId(mod.id)}
                 onOpenConflicts={() => setConflictCenterOpen(true)}
                 onRefresh={() => void refresh()}

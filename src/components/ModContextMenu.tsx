@@ -8,6 +8,7 @@ import {
   RefreshCw,
   ShieldOff,
   Tag,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import type { ModEntry } from "../types";
@@ -37,6 +38,7 @@ export function ModContextMenu({
   onChangeCategory,
   onAiTranslate,
   onAiPatch,
+  onUninstall,
 }: {
   state: ModContextMenuState;
   onClose: () => void;
@@ -51,6 +53,8 @@ export function ModContextMenu({
   onAiTranslate: (mod: ModEntry) => void;
   /** AI 补丁（T6）：针对脚本冲突生成独立 .reds 补丁。 */
   onAiPatch: (mod: ModEntry) => void;
+  /** 删除模组（删暂存副本 + 撤链接 + 从库里移除）。走统一的危险确认流程。 */
+  onUninstall: (mod: ModEntry) => void;
 }) {
   const { mod, x, y } = state;
   const menuRef = useRef<HTMLDivElement>(null);
@@ -236,6 +240,25 @@ export function ModContextMenu({
           />
         </>
       ) : null}
+
+      {/* 删除：库里的右键菜单以前只有「取消部署」，想彻底删掉必须先进详情面板。
+          玩家在列表里整理重复/废弃条目时第一反应就是右键，缺这一项等于逼人多点两下。
+          Vortex 托管的条目不在这里删：它的物理文件在 Vortex 仓库里，删了会造成
+          两边状态不一致，所以置灰并说明去 Vortex 处理。 */}
+      <div className="mod-context-sep" />
+      <MenuItem
+        icon={<Trash2 size={13} />}
+        label={t("modContext.deleteMod")}
+        hint={
+          mod.origin === "vortex" ? t("modContext.deleteBlocked") : t("modContext.deleteHint")
+        }
+        disabled={mod.origin === "vortex"}
+        danger
+        onSelect={() => {
+          onUninstall(mod);
+          onClose();
+        }}
+      />
     </div>
   );
 }
@@ -245,19 +268,21 @@ function MenuItem({
   label,
   hint,
   disabled,
+  danger = false,
   onSelect,
 }: {
   icon: ReactNode;
   label: string;
   hint?: string;
   disabled?: boolean;
+  danger?: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
-      className="mod-context-item"
+      className={`mod-context-item ${danger ? "is-danger" : ""}`}
       disabled={disabled}
       onClick={onSelect}
     >

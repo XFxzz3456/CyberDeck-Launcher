@@ -141,6 +141,7 @@ export function LibraryView({
   onSort,
   onToggle,
   onSwitchVersion,
+  onUninstall,
   onOpen,
   onOpenConflicts,
   onImport,
@@ -188,6 +189,8 @@ export function LibraryView({
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   /** 切换同一个 mod 的生效版本（卡片版本下拉的点击回调）。 */
   onSwitchVersion: (mod: ModEntry) => void;
+  /** 删除模组（右键菜单入口）：删暂存 + 撤链接 + 从库里移除。 */
+  onUninstall: (mod: ModEntry) => void;
   onOpen: (mod: ModEntry) => void;
   onOpenConflicts: () => void;
   onImport: () => void;
@@ -1450,6 +1453,7 @@ export function LibraryView({
           onChangeCategory={(mod) => setCategoryTargets([mod])}
           onAiTranslate={(mod) => setAiTool({ mod, mode: "loc" })}
           onAiPatch={(mod) => setAiTool({ mod, mode: "fix" })}
+          onUninstall={onUninstall}
         />
       ) : null}
 

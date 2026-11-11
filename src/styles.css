@@ -11743,6 +11743,22 @@ body::before {
 
 .mod-context-item:disabled { opacity: 0.42; cursor: not-allowed; }
 
+/* 危险项（删除模组）：常驻暗红，hover 才亮起来 —— 与「取消部署」这类可逆操作
+   在视觉上分开，避免误点。刻意不用整条红底：菜单里一条红得发光的项反而让人
+   以为它是主操作。 */
+.mod-context-item.is-danger {
+  color: #ff9fae;
+}
+
+.mod-context-item.is-danger .mod-context-icon {
+  color: #ff8a9c;
+}
+
+.mod-context-item.is-danger:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb), 0.16);
+  color: #ffd2da;
+}
+
 .mod-context-icon { display: inline-flex; color: var(--accent-text); }
 .mod-context-item:disabled .mod-context-icon { color: var(--muted-2); }
 
