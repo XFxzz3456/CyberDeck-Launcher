@@ -1043,3 +1043,239 @@ fn vortex_record_fills_category_and_nexus_meta() {
         Some("https://example.com/cover.png")
     );
 }
+
+/// 在游戏目录任意相对路径下放文件（`Fixture::game_file` 只覆盖 archive/pc/mod 平铺）。
+fn put_game_file(fixture: &Fixture, rel: &str, bytes: &[u8]) -> PathBuf {
+    let path = fixture.game.join(rel.replace('/', "\\"));
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(&path, bytes).unwrap();
+    path
+}
+
+/// 禁用中的 `.archive.xl` 碎片：部署清单已清空、只剩 planned。
+///
+/// 旧实现只认 deployed，overlap 里找不到它，于是同一个 mod 又被收编成第二条
+/// —— 实机 VBR / VendorsXL 那几组「archive 碎片 + Vortex 目录」就是这么裂开的。
+#[test]
+fn vortex_candidate_absorbs_disabled_fragment_via_planned() {
+    let fixture = Fixture::new();
+    // 游戏目录里的 .xl 又出现了（Vortex 重新部署过），碎片条目本身仍是禁用态。
+    fixture.game_file("Shared.archive", b"body");
+    fixture.game_file("Shared.archive.xl", b"meta");
+
+    let dir_name = "Shared Mod-777-1-0-1700000000";
+    let vortex_root = fixture.root.join("vortex-disabled");
+    for rel in [
+        "archive/pc/mod/Shared.archive",
+        "archive/pc/mod/Shared.archive.xl",
+    ] {
+        let mirror = vortex_root.join(dir_name).join(rel.replace('/', "\\"));
+        fs::create_dir_all(mirror.parent().unwrap()).unwrap();
+        fs::write(&mirror, b"x").unwrap();
+    }
+
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let mut fragment =
+            fragment_entry("adopt-disabled-xl", "archive/pc/mod/Shared.archive.xl");
+        fragment.name = "shared".to_string();
+        fragment.enabled = false;
+        fragment.deployed_files.clear();
+        state.mods.push(fragment);
+        fixture.store.save(&state).unwrap();
+    }
+
+    let state = fixture.store.snapshot_data();
+    let mut candidates = Vec::new();
+    adopt::append_vortex_candidates_with(
+        &vortex_root,
+        &std::collections::HashMap::new(),
+        &state,
+        &fixture.game,
+        &fixture.root.join("staging"),
+        &mut candidates,
+    );
+
+    assert_eq!(candidates.len(), 1, "只应有一个目录候选");
+    assert_eq!(candidates[0].files.len(), 2);
+    assert_eq!(
+        candidates[0].absorb_entry_ids,
+        vec!["adopt-disabled-xl".to_string()],
+        "禁用碎片应被吸收"
+    );
+    assert!(
+        !candidates[0].name.contains("交叉"),
+        "禁用不等于跨目录，不该判成交叉：{}",
+        candidates[0].name
+    );
+}
+
+/// 反面：条目声明过目录外的文件时仍要判「交叉」，不能被吸收。
+/// 禁用条目的 deployed 是空的，若不把 planned 一起拿来判，`全部在目录内` 会
+/// 平凡成立，跨目录条目反而会被误吞。
+#[test]
+fn vortex_candidate_keeps_straddling_entry_untouched() {
+    let fixture = Fixture::new();
+    fixture.game_file("Straddle.archive", b"body");
+
+    let dir_name = "Straddle-888-1-0-1700000000";
+    let vortex_root = fixture.root.join("vortex-straddle");
+    let mirror = vortex_root
+        .join(dir_name)
+        .join("archive")
+        .join("pc")
+        .join("mod")
+        .join("Straddle.archive");
+    fs::create_dir_all(mirror.parent().unwrap()).unwrap();
+    fs::write(&mirror, b"x").unwrap();
+
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let mut entry = fragment_entry("adopt-straddle", "archive/pc/mod/Straddle.archive");
+        entry.name = "straddle".to_string();
+        entry.enabled = false;
+        entry.deployed_files.clear();
+        // 还有文件落在别的目录里 → 真横跨，不能吸收。
+        entry
+            .planned_files
+            .push("r6/scripts/other/extra.reds".to_string());
+        state.mods.push(entry);
+        fixture.store.save(&state).unwrap();
+    }
+
+    let state = fixture.store.snapshot_data();
+    let mut candidates = Vec::new();
+    adopt::append_vortex_candidates_with(
+        &vortex_root,
+        &std::collections::HashMap::new(),
+        &state,
+        &fixture.game,
+        &fixture.root.join("staging"),
+        &mut candidates,
+    );
+
+    assert_eq!(candidates.len(), 1);
+    assert!(candidates[0].absorb_entry_ids.is_empty(), "跨目录条目不该被吸收");
+    assert!(candidates[0].name.contains("交叉"), "{}", candidates[0].name);
+    assert_eq!(state.mods.len(), 1, "既有条目一个都不能动");
+}
+
+/// 同批候选收口：archive 反推的候选若文件全在 Vortex 目录候选里，就从候选列表里去掉。
+#[test]
+fn archive_candidate_dropped_when_vortex_dir_covers_it() {
+    let fixture = Fixture::new();
+    fixture.game_file("Covered.archive", b"body");
+    fixture.game_file("Covered.archive.xl", b"meta");
+    let covered = candidate(&fixture, "archive/pc/mod/Covered.archive");
+    let mut with_meta = covered.clone();
+    let meta = fixture.game.join("archive").join("pc").join("mod").join("Covered.archive.xl");
+    let (size, mtime) = file_stamp(&meta);
+    with_meta.files.push(AdoptFileRef {
+        rel: "archive/pc/mod/Covered.archive.xl".to_string(),
+        size_bytes: size.unwrap_or(0),
+        modified_time: mtime,
+    });
+
+    let mut vortex = with_meta.clone();
+    vortex.id = "adopt-vortex-covered".to_string();
+    vortex.source = "vortex".to_string();
+
+    let lone = candidate(&fixture, "archive/pc/mod/Unrelated.archive");
+
+    let mut candidates = vec![with_meta, lone, vortex];
+    adopt::absorb_archive_candidates(&mut candidates);
+
+    assert_eq!(candidates.len(), 2, "被目录覆盖的 archive 候选应被丢弃");
+    let target = candidates
+        .iter()
+        .find(|item| item.source == "vortex")
+        .expect("目录候选应保留");
+    assert_eq!(
+        target.absorb_entry_ids,
+        vec![adopt::candidate_id("archive/pc/mod/Covered.archive")],
+        "丢弃前要把它的 id 交给目录候选吸收"
+    );
+    assert!(
+        candidates
+            .iter()
+            .any(|item| item.archive_rel.contains("Unrelated")),
+        "不相交的 archive 候选必须保留"
+    );
+}
+
+/// 子集合并：同名、文件全被另一条覆盖 → 合成一条（保留超集）。
+/// 实机 `v's edgerunners mansion` 8⊆12、`weapon magazine reload` 7=7。
+#[test]
+fn normalize_merges_subset_duplicate() {
+    let _guard = lock();
+    let fixture = Fixture::new();
+    put_game_file(&fixture, "archive/pc/mod/mansionDLC.archive", b"body");
+    put_game_file(
+        &fixture,
+        "bin/x64/plugins/cyber_engine_tweaks/mods/mansionDLC/init.lua",
+        b"lua",
+    );
+
+    let lua_rel = "bin/x64/plugins/cyber_engine_tweaks/mods/mansionDLC/init.lua";
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let mut small = fragment_entry("adopt-mansion-small", lua_rel);
+        small.name = "v's edgerunners mansion".to_string();
+        small.size_bytes = 3;
+
+        let mut big = fragment_entry("adopt-mansion-big", "archive/pc/mod/mansionDLC.archive");
+        big.name = "v's edgerunners mansion".to_string();
+        big.size_bytes = 4;
+        big.planned_files.push(lua_rel.to_string());
+        big.deployed_files.push(DeployedFile {
+            source: String::new(),
+            target: String::new(),
+            link_type: LinkType::HardLink,
+            relative_path: lua_rel.to_string(),
+            size: None,
+            modified_time: None,
+        });
+        state.mods.push(small);
+        state.mods.push(big);
+        fixture.store.save(&state).unwrap();
+    }
+    assert_eq!(fixture.store.snapshot_data().mods.len(), 2);
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.merged, 1, "{report:?}");
+
+    let state = fixture.store.snapshot_data();
+    assert_eq!(state.mods.len(), 1, "子集记录应被合并掉");
+    assert_eq!(state.mods[0].id, "adopt-mansion-big", "保留超集那条");
+    // 文件全在超集里，体积不能重复累加。
+    assert_eq!(state.mods[0].size_bytes, 4);
+
+    // 幂等
+    assert_eq!(adopt::normalize_library(&fixture.store).unwrap().merged, 0);
+}
+
+/// 反面：同名但文件完全不相交（不同版本的安装目录）不能被当成重复合并。
+#[test]
+fn normalize_keeps_disjoint_same_name_versions() {
+    let _guard = lock();
+    let fixture = Fixture::new();
+    put_game_file(&fixture, "archive/pc/mod/LizzieA.archive", b"a");
+    put_game_file(&fixture, "archive/pc/mod/LizzieB.archive", b"b");
+
+    {
+        let mut state = fixture.store.data.lock().unwrap();
+        let mut first = fragment_entry("adopt-lizzie-a", "archive/pc/mod/LizzieA.archive");
+        first.name = "lizzie's braindances".to_string();
+        let mut second = fragment_entry("adopt-lizzie-b", "archive/pc/mod/LizzieB.archive");
+        second.name = "lizzie's braindances".to_string();
+        state.mods.push(first);
+        state.mods.push(second);
+        fixture.store.save(&state).unwrap();
+    }
+
+    let report = adopt::normalize_library(&fixture.store).unwrap();
+    assert_eq!(report.merged, 0, "{report:?}");
+    assert_eq!(fixture.store.snapshot_data().mods.len(), 2, "不同版本的目录要各自保留");
+}

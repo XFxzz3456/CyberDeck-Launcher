@@ -293,6 +293,12 @@ pub fn scan(store: &Store) -> AppResult<AdoptScanReport> {
         &mut candidates,
     );
 
+    // 同批候选之间收口：archive 反推与 Vortex 目录会各出一条，而目录候选本来
+    // 就含那个 archive 文件。旧实现只在**既有库**上判重叠（且只看 deployed），
+    // 看不见「同批候选」，于是两者都被收编 —— 同一个 mod 在库里落成两条记录，
+    // 其中一条是另一条的子集（实机 `v's edgerunners mansion` 8⊆12 就是这么来的）。
+    absorb_archive_candidates(&mut candidates);
+
     // 已登记且暂存目录还在的候选直接标「已托管」：重扫时不再送进执行批次，
     // 避免 materialize 撞上残留文件后整批报 ADOPT_STAGING_FAILED。
     let registered: HashSet<String> =
@@ -396,13 +402,21 @@ pub(crate) fn append_vortex_candidates_with(
         return;
     }
 
-    // rel（小写）→ 占有它的条目下标。只认 deployed_files：planned 里可能有
-    // 「禁用中、文件已从游戏目录撤走」的记录，把它们算进来会让合并后
-    // 出现「条目启用但文件不全」的假象。
+    // rel（小写）→ 占有它的条目下标。
+    //
+    // 两级认领：`deployed_files` 是强认领（文件此刻确实由它摆在游戏目录里），
+    // `planned_files` 只在该 rel 无人部署时补位。补位这一层是必需的——条目被
+    // 禁用后部署清单会被清空、只剩 planned，早期只认 deployed 的实现因此认不出
+    // 「禁用中的 `.archive.xl` 碎片」，同一个 mod 在库里裂成两条（实机 6 组）。
     let mut owner_of: HashMap<String, usize> = HashMap::new();
     for (index, entry) in state.mods.iter().enumerate() {
         for file in &entry.deployed_files {
             owner_of.insert(file.relative_path.to_ascii_lowercase(), index);
+        }
+    }
+    for (index, entry) in state.mods.iter().enumerate() {
+        for planned in &entry.planned_files {
+            owner_of.entry(planned.to_ascii_lowercase()).or_insert(index);
         }
     }
 
@@ -422,11 +436,20 @@ pub(crate) fn append_vortex_candidates_with(
             }
         }
 
+        // 「横跨」判定：条目**声明过**的文件（deployed + planned）必须全部落在
+        // 本目录内，才认它是本目录的碎片。只要有一个声明文件在目录外，就说明它
+        // 真横跨多个 Vortex 目录，收编会让两边抢同一批文件 → 标交叉、跳过。
+        //
+        // 这里同样要把 planned 算进来：只在 deployed 上判的话，禁用条目的部署
+        // 清单是空的，「全在目录内」平凡成立，反而会把跨目录的条目误吸收。
         let straddles = overlap.iter().any(|index| {
-            state.mods[*index]
+            let entry = &state.mods[*index];
+            entry
                 .deployed_files
                 .iter()
-                .any(|file| !dir_lower.contains(&file.relative_path.to_ascii_lowercase()))
+                .map(|file| file.relative_path.as_str())
+                .chain(entry.planned_files.iter().map(|rel| rel.as_str()))
+                .any(|rel| !dir_lower.contains(&rel.to_ascii_lowercase()))
         });
 
         let files: Vec<AdoptFileRef> = dir
@@ -489,9 +512,80 @@ pub(crate) fn append_vortex_candidates_with(
     }
 }
 
+/// 候选之间收口：archive 反推出的候选，若文件**全部**落在某个 Vortex 目录候选里，
+/// 就说明它本来就是那个目录的一部分，从候选列表里去掉。
+///
+/// 为什么必须在候选之间做：Vortex 的 mod 目录是游戏根镜像，目录里天然含
+/// `archive/pc/mod/X.archive`；而 archive 反推是「一个文件一条」。两条通道各出
+/// 一条候选，若只在既有库上判重叠（旧实现甚至只看 `deployed_files`），收编前
+/// 库是空的，两条都会被装进游戏库 —— 用户看到两张卡，其中一张的文件全在另一张里。
+///
+/// 反向不做：目录候选被 archive 候选完整覆盖不可能是「子集」成立（目录里通常还有
+/// `r6/`、`bin/` 这类文件），真出现了说明扫描口径异常，宁可留给用户按候选自己判断。
+pub(crate) fn absorb_archive_candidates(candidates: &mut Vec<AdoptCandidate>) {
+    let vortex_files: Vec<HashSet<String>> = candidates
+        .iter()
+        .filter(|item| item.source == "vortex")
+        .map(|item| {
+            item.files
+                .iter()
+                .map(|file| file.rel.to_ascii_lowercase())
+                .collect()
+        })
+        .collect();
+    if vortex_files.is_empty() {
+        return;
+    }
+
+    // (要丢弃的 archive 候选下标, 接管它的 Vortex 候选在 vortex_files 里的槽位)
+    let mut drops: Vec<(usize, usize)> = Vec::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        if candidate.source != "archive" || candidate.files.is_empty() {
+            continue;
+        }
+        let files: HashSet<String> = candidate
+            .files
+            .iter()
+            .map(|file| file.rel.to_ascii_lowercase())
+            .collect();
+        for (slot, dir_files) in vortex_files.iter().enumerate() {
+            if files.iter().all(|rel| dir_files.contains(rel)) {
+                drops.push((index, slot));
+                break;
+            }
+        }
+    }
+    if drops.is_empty() {
+        return;
+    }
+
+    // 丢弃前先把「该候选若已登记过」的条目 id 交给接管者吸收，否则库里那条
+    // 旧记录会变成孤儿（文件已归目录条目，记录还留着）。
+    let vortex_slots: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item.source == "vortex")
+        .map(|(index, _)| index)
+        .collect();
+    for (drop_index, slot) in &drops {
+        let target = vortex_slots[*slot];
+        let id = candidates[*drop_index].id.clone();
+        if !candidates[target].absorb_entry_ids.contains(&id) {
+            candidates[target].absorb_entry_ids.push(id);
+        }
+    }
+
+    let dropped: HashSet<usize> = drops.into_iter().map(|(index, _)| index).collect();
+    let mut index = 0;
+    candidates.retain(|_| {
+        let keep = !dropped.contains(&index);
+        index += 1;
+        keep
+    });
+}
+
 /// Vortex 记录 → 收编候选上的元数据。空字符串一律折成 None，免得写进库是空串。
-fn meta_of(record: &crate::schema::VortexRecord) -> AdoptVortexMeta {
-    let non_empty = |value: &str| {
+fn meta_of(record: &crate::schema::VortexRecord) -> AdoptVortexMeta {    let non_empty = |value: &str| {
         let trimmed = value.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     };
@@ -782,18 +876,44 @@ fn ensure_free_space(_dir: &Path, _required: u64) -> AppResult<()> {
 /// 修 `scan` 只解决「以后不再产生」，已经进库的脏数据靠这里收口。
 ///
 /// 范围与安全边界：
-/// - 只动 `origin == "adopted"`、且部署清单恰好一个 `.archive.xl/.xlp` 的条目；
-/// - 合并是**纯 state 操作**：游戏目录与暂存文件一个都不动，碎片条目的 `source`
-///   仍指向它自己的暂存目录，之后禁用/卸载照常工作；
+/// - 碎片只从 `origin == "adopted"` 的条目里认（Vortex 目录收编出来、只有一个
+///   `.xl` 的条目是独立 extend 包，不能并走）；主体不限 origin——它可能是
+///   `adopted`，也可能是 Vortex 目录收编来的 `vortex` 条目；
+/// - 「碎片」= 条目标注过的全部文件（deployed + planned）恰好一条 `.archive.xl/.xlp`。
+///   **必须把 planned 算进来**：条目被禁用后部署清单会被清空、只剩 planned，
+///   只认 deployed 的话这些碎片永远配不上主体，用户就一直看到两张卡；
+/// - 合并是**纯 state 操作**：游戏目录与暂存文件一个都不动；
 /// - 「只剩元数据、主体不在游戏目录」与「清单为空」的条目**只统计不删除**——
 ///   删用户数据需要单独动作，不能在整理里顺手做掉。
 pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
     use std::collections::HashMap;
 
+    /// 条目「标注过」的全部目标文件：部署清单 + planned，去重（忽略大小写）。
+    /// 禁用条目的真实文件集只存在于 planned 里，两个都要看才认得全。
+    fn declared(entry: &ModEntry) -> Vec<String> {
+        let mut out: Vec<String> = entry
+            .deployed_files
+            .iter()
+            .map(|file| file.relative_path.clone())
+            .collect();
+        for rel in &entry.planned_files {
+            if !out.iter().any(|item| item.eq_ignore_ascii_case(rel)) {
+                out.push(rel.clone());
+            }
+        }
+        out
+    }
+
     let mut state = store.data.lock().unwrap_or_else(|err| err.into_inner());
 
     // rel（小写）→ 占有它的条目下标。合并前先拍一次快照，合并过程中下标不动。
+    // planned 先写、deployed 后写：同一 rel 若两边都声明，以实际部署那条为准。
     let mut owners: HashMap<String, usize> = HashMap::new();
+    for (index, entry) in state.mods.iter().enumerate() {
+        for rel in &entry.planned_files {
+            owners.insert(rel.to_ascii_lowercase(), index);
+        }
+    }
     for (index, entry) in state.mods.iter().enumerate() {
         for file in &entry.deployed_files {
             owners.insert(file.relative_path.to_ascii_lowercase(), index);
@@ -802,17 +922,21 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
 
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     for (index, entry) in state.mods.iter().enumerate() {
-        if entry.origin != "adopted" || entry.deployed_files.len() != 1 {
+        if entry.origin != "adopted" {
             continue;
         }
-        let rel = entry.deployed_files[0].relative_path.to_ascii_lowercase();
+        let decl = declared(entry);
+        if decl.len() != 1 {
+            continue;
+        }
+        let rel = decl[0].to_ascii_lowercase();
         if !(rel.ends_with(".archive.xl") || rel.ends_with(".archive.xlp")) {
             continue;
         }
         // `archive/pc/mod/X.archive.xl` → `archive/pc/mod/X.archive`
         let Some(cut) = rel.rfind('.') else { continue };
         if let Some(&owner_index) = owners.get(&rel[..cut]) {
-            if owner_index != index && state.mods[owner_index].origin == "adopted" {
+            if owner_index != index {
                 pairs.push((index, owner_index));
             }
         }
@@ -822,6 +946,19 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
     let mut merged_ids: Vec<String> = Vec::new();
     for (child, owner) in &pairs {
         let child_entry = state.mods[*child].clone();
+        let child_decl = declared(&child_entry);
+        // 主体原本就声明过这些文件（两边记了同一条 .xl）→ 体积不能重复累加，
+        // 否则用户看到的「占用」会虚高一截。
+        let already_declared = child_decl.iter().all(|rel| {
+            state.mods[*owner]
+                .deployed_files
+                .iter()
+                .any(|file| file.relative_path.eq_ignore_ascii_case(rel))
+                || state.mods[*owner]
+                    .planned_files
+                    .iter()
+                    .any(|item| item.eq_ignore_ascii_case(rel))
+        });
         let owner_entry = &mut state.mods[*owner];
         for file in child_entry.deployed_files {
             if !owner_entry
@@ -842,13 +979,130 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
             }
         }
         owner_entry.file_count = owner_entry.deployed_files.len();
-        owner_entry.size_bytes = owner_entry.size_bytes.saturating_add(child_entry.size_bytes);
+        if !already_declared {
+            owner_entry.size_bytes = owner_entry.size_bytes.saturating_add(child_entry.size_bytes);
+        }
+        // 组合标志也合并：碎片可能带来 archive/redmod/cet 中的某一类能力。
+        owner_entry.has_archive |= child_entry.has_archive;
+        owner_entry.has_redmod |= child_entry.has_redmod;
+        owner_entry.has_cet |= child_entry.has_cet;
         owner_entry.updated_at = Some(now_iso());
         merged_names.push(child_entry.name.clone());
         merged_ids.push(child_entry.id.clone());
     }
     if !merged_ids.is_empty() {
         state.mods.retain(|item| !merged_ids.contains(&item.id));
+    }
+
+    // 子集合并：同一个 mod 被收成两条，且一条的文件**全部**在另一条里。
+    //
+    // 产生途径：① 同一次收编里 archive 反推与 Vortex 目录各出一条（目录候选天然
+    // 含 archive 文件，实机 `v's edgerunners mansion` 8⊆12、`weapon magazine reload`
+    // 7=7 就是这么来的）；② Vortex 的两个安装包互相包含。
+    //
+    // 安全边界：只认**文件级包含**（磁盘上同一批路径），一条不落地全在另一条里；
+    // 且要求同名或同 Nexus 编号，防止「某汉化包只有一个 yaml、恰好也在别人包里」
+    // 被误吞。纯 state 操作，游戏目录与暂存文件一个都不动。
+    let mut redundant_names: Vec<String> = Vec::new();
+    let mut redundant_ids: Vec<String> = Vec::new();
+    {
+        let lowers: Vec<HashSet<String>> = state
+            .mods
+            .iter()
+            .map(|entry| {
+                declared(entry)
+                    .into_iter()
+                    .map(|rel| rel.to_ascii_lowercase())
+                    .collect()
+            })
+            .collect();
+
+        fn same_mod(left: &ModEntry, right: &ModEntry) -> bool {
+            if left.name.trim().eq_ignore_ascii_case(right.name.trim()) {
+                return true;
+            }
+            match (&left.nexus, &right.nexus) {
+                (Some(a), Some(b)) => a.mod_id != 0 && a.mod_id == b.mod_id,
+                _ => false,
+            }
+        }
+
+        // child（真子集）→ owner（超集）。完全相等时只让后出现的那条被吸收，
+        // 否则两条互相吸收会双双消失。
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
+        for (child, small) in lowers.iter().enumerate() {
+            if small.is_empty() {
+                continue;
+            }
+            for (owner, big) in lowers.iter().enumerate() {
+                if child == owner || big.len() < small.len() {
+                    continue;
+                }
+                if small.len() == big.len() && owner > child {
+                    continue;
+                }
+                if !small.iter().all(|rel| big.contains(rel)) {
+                    continue;
+                }
+                if !same_mod(&state.mods[child], &state.mods[owner]) {
+                    continue;
+                }
+                pairs.push((child, owner));
+                break;
+            }
+        }
+
+        // 链式包含（i ⊆ j ⊆ k）时把 owner 解析到链尾，别让元数据跟着中间那条一起消失。
+        let parent: HashMap<usize, usize> = pairs.iter().cloned().collect();
+        let root = |mut index: usize| -> usize {
+            for _ in 0..8 {
+                match parent.get(&index) {
+                    Some(next) => index = *next,
+                    None => return index,
+                }
+            }
+            index
+        };
+
+        let mut seen: Vec<usize> = Vec::new();
+        for (child, owner) in &pairs {
+            let owner = root(*owner);
+            if owner == *child || seen.contains(child) {
+                continue;
+            }
+            seen.push(*child);
+            let child_entry = state.mods[*child].clone();
+            let owner_entry = &mut state.mods[owner];
+            // 子集的文件已全部被超集覆盖，体积不能重复累加。
+            owner_entry.enabled |= child_entry.enabled;
+            owner_entry.has_archive |= child_entry.has_archive;
+            owner_entry.has_redmod |= child_entry.has_redmod;
+            owner_entry.has_cet |= child_entry.has_cet;
+            if owner_entry.nexus.is_none() {
+                owner_entry.nexus = child_entry.nexus.clone();
+            }
+            if owner_entry.version.is_none() {
+                owner_entry.version = child_entry.version.clone();
+            }
+            if owner_entry.cover_path.is_none() {
+                owner_entry.cover_path = child_entry.cover_path.clone();
+            }
+            if owner_entry.cover_cache_path.is_none() {
+                owner_entry.cover_cache_path = child_entry.cover_cache_path.clone();
+            }
+            if owner_entry.nexus_cover_url.is_none() {
+                owner_entry.nexus_cover_url = child_entry.nexus_cover_url.clone();
+            }
+            if owner_entry.translated_name.is_none() {
+                owner_entry.translated_name = child_entry.translated_name.clone();
+            }
+            owner_entry.updated_at = Some(now_iso());
+            redundant_names.push(child_entry.name.clone());
+            redundant_ids.push(child_entry.id.clone());
+        }
+        if !redundant_ids.is_empty() {
+            state.mods.retain(|item| !redundant_ids.contains(&item.id));
+        }
     }
 
     // 合并后重新拍一遍占有关系，用于判定「谁只剩元数据」。
@@ -948,6 +1202,8 @@ pub fn normalize_library(store: &Store) -> AppResult<LibraryNormalizeReport> {
         .map(|entry| entry.name.clone())
         .collect();
 
+    // 子集合并也计入「合并」，前端提示语不用区分两种成因。
+    merged_names.extend(redundant_names);
     let merged = merged_names.len();
     let invalidated = invalid_ids.len() + ghost_ids.len();
     if merged > 0 || invalidated > 0 {
