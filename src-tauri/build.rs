@@ -10,6 +10,11 @@ fn main() {
     // dist actually triggers recompilation of the binary.
     println!("cargo:rerun-if-changed=../dist");
 
+    // Windows 资源里内嵌的 ico 也要跟着源文件变化重建。build.rs 一旦输出过任何
+    // rerun-if-changed，Cargo 就只监视列出的路径；不写这条的话，改了图标而
+    // build script 没重跑，exe 会继续内嵌旧图标（2026-11-12 补 ico 微圆角时发现）。
+    println!("cargo:rerun-if-changed=icons/icon.ico");
+
     // Windows GNU builds load WebView2Loader.dll dynamically. MSVC builds link
     // it through the import library, so this is a no-op / harmless there too.
     println!("cargo:rerun-if-changed=WebView2Loader.dll");
