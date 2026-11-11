@@ -6,7 +6,13 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.7.1`（2026-11-11）。** 三处 `version` 一致、tag `v1.7.1`；`release/CyberDeck Launcher.exe` 已是 1.7.1 包（10,933,248 B（10.43 MB） / md5 `7ed1c21297813142f1f0883f27c590fc`），PE 版本资源 1.7.1（`FileVersion` / `ProductVersion` 均为 1.7.1）。便携版：1.7.1 的 ZIP 尚未打包（按规则需单独确认）。
+**本仓库的实际版本是 `1.8.0`（2026-11-11）。** 三处 `version` 一致、tag `v1.8.0`；`release/CyberDeck Launcher.exe` 已是 1.8.0 包（11,138,560 B（10.62 MB） / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版：1.8.0 的 ZIP 尚未打包（按规则需单独确认）。
+
+- **2026-11-11 23:39 发布 1.8.0（用户「确定，不用 dev 验收你直接收尾」= 全流程授权）**：
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-gate`（门禁刚跑过 39/39 全绿 → 升版 → 构建 260s → 同步一条链，总 261s）。
+  1.8.0 内容 = **整合包导出/导入**（轻量 `.cdlist` 几十 KB / 完整 `.cdpack` zip64 内嵌每 Mod 独立 zip）+ **Nexus 编号回填**（Vortex LevelDB → GraphQL 名字检索）+ 此前的主题重构（Cyber/Modern 两大类 + 预设色块 + 全量自定义调色）、多版本切换、右键删除、收编重叠判定根因修复。
+  设计决策与四个踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`；门禁 39/39、`cargo test --lib` 382 passed。
+  **本轮显式跳过 dev 验收**（用户要求直接收尾）。**便携 ZIP 未打；push 待代理可用**（此前 20 个提交 + 十余个 tag 待推）。
 
 - **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
