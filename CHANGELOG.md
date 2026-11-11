@@ -40,6 +40,7 @@
 | `1.5.0` | 2026-11-10 | 内置 Nexus 浏览器、UI/UX 一期、右键菜单按缩放换算坐标 |
 | `1.6.0` | 2026-11-10 | 全方面自检报告 P0/P1/P2 全量落地：暂存盘回写、浮层栈、配置包敏感项二次确认、归档预校验、全库原子写、接管覆盖率可见 |
 | `1.7.0` | 2026-11-10 | 加载顺序一键整理 + AI 建议 + 锁定；汉化包覆盖父级不再误报冲突；屏蔽 WebView2 原生右键菜单 |
+| `1.7.1` | 2026-11-11 | 弹窗在 UI 缩放下溢出视口（含冲突矩阵）；冷启动白屏 1.2s |
 
 ### 版本号规则
 
@@ -48,6 +49,31 @@
 | **MAJOR** | 持久化结构变更 / 数据迁移 / 删除命令 / 改 `identifier` | 老用户升级后需要做出动作 |
 | **MINOR** | 新增 Tauri 命令、新增模块、新增组件 | 功能只增不减，向前兼容 |
 | **PATCH** | 修 bug、调样式、改文案 | 用户无感或只感觉到「变好了」 |
+
+---
+
+## [1.7.1] - 2026-11-11（弹窗缩放溢出 · 冷启动白屏）
+
+> 待构建。构建后回填 md5 与大小。
+> 来源：用户「刚打开软件的时候会有一阵子白屏」+「冲突矩阵弹窗超出屏幕显示范围」（附截图）。
+
+### 修复
+
+- **弹窗在 UI 缩放下溢出视口**（`src/styles.css`）：`.modal` 的 `max-height` 写的是 `calc(100vh - 60px)`，而 `body` 上有 `zoom: var(--ui-scale)` —— 视口单位算出来的是**未缩放**的高度，再被 zoom 放大一次就超出窗口。实测 1150×720 下 110% 溢出 32px、125% 溢出 135px、150% 横向也溢出，弹窗底部按钮直接点不到（用户截图正是这个现象）。改为 `calc(100vh / var(--ui-scale) - 48px)`，宽度同理。同一个坑在 `.floating-stack`、`.command-panel`、`.task-center`、`.eula-dialog` 一并修掉 —— 它们都是浮层，缩放档一高就会顶出窗口。
+  - 走过一次错路：先试 `max-height: 100%`（想让 padding 交给 portal），结果是 `.modal` 是 `.modal-portal` 的 grid 子项，行高由内容撑开属不定值，百分比退化成 auto，反而完全不限制；宽度写 `100%` 同样无效，因为包含块是 portal 的 padding box，在 zoom 坐标系里解析不出「视口减留白」。最终统一用「除回缩放坐标系」的写法。
+- **冷启动白屏约 1.2 秒**（`src-tauri/src/lib.rs` + `index.html`）：窗口 `build()` 之后立刻 `show()`，而 WebView2 要等 890 kB 的 JS bundle 下载、解析、执行完才有第一帧，这中间用户看到的是系统白底（实测时间线：进程启动 → 1s 建窗 → 2s 前端 bootstrap 完成）。两处改动：
+  - 窗口层与 webview 层底色设为 `#07090c`（`.background_color(Color(7, 9, 12, 255))`），白屏变成同色深底；
+  - `index.html` 内联一份**不依赖脚本、不依赖外部 CSS** 的首帧骨架（logo 徽章 + `CYBERDECK LOADER` + 副标题），HTML 一解析就有画面，观感与 React 的 boot-screen 一致。React 挂载时 `createRoot().render()` 会清空 `#root` 既有子节点，骨架自动消失，不需要手动回收。浅色主题按 `data-mode` 给了对应配色，不会闪一帧深底。
+
+### 变更
+
+- **门禁新增 `modalOverflow`**（`scripts/check-ui-audit.mjs` + `gate.mjs`）：注入真实结构的 `.modal-portal > .modal`，在 80% / 100% / 110% / 125% / 150% 五档缩放下断言不溢出视口（上/下/右三个方向）。以后任何浮层上限改回裸 `vh` 都会直接判红。
+
+### 验证
+
+- `node scripts/gate.mjs`：38/38 全绿（含新增的 UI 量化审查项）
+- `cargo test --lib` 全绿、`tsc --noEmit` 0 错误、`vite build` 通过
+- 实测弹窗几何：五档缩放 `overflowBottom` / `overflowRight` 全为负值
 
 ---
 
