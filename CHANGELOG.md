@@ -72,7 +72,7 @@
 
 ### 产物
 
-- `release/CyberDeck Launcher.exe`：11,153,920 B（10.64 MB）/ md5 `190669e047a1ff15e5011edee1d3ed9d`，mtime 2026-11-12 23:18:27，PE 版本资源仍为 1.8.0（同版本重构建，三处版本号与 tag `v1.8.0` 未动），旧包备份为 `.prev.exe`。
+- `release/CyberDeck Launcher.exe`：11,161,600 B（10.64 MB）/ md5 `b5fab18af0af197522594cb99aa034aa`，mtime 2026-11-12 23:34:23，PE 版本资源仍为 1.8.0（同版本重构建，三处版本号与 tag `v1.8.0` 未动），旧包备份为 `.prev.exe`。
 - **便携 ZIP 与 GitHub Release 未重打**：`CyberDeck.Launcher.1.8.0.zip` 仍是 00:51 那版（不含本次续传与进度修复），需要对外分发时单独确认后再打包上传。
 
 ### 新增：下载链路选择与分片并发

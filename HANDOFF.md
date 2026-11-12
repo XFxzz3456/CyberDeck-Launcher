@@ -8,6 +8,10 @@
 
 **本仓库的实际版本是 `1.8.0`（2026-11-12 补发：同版本重构建，用户明确「这个改动也算是1.8版本的」）。** 三处 `version` 一致、tag `v1.8.0` 未动；`release/CyberDeck Launcher.exe` 已是补发包（11,138,560 B / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源仍为 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B / md5 `679a342d82c00f8668328019c5dd4b4d`；GitHub Release [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0) 的资产 `CyberDeck.Launcher.1.8.0.zip` 已删旧传新，远端回读字节一致。**同版本号不会有更新提示，已下载首发版的用户需手动重下。**
 
+- **2026-11-12 23:34 同版本重构建：Nexus 多镜像择优**（用户「Nexus 多镜像择优没做这条做一下吧」）：
+  `download_link.json` 返回数组，过去只取第一条。现在并发探测全部候选（`Range: bytes=0-0` / 6s 超时）取首字节延迟最低，全失败回退第一条，延迟相等保序；探测结果按 host 进程内缓存。
+  新 exe 11,161,600 B / md5 `b5fab18af0af197522594cb99aa034aa`，PE 仍 1.8.0；`cargo test --lib` 395 passed。
+
 - **2026-11-12 23:18 同版本重构建：下载链路 + 分片并发 + 更新进度进下载中心**（用户「探索有没有别的下载路径可以加快速度…」）：
   先做实验（直连 8 MB：单连接 107 KB/s、4 并发 451 KB/s）证明瓶颈是**按连接限速**，且当时的代理节点比直连慢十余倍。
   新增 `multipart.rs`（Range 分片 + 段级续传）、`nexus::set_http_route`（auto/direct/proxy 三态进程级配置，队列与更新共用）、`DownloadQueueSettings.route|segments`、设置页链路与分片选择、`DownloadsView` 更新进度卡片。
