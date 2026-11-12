@@ -4,66 +4,90 @@
 
 **v1.8.2 · 最新正式版（STABLE）**
 
+<p>
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-1f6feb">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-3da639">
+  <img alt="stack" src="https://img.shields.io/badge/Tauri%202%20%C2%B7%20React%2019%20%C2%B7%20Rust-24c8db">
+  <img alt="tests" src="https://img.shields.io/badge/cargo%20test-395%20passed-3da639">
+  <a href="https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-%E4%BE%BF%E6%90%BA%E7%89%88%20ZIP-fcee0a?labelColor=111111"></a>
+</p>
+
 > 版本号的唯一事实源是 `package.json` 的三处 `version`（`node scripts/check-version-sync.mjs` 校验）；本行、`docs/SESSION-START.md` §3、`HANDOFF.md` §0 的「当前版本」由同一脚本一并校验。历史版本见 [CHANGELOG](CHANGELOG.md)。
 
-一个只服务《赛博朋克 2077》的轻量 Mod 启动器。**Tauri 2 + React 19 + TypeScript + Rust**。
+一个只服务《赛博朋克 2077》的轻量 Mod 启动器。**Tauri 2 + React 19 + TypeScript + Rust**，免安装、单 exe（约 10.6 MB）。
 
-它不试图成为第二个 Vortex。它只把四件事做好：**导入、部署、排序、诊断**。
+它不试图成为第二个 Vortex。它只把四件事做好：**导入、部署、排序、诊断**；外加一条别人不太管的事——**下载要看得见、断了能接**。
+
+**[下载最新便携版](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest)** · 解压双击即用，不需要安装器、不写注册表。
 
 ![模组库](docs/screenshots/library.png)
 
-## 现在能做什么
+## 1.8.2 有什么变化
 
-| 能力 | 实现 |
-|---|---|
-| 模组库 | 卡片网格、分类、搜索、排序，虚拟滚动支持 500+ 条 |
-| 安全安装 | ZIP / 7z 内置解压；RAR 调用本机 7-Zip/WinRAR；先解压到暂存区，解析 `info.json`，识别 archive / REDmod / CET / redscript / 完整游戏目录 |
-| 路径嗅探 | 自动剥离 `Wrapper/Inner/...` 多层包装；同一层出现多个模组根目录时返回 `LAYOUT_AMBIGUOUS`，不静默漏装 |
-| 导入确认 | 导入后逐项显示 `info.json` / 文件名回退来源；没有 `info.json` 时明确提示，并可直接选择分类 |
-| 部署 | 优先硬链接；跨盘自动尝试符号链接，最后回退复制；失败整批回滚 |
-| 卸载 | 严格按 `deployed_files` 清单删除；硬链接删除前校验文件 ID，目标被替换就拒绝删 |
-| 冲突中心 | 右上角冲突计数可点开；同时列出「已启用冲突」和「暂存模组启用后会冲突」的目标，可禁用一方或跳转加载顺序 |
-| AI 冲突建议 | 冲突中心可选让已配置的 AI 服务只分析当前冲突，给出保留/禁用建议；仍需逐次同意，只发送脱敏摘要 |
-| 加载顺序 | Archive 指针拖拽排序（带跟随浮层）；可选写入游戏原生 `archive/pc/mod/modlist.txt`；REDmod 按文件夹 ASCII 顺序只读展示；路径级冲突高亮并说明“排序不能解决” |
-| Mod 设置 | 读取 CET `ModSettings/user.ini`，按 true/false / 数字 / 文本渲染控件；写前备份 `user.ini.bak`，只改目标行，保留注释和顺序；可一键恢复 |
-| 日志查看 | 扫描 `r6/logs`、`red4ext/logs`、CET 日志；末尾 100/300/500 行；级别过滤、错误高亮；「提取错误」只保留每条错误前后 5 行，并可选择性交给 AI |
-| 卡片状态机 | DEPLOYED / STAGED / CONFLICT 角标、状态色边、悬停操作区；平时只显示封面、名称与元数据 |
-| 外观与主题 | NCPD / Netrunner / Arasaka / Militech / Modern 五套风格，每套有独立的按钮轮廓、标题装饰、面板走线与封面配色（Modern 支持明暗切换）；自定义强调色；自定义字体；90% / 100% / 110% 界面缩放；可收起侧边栏 |
-| 动效细节 | Inter 正文 + Rajdhani 标题 + JetBrains Mono 等宽；卡片骨架屏、筛选淡入、冲突计数故障闪烁、低透明度扫描线 |
-| 硬件外壳 | 面板 / 卡片 / 主题选择卡使用 CSS 切角；选中主题带电路走线、强调色呼吸与外发光；背景叠加低透明度工业噪点与双层网格 |
-| 警告带 | 未链接游戏目录时显示红黑斜纹工业警告带与纯黑文字；设置页的未链接目录改为虚线接收面板，悬停有扫描反馈 |
-| 任务中心 | 多文件导入进入右下角队列；逐个显示解压/落盘状态、进度和失败记录；失败可重试、记录可手动清理 |
-| 命令面板 | `Ctrl+K` / `Ctrl+Shift+P`；模糊搜索模组，或执行导入、启动、冲突、日志、排序等命令 |
-| 前置检查 | 根据 CET / redscript / `.xl` 推断需要的前置框架；缺失时卡片与详情抽屉提示，并提供 Nexus 搜索入口 |
-| 防误触 | 「恢复原状」「清除游戏目录」使用按住 1.5 秒确认，单次点击不会执行 |
-| 启动 | Steam `-applaunch 1091500` 或直接运行 exe；有 REDmod 时自动附加 `-modded --launcher-skip` |
-| 发现 | 通过官方 Nexus API 浏览趋势/最新/更新；查看文件列表；Premium 可直接下载并导入，免费账号打开下载页 |
-| 诊断 | RED4ext / CET / redscript / ArchiveXL / TweakXL / Codeware / Mod Settings，游戏版本、写权限、日志入口、备份状态 |
-| 智能诊断 | 可选 AI 服务（任何兼容 OpenAI 协议的端点，预设含 OpenAI / DeepSeek / Moonshot / 通义千问 / 本地 Ollama）：只发送脱敏诊断摘要，逐次同意，Key 用 Windows DPAPI 保存 |
-| 备份回滚 | 首次部署前备份 `modlist.txt` 与 `r6/config`；一键撤除全部部署并还原配置 |
-| 整合包导入 | 一个压缩包里含多个 Mod 时自动拆开：识别每个模组根目录、逐个建立暂存区，并按包内 `modlist.txt` 预排加载顺序；拆不开的保留为单个模组并给出警告 |
-| 播放集（Profile） | 把「启用哪些模组 + 加载顺序」存成一套预设，顶栏下拉一键切换；切换时先撤销当前部署再按目标集合重装，游戏文件不删除；支持新建 / 重命名 / 复制 / 删除，内置 Default 不可删 |
-| 卡片右键菜单 | 右键任意模组卡片弹出快捷菜单：部署 / 取消部署、强制重新部署、打开暂存区文件夹、在 Nexus 上查看、复制 Mod ID；边缘自动内翻，Esc 或点空白关闭 |
-| Mod 更新检查 | 「检查更新」命中后出现「全部更新」：下载新版前先把旧版本打成 zip 备份，更新后可随时回滚；版本比较按段数值（`1.0` = `1.0.0`、`1.10` > `1.9`） |
-| 启动器自更新 | 设置 → 关于里检查新版本，从 GitHub Releases 的 `latest.json` 拉取并校验 minisign 签名，下载后重启生效（NSIS 安装版） |
-| 环境自愈 | 启动 / 刷新时自动比对暂存区与部署文件：能救回的先救回、确认丢失的孤儿链接自动清理、模组登记同步修正；游戏目录整体不可用时两道保护闸拦住不误删 |
-| 展示名清洗 | 从文件名导入的 Mod 自动得到可读展示名（去噪音前缀、`_` 转空格、智能首字母大写）；原始文件名保留在详情页 |
-| 存档管理 | 一键快照存档目录，应用前强制确认并自动备份；扫描存档并给出上次扫描时间 |
-| 通知中心 | 顶栏铃铛聚合活动流 + 未读角标；通知分类开关（冲突强制开启）；停留时长可配 3/5/10 秒、1–60 秒自定义或不自动隐藏；警告与错误强制手动关闭 |
-| 自定义背景图 | 本地图片作全局背景；大图自动压缩（长边 1920 / JPEG q80）；头像式拖拽裁切构图 + 滚轮缩放；焦点平移、暗化遮罩、模糊滑块（模糊跑在独立合成层，不糊 UI） |
-| 批量操作 | 模组库多选批量部署 / 撤销 / 启停；modlist 导出与批量选择工具条 |
-| AI 能力 | 冲突建议 / 智能诊断 / 生成 AI 汉化覆盖层 / 脚本冲突 AI 补丁；任何 OpenAI 兼容端点（OpenAI / DeepSeek / Moonshot / 通义千问 / 本地 Ollama），可在线拉取模型列表，Key 用 Windows DPAPI 保存 |
-| 列表视图 | 模组库卡片/列表双视图；列表支持按分类折叠、状态筛选（已启用 / 已禁用 / 缺前置）、版本与大小列对齐 |
-| 游戏更新熔断 | 记录上次部署时的游戏版本，检测到版本变化后锁定部署并在顶栏显示红黑警告带；升级完 RED4ext / CET 等前置后点「解除锁定」恢复。导入与查看不受影响 |
-| 环境体检与自愈 | 记录每个已部署文件的大小与修改时间，异步核对目标文件是否还在、是否被替换，给出 healthy / warning / critical 与缺失清单；「一键尝试修复」从暂存区重建链接，暂存区也丢失则标记为需要重新导入 |
-| 多框架配置解析 | 按模组识别它真正拥有的配置：Mod Settings 的 `user.ini`（按 Section 模糊匹配）与 Native Interactions 的 JSON 绑定到详情抽屉；RED4ext 的 TOML 配置、CET `config.json`、AudioXL 归入全局设置只读展示。redscript / ArchiveXL / TweakXL / Codeware / REDmod 属于本体，不生成设置表单 |
-| 多平台嗅探 | 依次查 Steam（注册表 + `libraryfolders.vdf`）、GOG 注册表、Epic `LauncherInstalled.dat`，可在设置页限定优先平台；启动按平台走 Steam URI 或直接运行 exe 并附 `-modded --launcher-skip` |
-| Nexus 封面 | 从 Nexus 下载的模组自动带上官方封面图，加载失败回退程序生成封面；设置页「补全封面」可为已有模组批量回查封面地址（不改变已启用的模组） |
-| Mod 名翻译 | 可选 AI 把英文模组名译成中文（原名保留在副行，搜索中英皆可）；框架与底层库自动跳过，不消耗额度 |
-| 渲染容错 | 单张卡片数据异常时只降级该卡片（暗红边框 + `ERROR: DATA CORRUPTED` 并在控制台打印 mod_id），不会整页白屏 |
-| 存档管理 | 每次部署前静默记一份环境快照（当时启用的模组 + 前置框架版本）；读档出问题时选中快照「应用此环境」，把部署状态回溯到那一刻。扫描本地存档目录，能读日志里读档失败报错时高亮「该存档可能依赖已禁用的 Mod」。**全程只读**：绝不读写 `.dat` 存档二进制，结构性修复交给 CyberCAT / Night City Save Editor 等外部工具，界面只提供入口与路径 |
+- **下载更快**：链路三选一（跟随系统 / 直连 / 自定义代理）——同一网络下两者实测能差十余倍；大文件按 `Range` 分片并发 + 段级续传；Nexus 多镜像按首字节延迟择优。
+- **进度不再是黑盒**：批量更新逐项上报，按钮显示 `4/19 · 37%`，下载中心单开一张卡片显示当前模组与已下载/总大小。
+- **设置更好找**：8 个分区按语义重划（下载独立成页），新增**设置搜索**与**每页恢复默认**。
+- **一个动作一个入口**：整合包收到顶部常驻按钮；存档偏好搬回存档管理页（配置就在用它的人眼前）。
 
-### 界面
+完整变更见 [CHANGELOG](CHANGELOG.md)。
+
+## 能力一览
+
+按使用场景分五组，避免一半时间在长长一张表里找东西。
+
+### 库与安装
+
+- **模组库**：卡片网格 / 列表双视图，分类折叠、状态筛选、搜索排序；虚拟滚动，500+ 条不掉帧。
+- **安全安装**：ZIP / 7z 内置解压，RAR 调本机 7-Zip 或 WinRAR；先解压到暂存区，再识别 archive / REDmod / CET / redscript / 完整游戏目录。
+- **布局嗅探**：自动剥掉 `Wrapper/Inner/...` 多层包装；同一层出现多个模组根目录时返回 `LAYOUT_AMBIGUOUS`，不静默漏装。
+- **部署与卸载**：优先硬链接，跨盘回退符号链接、最后复制；失败整批回滚。卸载严格按 `deployed_files` 清单删除，目标被替换就拒绝删。
+- **收编既有安装**：扫描游戏目录与 Vortex 仓库，把已经装好的模组登记进来，顺手补 Nexus 编号（先读本机 Vortex 数据库，再按名字检索）。
+- **同一 Mod 多版本**：合并成一张卡，随时切换生效版本（先撤下其它版本再部署目标版本）。
+- **批量操作**：多选批量部署 / 撤销 / 启停，modlist 导出。
+- **展示名清洗**：从文件名导入的模组自动得到可读名字，原始文件名保留在详情页。
+
+### 冲突、顺序与兼容
+
+- **冲突中心**：同时列出「已启用冲突」与「暂存模组启用后会冲突」的目标，可禁用一方或跳转加载顺序。
+- **加载顺序**：Archive 指针拖拽排序（带跟随浮层）；路径级冲突高亮并说明「排序不能解决」；可写入游戏原生 `archive/pc/mod/modlist.txt`；REDmod 按文件夹 ASCII 顺序只读展示；支持一键整理 + AI 建议 + 锁定。
+- **前置检查**：根据 CET / redscript / `.xl` 推断需要的前置框架，缺失时在卡片与详情抽屉提示，并给 Nexus 搜索入口。
+- **多框架配置**：Mod Settings 的 `user.ini` 可写（写前 `.bak`、只改目标行、保留注释顺序）；RED4ext TOML、CET `config.json`、AudioXL 只读展示。redscript / ArchiveXL / TweakXL / Codeware / REDmod 属于本体，不生成表单。
+- **游戏更新熔断**：记录部署时的游戏版本，检测到变化就锁定部署并显示警告带；升级完前置后一键解锁。
+
+### 配置、日志与诊断
+
+- **诊断**：RED4ext / CET / redscript / ArchiveXL / TweakXL / Codeware / Mod Settings 的版本与写权限、游戏版本、日志入口、备份状态。
+- **环境体检与自愈**：记录每个已部署文件的大小与修改时间，异步核对是否被替换，给出 healthy / warning / critical 与缺失清单；可一键从暂存区重建链接。
+- **日志查看**：扫描 `r6/logs`、`red4ext/logs`、CET 日志；末尾 100 / 300 / 500 行、级别过滤、错误高亮；「提取错误」只保留每条错误前后 5 行。
+- **AI 能力**：冲突建议、智能诊断、AI 汉化覆盖层、脚本冲突补丁。任意 OpenAI 兼容端点（OpenAI / DeepSeek / Moonshot / 通义千问 / 本地 Ollama），逐次同意、只发脱敏摘要，Key 用 Windows DPAPI 保存。
+- **备份回滚**：首次部署前备份 `modlist.txt` 与 `r6/config`；一键撤除全部部署并还原配置。
+- **存档管理**：每次部署前静默记一份环境快照（当时的启用集 + 框架版本），出问题时「应用此环境」回溯；只读扫描存档，**绝不读写 `.dat`**，结构性修复交给 CyberCAT 等外部工具。自动快照、快照上限、编辑器路径就在这一页。
+
+### 网络、下载与整合包
+
+- **发现**：通过官方 Nexus API 浏览趋势 / 最新 / 更新，查看文件列表；Premium 可直接下载并导入，免费账号打开下载页。
+- **下载链路**：跟随系统代理 / 直连 / 自定义代理三选一。「检查更新」与「更新下载」共用同一份配置，改完立即生效。
+- **分片并发与续传**：大文件按 `Range` 切段并发（1 / 2 / 4 / 6 / 8，默认 4），**段级续传**；单文件下载支持断点续传（206 续写 / 200 重下 / 416 判定已下完）；小于 4 MB 或服务端不支持 Range 时自动回退单连接。
+- **多镜像择优**：`download_link.json` 返回多条时并发探测首字节延迟取最快，全失败回退第一条，结果按 host 缓存。
+- **更新检查**：「全部更新」逐项上报进度；下载前把旧版本打成 zip 备份，更新后可回滚；版本比较按段数值（`1.10` > `1.9`）。
+- **整合包导出**：轻量 `.cdlist`（几十 KB，只带 Nexus 编号 / 加载顺序 / 启用状态 / 配置值）与完整 `.cdpack`（zip64，内含每个 Mod 独立 zip）。
+- **整合包导入**：`.cdlist` / `.cdpack` 拖进窗口即预览（已装 / 缺失 / 版本不符 / 无编号）；Premium 一键入队，免费号逐个打开页面、由 nxm 接管入队；进度从实时库现算，关掉软件再打开继续。
+- **Nexus Collections**：官方 `collection.json` 也能读，逐条比对本地状态后按清单部署。
+- **NXM 协议接管**：浏览器点「Mod manager download」直接入队，不用手工找文件。
+
+### 界面与体验
+
+- **主题**：四套赛博预设（NCPD 黄黑 / Netrunner 冰蓝 / Arasaka 暗红 / Militech 军绿）+ Modern。赛博风有切角、扫描线、选中走线与辉光；Modern 是纯色圆角，且唯一支持明暗切换。
+- **全量调色**：背景色 / 卡片底色 / 主文字 / 强调色都能改，实时预览并持久化；对比度低于 3:1 时会提示。
+- **排版与缩放**：Inter 正文 + Rajdhani 标题 + JetBrains Mono 等宽，可换系统字体；90% / 100% / 110% / 125% 与自定义缩放。
+- **设置**：8 个分区（个性化 / 通知 / 游戏与路径 / 下载 / AI 配置 / 工具组件 / 安全与维护 / 帮助与关于），支持**搜索**与**每页恢复默认**。
+- **通知中心**：顶栏铃铛聚合活动流 + 未读角标；分类开关（冲突强制开启）；停留时长可配，警告与错误强制手动关闭。
+- **命令面板**：`Ctrl+K` 模糊搜模组，或执行导入、启动、冲突、日志、排序等命令。
+- **卡片右键菜单**：部署 / 撤销、强制重新部署、打开暂存区、在 Nexus 上查看、复制 Mod ID、**删除模组**。
+- **防误触**：危险操作按住 1.5 秒确认，单次点击不会执行。
+- **渲染容错**：单张卡片数据异常只降级该卡片，不会整页白屏。
+
+## 界面截图
 
 | 外观与主题 | Netrunner 冰蓝 |
 |---|---|
@@ -109,10 +133,10 @@
 |---|
 | ![详情](docs/screenshots/detail.png) |
 
-### 五套主题
+## 主题预设
 
-> 旧版是六套，`mono` 在 r20 被移除（老配置自动迁到 `modern`），`daylight` 更早下线。
-> 现在只有下面五套，其中 **只有 Modern 支持明暗切换**，其余强制深色。
+> 现在是「四套赛博预设 + 一套现代风」。历史上出现过的 `mono` / `daylight` 已下线，老配置会自动迁到 `modern`（详见 CHANGELOG 中 0.8.0 段）。
+> **只有 Modern 支持明暗切换**，赛博预设强制深色。
 
 | NCPD 经典 | NETRUNNER 冰蓝 |
 |---|---|
@@ -126,7 +150,7 @@
 |---|---|
 | ![Modern 深色](docs/screenshots/modern-dark.png) | ![Modern 浅色](docs/screenshots/modern-light.png) |
 
-### 播放集与容错
+## 播放集与容错
 
 | 播放集切换 | 播放集管理 |
 |---|---|
@@ -144,23 +168,34 @@
 
 ### 主题与缩放
 
-「设置 → 个性化」可以切换 NCPD、Netrunner、Arasaka、Militech、Modern 五套风格，也可以直接选一个强调色；标题使用 Rajdhani，正文使用 Inter，日志与数据使用 JetBrains Mono（字体可换成系统字体，见「排版与缩放」）。五套主题不只是换色：按钮切角、标题装饰、导航标记、面板走线、封面配色各自一套。**Modern 是唯一能在明暗之间切换的风格**，其余四套强制深色；旧版的 Mono 与 Daylight 已下线，老配置会自动迁移到 Modern。主题卡片上直接显示该主题的模组库缩略图。界面缩放支持 90% / 100% / 110%，侧边栏可收成图标栏。主题、强调色、缩放和侧栏状态保存在本机 `localStorage`，启动时在首帧前恢复，不会闪回默认黄黑。
+顶部先选**风格大类**：`Cyber`（赛博风）或 `Modern`（现代风）。
 
-### 外观
+- 选 Cyber 时下方出现四组预设色块，点一下就套用整组配色：**NCPD 经典黄黑 / ARASAKA 荒坂暗红 / NETRUNNER 冰蓝黑客 / MILITECH 军用绿**。
+- Cyber 保留切角、扫描线、选中走线与辉光；Modern 是纯色圆角，可在浅色 / 深色 / 跟随系统之间切换。
+- 再往下是**全量调色**：背景色、卡片底色、主文字色、强调色都能单独改，实时预览并保存到本机；对比度低于 3:1 时会提示「配色对比度过低」。
+- 字体：Rajdhani 标题 + Inter 正文 + JetBrains Mono 等宽，可换系统字体。
+- 界面缩放 90% / 100% / 110% / 125% 与自定义；侧边栏可收成图标栏。
+- 主题、配色、缩放、侧栏状态都存在本机 `localStorage`，启动时在首帧前恢复，不会闪回默认黄黑。
 
-- **视觉风格**：NCPD（经典黄黑）/ NETRUNNER（冰蓝黑客）/ ARASAKA（荒坂暗红）/ MILITECH（军用科技）/ MONO（纯黑白）/ **MODERN（现代扁平，支持浅色/深色）**。
-- **明暗模式**：MONO 与 MODERN 可切 浅色 / 深色 / 跟随系统；其余赛博风格固定深色。
-- 设置页顶部 Tabs 分区：外观与主题 / 游戏与路径 / AI 配置 / 工具组件 / 安全与维护 / 关于。
+设置页共 8 个分区：**个性化 / 通知 / 游戏与路径 / 下载 / AI 配置 / 工具组件 / 安全与维护 / 帮助与关于**；顶部有搜索框，输入「限速」「分片」「备份」这类关键词可直接跳到对应分区，每页还有「恢复本页默认」。
 
-## 整合包（Nexus Collections）
+## 整合包
 
-支持 Nexus 官方 **collection.json** 清单：导入后逐条比对本地状态（已装 / 缺失 / 版本不符），
-缺失项给「去 N 网获取」入口，下载完拖回启动器即可一键按清单顺序部署。
-（Nexus 不向非会员签发直链下载，因此不做自动下载器。）
+三种格式都认，入口在窗口顶部「整合包」按钮（`.cdlist` / `.cdpack` 也可以直接拖进窗口）：
+
+| 格式 | 体积 | 内容 | 适用 |
+| --- | --- | --- | --- |
+| `.cdlist` | 几十 KB | Nexus 编号、加载顺序、启用状态、每个 Mod 的配置值 | 让对方自己从 N 网下本体 |
+| `.cdpack` | ≈ 暂存区（GB 级） | 上面这些 + 每个 Mod 一个独立 zip | 想完整还原同一套环境 |
+| `collection.json` | 几十 KB | Nexus 官方清单 | 接收别人发布的 Collections |
+
+导入时先出预览：**已装 / 缺失 / 版本不符 / 无编号**，再决定下载与安装。下载分两条合规路径：Premium 一键把缺失项压进队列；免费账号逐个打开页面，点「Mod manager download」后由 nxm 接管自动入队。进度从实时库现算，关掉软件再打开继续补齐。
+
+> Nexus 不向非会员签发直链，因此免费账号必须走「打开页面 → nxm 接管」，这是站点规则，不是我们的取舍。
 
 ## 直接使用
 
-两种产物：免安装的 `cyberdeck-launcher.exe`（约 6.3 MB，旁边需要 `WebView2Loader.dll`），以及 NSIS 安装包 `CyberDeck Launcher_0.7.0_x64-setup.exe`（约 2.8 MB，按当前用户安装）。
+单一产物：免安装的 **`CyberDeck Launcher.exe`（1.8.2 起约 10.6 MB）**，旁边需要 `WebView2Loader.dll`（本仓库 `release` 目录与每个便携 ZIP 里都已备好）。当前不发布 NSIS 安装包。
 
 1. 打开 `release` 文件夹。
 2. 双击 `CyberDeck Launcher.exe`。**`WebView2Loader.dll` 必须和 exe 放在同一目录。**
@@ -169,7 +204,7 @@
 5. 在模组卡片上启用。首次部署会自动备份；启用后点「开始游戏」。
 
 > 运行环境：Windows 10/11 x64，WebView2 Runtime。发行版没有内置游戏，也不提供下载器。
-> 数据默认在 `%APPDATA%\com.arol.cyberdeck`。如果该目录不可写，会自动回退到 exe 同级的 `cyberdeck-data`（便携模式）。
+> 数据目录优先级：exe 同级已有 `cyberdeck-data` 就用它（便携模式，一旦建立就固定）；否则用 `%APPDATA%\com.arol.cyberdeck`（不可写时再回退到 exe 同级）。
 > .rar 需要本机安装 7-Zip 或 WinRAR；.zip 与 .7z 不需要额外工具。
 > Nexus 直连下载需要 Premium；免费账号仍可浏览和打开下载页。AI 诊断需要自备任一兼容 OpenAI 协议服务的 API Key。
 > exe 未做代码签名，Windows SmartScreen 可能提示；这是本地构建，可自行签名后再分发。
@@ -203,7 +238,7 @@ cd core-tests
 cargo test
 ```
 
-当前 **42 项通过**（`cargo test` 全绿）：
+当前 **`core-tests` 289 项、主 crate 395 项全部通过**（`cargo test` 全绿，2 项标记 `#[ignore]` 需真机环境）：
 
 - Archive 模组部署 / 禁用 / 卸载往返，暂存源文件保留
 - REDmod 映射到 `mods/<folder>/`，并记录 `info.json` 元数据来源
@@ -242,20 +277,30 @@ node scripts/ui-theme-test.mjs
 node scripts/ui-hardware-test.mjs
 ```
 
-测试覆盖启用/禁用、搜索、7z 导入、加载顺序指针拖拽、Nexus 列表与文件选择、免费账号下载门禁、AI 同意门禁与结果渲染、Mod 设置编辑/恢复、日志查看器、设置与 1120×720 最小窗口。`ui-polish-test.mjs` 额外覆盖悬停操作、命令面板、多文件任务队列、日志级别过滤与关键错误提取、按住确认的取消/执行、缺失前置抽屉和空状态。`ui-theme-test.mjs` 覆盖五套主题、自定义强调色、90%/100%/110% 缩放、侧栏收起、首帧前恢复以及 1120/90% 下的无横向溢出。`ui-hardware-test.mjs` 额外断言面板/卡片切角、主题卡选中走线、全局噪点层、未链接警告带的斜纹与纯黑文字、虚线接收面板，以及 1120 宽度下警告带和按钮不溢出。
+测试覆盖启用/禁用、搜索、7z 导入、加载顺序指针拖拽、Nexus 列表与文件选择、免费账号下载门禁、AI 同意门禁与结果渲染、Mod 设置编辑/恢复、日志查看器、设置与 1120×720 最小窗口。`ui-polish-test.mjs` 额外覆盖悬停操作、命令面板、多文件任务队列、日志级别过滤与关键错误提取、按住确认的取消/执行、缺失前置抽屉和空状态。`ui-theme-test.mjs` 覆盖 Cyber/Modern 大类切换、四个赛博预设、全量调色（背景/卡片/文字）与低对比度告警、90%/100%/110% 缩放、侧栏收起、首帧前恢复以及 1120/90% 下的无横向溢出。`ui-hardware-test.mjs` 额外断言面板/卡片切角、主题卡选中走线、全局噪点层、未链接警告带的斜纹与纯黑文字、虚线接收面板，以及 1120 宽度下警告带和按钮不溢出。
 
 无人值守改造后新增的验收脚本（每项都能单独重跑）：
 
-```powershell node scripts/check-scroll.mjs          # 虚拟滚动 + 卡片错误边界 node scripts/check-update-lock.mjs     # 游戏更新熔断横幅与解除 node scripts/check-platform.mjs        # 平台选择器 node scripts/check-context-menu.mjs    # 卡片右键菜单 node scripts/check-profiles.mjs        # 播放集切换与设置页面板 node scripts/check-env-panel.mjs       # 环境体检与修复 ```
+```text
+node scripts/check-scroll.mjs          # 虚拟滚动 + 卡片错误边界
+node scripts/check-update-lock.mjs     # 游戏更新熔断横幅与解除
+node scripts/check-platform.mjs        # 平台选择器
+node scripts/check-context-menu.mjs    # 卡片右键菜单
+node scripts/check-profiles.mjs        # 播放集切换与设置页面板
+node scripts/check-env-panel.mjs       # 环境体检与修复
+node scripts/check-modpack.mjs         # 整合包导出 / 导入
+node scripts/check-saves.mjs           # 存档快照与存档偏好
+npm run gate                           # 全量门禁（单元测试 + 全部 UI 脚本）
+```
 
 ## 关键设计
 
 ### 1. 安装与部署分离
 
-```
-ZIP / 7z / RAR ──解压──> %APPDATA%\...\staging\<id>\payload ──硬链接──> 游戏目录
-                                      │
-                                      └── 禁用只撤链接，暂存保留；卸载才删除暂存
+```text
+ZIP / 7z / RAR ──解压──> <数据目录>\staging\<id>\payload ──硬链接──> 游戏目录
+                                     │
+                                     └── 禁用只撤链接，暂存保留；卸载才删除暂存
 ```
 
 - **禁用 ≠ 卸载**。禁用只移除游戏目录里的链接；重新启用不需要重新解压。
@@ -404,7 +449,7 @@ API Key 使用 Windows DPAPI（当前用户范围）加密后写入 `secrets/nex
 
 ## 目录结构
 
-```
+```text
 cyberdeck-launcher/
 ├─ src/                       React UI
 │  ├─ components/             卡片、虚拟网格、任务中心、命令面板、危险确认、加载顺序、Mod 设置、诊断、设置、抽屉、导入
@@ -473,9 +518,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 -
 
 ## 下载安装
 
-1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases) 下载最新的 `CyberDeck Launcher` 便携版 ZIP（免安装，解压即用）。
-2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`。首次启动会引导你定位游戏目录。
-3. 数据保存在 exe 同级的 `cyberdeck-data`（或 `%APPDATA%\com.arol.cyberdeck`），卸载启动器删掉这个目录即可，不动游戏文件。
+1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.2**，资产名 `CyberDeck.Launcher.1.8.2.zip`。
+2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`（`WebView2Loader.dll` 必须和它放在一起）。首次启动会引导你定位游戏目录。
+3. 数据保存在 exe 同级的 `cyberdeck-data`（便携模式，一旦存在就固定用它）；没有该目录时用 `%APPDATA%\com.arol.cyberdeck`。删掉这个目录即等于清空启动器数据，不动游戏文件。
+
+**校验**（1.8.2，可核对下载是否完整）：
+
+| 产物 | 大小 | md5 |
+| --- | --- | --- |
+| `CyberDeck Launcher.exe` | 11,165,696 B（10.65 MB） | `11b32961281214f13ca4a7ccd0ee49bd` |
+| `CyberDeck.Launcher.1.8.2.zip` | 5,728,620 B（5.46 MiB） | `8d028e1b8a6bcf4141f59988c5123685` |
 
 从旧版（NightCity Loader / 0.x）升级：直接替换 exe，数据目录会自动识别与迁移。
 
