@@ -20,9 +20,11 @@ import {
   Save,
   ScrollText,
   ShieldCheck,
+  Wrench,
   Sparkles,
   Trash2,
   Upload,
+  Search,
   X,
 } from "lucide-react";
 import type { DownloadQueueSettings, DriveSuggestion, LaunchCheck, NxmStatus, Settings, Snapshot } from "../types";
@@ -55,11 +57,12 @@ import type {
 import {
   clampNotificationSeconds,
   DEFAULT_NOTIFICATION_DURATION,
+  DEFAULT_NOTIFICATION_PREFS,
   NOTIFICATION_DURATION_MAX,
   NOTIFICATION_DURATION_MIN,
   NOTIFICATION_DURATION_PRESETS,
 } from "../lib/notify";
-import { t } from "../i18n";
+import { t, type MessageKey } from "../i18n";
 
 /**
  * 2D 通知停留时长分段控件：3 / 5 / 10 / 自定义（1–60 整数秒）/ 不自动隐藏。
@@ -68,6 +71,50 @@ import { t } from "../i18n";
  * 自定义档同样「原地变输入框」：非数字字符直接拦在 onChange，越界在提交时
  * 自动修正并闪一条提示，不弹窗不打断。
  */
+/**
+ * 设置搜索索引。
+ *
+ * 8 个分区、几十个控件，想找「限速」得先猜在哪个分区下面。这里维护一张
+ * 「分区 → 别名」表：输入任意一个别名直接跳到对应分区，比让人逐个标签页翻要快。
+ * 别名是搜索用词、不是界面文案，因此不进口径词表。
+ */
+const SETTINGS_SEARCH_INDEX: { tab: SettingsTabId; terms: string[] }[] = [
+  // i18n-ignore-start
+  {
+    tab: "appearance",
+    terms: ["主题", "配色", "强调色", "背景色", "卡片底色", "文字颜色", "字体", "缩放", "背景图", "动效", "侧栏"],
+  },
+  {
+    tab: "notifications",
+    terms: ["通知", "提示时长", "声音", "类别", "测试通知"],
+  },
+  {
+    tab: "game",
+    terms: ["游戏目录", "游戏路径", "启动方式", "启动参数", "播放集", "预设"],
+  },
+  {
+    tab: "downloads",
+    terms: ["下载目录", "并发", "同时下载数", "限速", "速度限制", "链路", "直连", "代理", "分片", "暂存区", "磁盘空间"],
+  },
+  {
+    tab: "ai",
+    terms: ["AI", "模型", "密钥", "服务商", "提示词", "翻译", "诊断"],
+  },
+  {
+    tab: "tools",
+    terms: ["7-Zip", "WolvenKit", "封面缓存", "Vortex", "接管", "重建库", "外部工具", "工具路径"],
+  },
+  {
+    tab: "security",
+    terms: ["安全", "安全模式", "自动备份", "卸载确认", "modlist", "写清单", "备份", "回滚"],
+  },
+  {
+    tab: "help",
+    terms: ["帮助", "指南", "版本", "检查更新", "EULA", "开源", "仓库", "关于"],
+  },
+  // i18n-ignore-end
+];
+
 function NotificationDurationRow({
   value,
   onChange,
@@ -418,9 +465,50 @@ export function SettingsView({
   // 分区切换只改 state，不给内容区加 key —— 六个面板常驻 DOM，
   // 未保存的输入和子组件内部状态不会因为切换而丢失。
   // 「关于」已经并进「帮助」：老代码/深链如果还传 about，落到 help 而不是空面板。
+  // 设置搜索：输入别名 → 直接跳分区。结果为空时给提示，不做模糊纠错。
+  const [query, setQuery] = useState("");
+  const searchHits = query.trim()
+    ? SETTINGS_SEARCH_INDEX.filter((item) => {
+        const needle = query.trim().toLowerCase();
+        const label = t(`settings.tabs.${item.tab}` as MessageKey).toLowerCase();
+        return (
+          label.includes(needle) ||
+          item.terms.some((term) => term.toLowerCase().includes(needle))
+        );
+      })
+    : [];
+
+
   const [activeTab, setActiveTab] = useState<SettingsTabId>(
     (initialTab as string) === "about" ? "help" : initialTab,
   );
+
+  // 「恢复本页默认」只对纯偏好类字段生效：通知开关/时长、下载并发/限速/链路/分片、
+  // 安全页的三个开关。游戏路径、工具路径、AI 密钥、备份记录**故意不重置**——
+  // 那些重置等于把用户配置删掉，不是"恢复默认"。
+  const pageReset = (() => {
+    switch (activeTab) {
+      case "notifications":
+        return () => {
+          onNotificationPrefsChange({ ...DEFAULT_NOTIFICATION_PREFS });
+          onNotificationDurationChange(DEFAULT_NOTIFICATION_DURATION);
+        };
+      case "downloads":
+        return () =>
+          void updateQueueSettings({
+            concurrency: 2,
+            autoImport: true,
+            speedLimitMbps: 0,
+            route: "auto",
+            segments: 4,
+            proxy: null,
+          });
+      case "security":
+        return () => update({ writeModlist: false, autoBackup: true, confirmUninstall: true });
+      default:
+        return null;
+    }
+  })();
   // 外部入口（如存档页「去配置」）在组件已挂载时也能切换 Tab：
   // initialTab 只决定首次渲染，后续请求靠这个 effect 跟上。
   useEffect(() => {
@@ -732,6 +820,60 @@ export function SettingsView({
       </header>
 
       <SettingsTabs active={activeTab} onChange={changeTab} />
+
+      <div className="settings-search">
+        <Search size={13} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("settings.searchPlaceholder")}
+          spellCheck={false}
+          aria-label={t("settings.searchLabel")}
+        />
+        {query ? (
+          <button
+            type="button"
+            className="settings-search-clear"
+            onClick={() => setQuery("")}
+            aria-label={t("settings.searchClear")}
+          >
+            <X size={12} />
+          </button>
+        ) : null}
+        {pageReset ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm settings-search-reset"
+            onClick={pageReset}
+            title={t("settings.resetPageTitle")}
+          >
+            <RotateCcw size={12} /> {t("settings.resetPage")}
+          </button>
+        ) : null}
+        {query.trim() ? (
+          <div className="settings-search-panel" role="listbox" aria-label={t("settings.searchLabel")}>
+            {searchHits.length === 0 ? (
+              <p className="settings-search-empty">{t("settings.searchEmpty")}</p>
+            ) : (
+              searchHits.map((hit) => (
+                <button
+                  key={hit.tab}
+                  type="button"
+                  role="option"
+                  aria-selected={activeTab === hit.tab}
+                  onClick={() => {
+                    changeTab(hit.tab);
+                    setQuery("");
+                  }}
+                >
+                  <strong>{t(`settings.tabs.${hit.tab}` as MessageKey)}</strong>
+                  <em>{hit.terms.slice(0, 4).join(" · ")}</em>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
 
       <div className="settings-content" ref={contentRef}>
         {/* ── 外观与主题 ─────────────────────────────────── */}
@@ -1071,152 +1213,6 @@ export function SettingsView({
             <p className="panel-note">{t("settings.preCommandNote")}</p>
           </section>
 
-          <section className="panel settings-card">
-            <div className="panel-head">
-              <div>
-                <div className="panel-eyebrow">// STORAGE</div>
-                <h2>{t("settings.storageTitle")}</h2>
-              </div>
-              <HardDrive size={18} />
-            </div>
-            <div className="storage-summary">
-              <div>
-                <span>STAGING</span>
-                <strong>{formatBytes(stagingBytes)}</strong>
-              </div>
-              <div>
-                <span>MODS</span>
-                <strong>{state.mods.length}</strong>
-              </div>
-              <div>
-                <span>BACKUP</span>
-                <strong>{state.backup ? relativeTime(state.backup.createdAt) : t("common.none")}</strong>
-              </div>
-            </div>
-            <div className="path-list">
-              <div className="path-row-group">
-                <button className="path-row" onClick={() => onOpenPath(state.stagingDir)}>
-                  <Database size={14} />
-                  <span>
-                    <strong>{t("settings.stagingDir")}</strong>
-                    <code>{compactPath(state.stagingDir, 42)}</code>
-                  </span>
-                  <FolderOpen size={13} />
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm path-row-action"
-                  onClick={() => void suggestStaging()}
-                  title={t("settings.stagingSuggestTip")}
-                >
-                  <Sparkles size={13} /> {t("settings.stagingSuggestBtn")}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm path-row-action"
-                  onClick={() => void changeStagingDir()}
-                  title={t("settings.stagingMoveTip")}
-                >
-                  <FolderSearch size={13} /> {t("settings.stagingChangeBtn")}
-                </button>
-              </div>
-              {stagingSuggestions ? (
-                stagingSuggestions.length ? (
-                  <div className="drive-suggest">
-                    {stagingSuggestions.map((drive) => (
-                      <button
-                        key={drive.drive}
-                        type="button"
-                        className="drive-suggest-row"
-                        onClick={() => {
-                          setStagingSuggestions(null);
-                          void moveStagingTo(`${drive.drive}\\CyberDeck-Staging`);
-                        }}
-                      >
-                        <HardDrive size={13} />
-                        <strong>{drive.drive}</strong>
-                        <span>
-                          {formatBytes(drive.freeBytes)} / {formatBytes(drive.totalBytes)}
-                        </span>
-                      </button>
-                    ))}
-                    <small className="path-note">{t("settings.stagingSuggestNote")}</small>
-                  </div>
-                ) : (
-                  <small className="path-note">{t("settings.stagingSuggestEmpty")}</small>
-                )
-              ) : null}
-              {stagingNote ? <small className="path-note">{stagingNote}</small> : null}
-              <div className="settings-field">
-                <span>{t("settings.deployModeLabel")}</span>
-                <div className="settings-field-row">
-                  <div className="btn-group" role="group" aria-label={t("settings.deployModeLabel")}>
-                    {(
-                      [
-                        { id: "hardlink" as const, label: t("settings.deployModeHardlink") },
-                        { id: "symlink" as const, label: t("settings.deployModeSymlink") },
-                        { id: "copy" as const, label: t("settings.deployModeCopy") },
-                      ]
-                    ).map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`btn btn-sm ${(settings.deployMode ?? "hardlink") === option.id ? "btn-primary" : "btn-ghost"}`}
-                        aria-pressed={(settings.deployMode ?? "hardlink") === option.id}
-                        onClick={() => update({ deployMode: option.id })}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <small className="settings-hint">{t("settings.deployModeHint")}</small>
-              </div>
-              <button className="path-row" onClick={() => onOpenPath(appData)}>
-                <HardDrive size={14} />
-                <span>
-                  <strong>{t("settings.appDataLabel")}</strong>
-                  <code>{compactPath(appData, 42)}</code>
-                </span>
-                <FolderOpen size={13} />
-              </button>
-            </div>
-          </section>
-        </section>
-
-        {/* ── AI 配置 ─────────────────────────────────────── */}
-        <section
-          className="settings-tab-panel settings-grid settings-grid--single"
-          role="tabpanel"
-          id="settings-panel-ai"
-          aria-labelledby="settings-tab-ai"
-          hidden={activeTab !== "ai"}
-        >
-          <AiSettingsCard settings={settings} onSettings={onSettings} onError={onError} />
-          <GlossaryShareCard onError={onError} />
-        </section>
-
-        {/* ── 工具组件 ───────────────────────────────────── */}
-        <section
-          className="settings-tab-panel settings-grid settings-grid--single"
-          role="tabpanel"
-          id="settings-panel-tools"
-          aria-labelledby="settings-tab-tools"
-          hidden={activeTab !== "tools"}
-        >
-          {/* 封面本地缓存：统计 / 补全 / 一键清理（远程封面在墙内经常加载不出来） */}
-          <CoverCacheCard
-            autoCache={settings.autoCacheCovers}
-            onToggleAuto={(enabled) => update({ autoCacheCovers: enabled })}
-            onError={onError}
-            onFilled={onRefreshMods}
-          />
-
-          {/* Vortex 接管体检：P0 只读取证，不写状态库、不删文件 */}
-          <VortexTakeoverCard onError={onError} />
-
-          {/* 以 Vortex 安装目录为权威重建库：预览 / 确认 / 备份 / 还原 */}
-          <VortexRebuildCard onError={onError} />
-
-          {/* ── 播放集 / PROFILES ─────────────────────────── */}
           <section className="panel profile-panel">
             <header className="panel-head">
               <div>
@@ -1397,79 +1393,166 @@ export function SettingsView({
             ) : null}
           </section>
 
+        </section>
+
+        {/* ── AI 配置 ─────────────────────────────────────── */}
+        <section
+          className="settings-tab-panel settings-grid settings-grid--single"
+          role="tabpanel"
+          id="settings-panel-ai"
+          aria-labelledby="settings-tab-ai"
+          hidden={activeTab !== "ai"}
+        >
+          <AiSettingsCard settings={settings} onSettings={onSettings} onError={onError} />
+          <GlossaryShareCard onError={onError} />
+        </section>
+
+        {/* ── 工具组件 ───────────────────────────────────── */}
+        <section
+          className="settings-tab-panel settings-grid settings-grid--single"
+          role="tabpanel"
+          id="settings-panel-tools"
+          aria-labelledby="settings-tab-tools"
+          hidden={activeTab !== "tools"}
+        >
+          {/* 封面本地缓存：统计 / 补全 / 一键清理（远程封面在墙内经常加载不出来） */}
+          <CoverCacheCard
+            autoCache={settings.autoCacheCovers}
+            onToggleAuto={(enabled) => update({ autoCacheCovers: enabled })}
+            onError={onError}
+            onFilled={onRefreshMods}
+          />
+
+          {/* Vortex 接管体检：P0 只读取证，不写状态库、不删文件 */}
+          <VortexTakeoverCard onError={onError} />
+
+          {/* 以 Vortex 安装目录为权威重建库：预览 / 确认 / 备份 / 还原 */}
+          <VortexRebuildCard onError={onError} />
+
+          {/* 外部工具路径：7-Zip 解包、WolvenKit CLI 打包。原本塞在「安全策略」卡里，
+              跟开关混在一起，用户配 WolvenKit 不会去「安全」里找。 */}
+          <section className="panel settings-card">
+            <div className="panel-head">
+              <div>
+                <div className="panel-eyebrow">// EXTERNAL TOOLS</div>
+                <h2>{t("settings.toolsTitle")}</h2>
+              </div>
+              <Wrench size={18} />
+            </div>
+            <div className="settings-field archive-tool-field">
+              <span>{t("settings.archiveToolLabel")}</span>
+              <div className="settings-field-row">
+                <input
+                  value={archiveTool}
+                  onChange={(event) => setArchiveTool(event.target.value)}
+                  placeholder={t("settings.archiveToolPlaceholder")}
+                  title={archiveTool}
+                  spellCheck={false}
+                />
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void autoFindTool("archive")}
+                  title={t("settings.archiveAutoTip")}
+                >
+                  <FolderSearch size={13} /> {t("settings.toolAutoFind")}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void browseTool("archive")}
+                  title={t("settings.archiveManualTip")}
+                >
+                  <FolderOpen size={13} /> {t("settings.toolManualPick")}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => update({ archiveToolPath: archiveTool.trim() })}
+                  disabled={archiveTool.trim() === settings.archiveToolPath}
+                >
+                  {t("common.save")}
+                </button>
+              </div>
+              <small>
+                {t("settings.archiveToolNote")}
+              </small>
+              {toolNote.archive ? (
+                <small className="path-note">{toolNote.archive}</small>
+              ) : null}
+            </div>
+            <div className="settings-field archive-tool-field">
+              <span>{t("settings.wolvenkitLabel")}</span>
+              <div className="settings-field-row">
+                <input
+                  value={wolvenkitPath}
+                  onChange={(event) => setWolvenkitPath(event.target.value)}
+                  placeholder={t("settings.wolvenkitPlaceholder")}
+                  title={wolvenkitPath}
+                  spellCheck={false}
+                />
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void autoFindTool("wolvenkit")}
+                  title={t("settings.wolvenkitAutoTip")}
+                >
+                  <FolderSearch size={13} /> {t("settings.toolAutoFind")}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void browseTool("wolvenkit")}
+                  title={t("settings.wolvenkitManualTip")}
+                >
+                  <FolderOpen size={13} /> {t("settings.toolManualPick")}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() =>
+                    update({
+                      wolvenkitCliPath: wolvenkitPath.trim(),
+                      wolvenkitTimeoutSecs: wolvenkitTimeout,
+                    })
+                  }
+                  disabled={
+                    wolvenkitPath.trim() === settings.wolvenkitCliPath &&
+                    wolvenkitTimeout === settings.wolvenkitTimeoutSecs
+                  }
+                >
+                  {t("common.save")}
+                </button>
+              </div>
+              <div className="settings-field-row wolvenkit-timeout-row">
+                <span className="platform-label">{t("settings.wolvenkitTimeoutLabel")}</span>
+                <input
+                  className="input wolvenkit-timeout-input"
+                  type="number"
+                  min={10}
+                  max={600}
+                  step={10}
+                  value={wolvenkitTimeout}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (Number.isFinite(next)) setWolvenkitTimeout(Math.round(next));
+                  }}
+                  aria-label={t("settings.wolvenkitTimeoutAria")}
+                />
+              </div>
+              <small>
+                {t("settings.wolvenkitNoteLead")}{" "}
+                <code>dotnet tool install -g wolvenkit.cli</code>{" "}
+                {t("settings.wolvenkitNoteTail")}
+              </small>
+              {toolNote.wolvenkit ? (
+                <small className="path-note">{toolNote.wolvenkit}</small>
+              ) : null}
+            </div>
+          </section>
+
+          {/* ── 播放集 / PROFILES ─────────────────────────── */}
+
           <NexusSettingsCard settings={settings} onSettings={onSettings} onError={onError} />
 
           {/* 外部工具链管理器（deepseek 任务·模块三） */}
           <ExternalToolsCard onError={onError} />
 
           {/* ── 存档与工具（任务 865759）：自动快照 / 上限 / 外部编辑器 ── */}
-          <section className="panel settings-card">
-            <div className="panel-head">
-              <div>
-                <div className="panel-eyebrow">// SAVES / SNAPSHOTS</div>
-                <h2>{t("saves.settingsCardTitle")}</h2>
-              </div>
-            </div>
-            <div className="sidebar-pref">
-              <SwitchRow
-                title={t("saves.settingsAutoSnapshot")}
-                description={t("saves.settingsAutoSnapshotDesc")}
-                checked={settings.autoSnapshot}
-                onChange={(value) => update({ autoSnapshot: value })}
-              />
-            </div>
-            <div className="setting-row">
-              <div className="setting-copy">
-                <strong>{t("saves.settingsSnapshotLimit")}</strong>
-                <p>{t("saves.settingsSnapshotLimitDesc")}</p>
-              </div>
-              <select
-                className="font-select save-limit-select"
-                value={settings.snapshotLimit}
-                onChange={(event) => update({ snapshotLimit: Number(event.target.value) })}
-                aria-label={t("saves.settingsSnapshotLimit")}
-              >
-                {[5, 10, 20, 30, 50].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="setting-row">
-              <div className="setting-copy">
-                <strong>{t("saves.settingsEditorPath")}</strong>
-                <p>{t("saves.settingsEditorPathDesc")}</p>
-              </div>
-              <div className="save-editor-row">
-                <input
-                  className="save-editor-input"
-                  value={settings.saveEditorPath}
-                  placeholder={t("saves.editorNotConfigured")}
-                  onChange={(event) => update({ saveEditorPath: event.target.value })}
-                  spellCheck={false}
-                />
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    void openDialog({
-                      directory: false,
-                      multiple: false,
-                      filters: [{ name: t("settings.executableFilter"), extensions: ["exe"] }],
-                    })
-                      .then((picked) => {
-                        if (typeof picked === "string" && picked) {
-                          update({ saveEditorPath: picked });
-                        }
-                      })
-                      .catch((error) => onError(error, t("saves.editorPickFailed")));
-                  }}
-                >
-                  {t("saves.editorBrowse")}
-                </button>
-              </div>
-            </div>
-          </section>
 
           {/* ── 下载设置（r20 从下载中心页搬入；下载中心只留任务列表） ── */}
         </section>
@@ -1642,6 +1725,116 @@ export function SettingsView({
               <Spinner />
             )}
           </section>
+
+          <section className="panel settings-card">
+            <div className="panel-head">
+              <div>
+                <div className="panel-eyebrow">// STORAGE</div>
+                <h2>{t("settings.storageTitle")}</h2>
+              </div>
+              <HardDrive size={18} />
+            </div>
+            <div className="storage-summary">
+              <div>
+                <span>STAGING</span>
+                <strong>{formatBytes(stagingBytes)}</strong>
+              </div>
+              <div>
+                <span>MODS</span>
+                <strong>{state.mods.length}</strong>
+              </div>
+              <div>
+                <span>BACKUP</span>
+                <strong>{state.backup ? relativeTime(state.backup.createdAt) : t("common.none")}</strong>
+              </div>
+            </div>
+            <div className="path-list">
+              <div className="path-row-group">
+                <button className="path-row" onClick={() => onOpenPath(state.stagingDir)}>
+                  <Database size={14} />
+                  <span>
+                    <strong>{t("settings.stagingDir")}</strong>
+                    <code>{compactPath(state.stagingDir, 42)}</code>
+                  </span>
+                  <FolderOpen size={13} />
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm path-row-action"
+                  onClick={() => void suggestStaging()}
+                  title={t("settings.stagingSuggestTip")}
+                >
+                  <Sparkles size={13} /> {t("settings.stagingSuggestBtn")}
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm path-row-action"
+                  onClick={() => void changeStagingDir()}
+                  title={t("settings.stagingMoveTip")}
+                >
+                  <FolderSearch size={13} /> {t("settings.stagingChangeBtn")}
+                </button>
+              </div>
+              {stagingSuggestions ? (
+                stagingSuggestions.length ? (
+                  <div className="drive-suggest">
+                    {stagingSuggestions.map((drive) => (
+                      <button
+                        key={drive.drive}
+                        type="button"
+                        className="drive-suggest-row"
+                        onClick={() => {
+                          setStagingSuggestions(null);
+                          void moveStagingTo(`${drive.drive}\\CyberDeck-Staging`);
+                        }}
+                      >
+                        <HardDrive size={13} />
+                        <strong>{drive.drive}</strong>
+                        <span>
+                          {formatBytes(drive.freeBytes)} / {formatBytes(drive.totalBytes)}
+                        </span>
+                      </button>
+                    ))}
+                    <small className="path-note">{t("settings.stagingSuggestNote")}</small>
+                  </div>
+                ) : (
+                  <small className="path-note">{t("settings.stagingSuggestEmpty")}</small>
+                )
+              ) : null}
+              {stagingNote ? <small className="path-note">{stagingNote}</small> : null}
+              <div className="settings-field">
+                <span>{t("settings.deployModeLabel")}</span>
+                <div className="settings-field-row">
+                  <div className="btn-group" role="group" aria-label={t("settings.deployModeLabel")}>
+                    {(
+                      [
+                        { id: "hardlink" as const, label: t("settings.deployModeHardlink") },
+                        { id: "symlink" as const, label: t("settings.deployModeSymlink") },
+                        { id: "copy" as const, label: t("settings.deployModeCopy") },
+                      ]
+                    ).map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`btn btn-sm ${(settings.deployMode ?? "hardlink") === option.id ? "btn-primary" : "btn-ghost"}`}
+                        aria-pressed={(settings.deployMode ?? "hardlink") === option.id}
+                        onClick={() => update({ deployMode: option.id })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <small className="settings-hint">{t("settings.deployModeHint")}</small>
+              </div>
+              <button className="path-row" onClick={() => onOpenPath(appData)}>
+                <HardDrive size={14} />
+                <span>
+                  <strong>{t("settings.appDataLabel")}</strong>
+                  <code>{compactPath(appData, 42)}</code>
+                </span>
+                <FolderOpen size={13} />
+              </button>
+            </div>
+          </section>
         </section>
 
         {/* ── 安全与维护 ─────────────────────────────────── */}
@@ -1682,111 +1875,6 @@ export function SettingsView({
                 checked={settings.writeModlist}
                 onChange={onToggleWrite}
               />
-            </div>
-
-            <div className="settings-field archive-tool-field">
-              <span>{t("settings.archiveToolLabel")}</span>
-              <div className="settings-field-row">
-                <input
-                  value={archiveTool}
-                  onChange={(event) => setArchiveTool(event.target.value)}
-                  placeholder={t("settings.archiveToolPlaceholder")}
-                  title={archiveTool}
-                  spellCheck={false}
-                />
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void autoFindTool("archive")}
-                  title={t("settings.archiveAutoTip")}
-                >
-                  <FolderSearch size={13} /> {t("settings.toolAutoFind")}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void browseTool("archive")}
-                  title={t("settings.archiveManualTip")}
-                >
-                  <FolderOpen size={13} /> {t("settings.toolManualPick")}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => update({ archiveToolPath: archiveTool.trim() })}
-                  disabled={archiveTool.trim() === settings.archiveToolPath}
-                >
-                  {t("common.save")}
-                </button>
-              </div>
-              <small>
-                {t("settings.archiveToolNote")}
-              </small>
-              {toolNote.archive ? (
-                <small className="path-note">{toolNote.archive}</small>
-              ) : null}
-            </div>
-            <div className="settings-field archive-tool-field">
-              <span>{t("settings.wolvenkitLabel")}</span>
-              <div className="settings-field-row">
-                <input
-                  value={wolvenkitPath}
-                  onChange={(event) => setWolvenkitPath(event.target.value)}
-                  placeholder={t("settings.wolvenkitPlaceholder")}
-                  title={wolvenkitPath}
-                  spellCheck={false}
-                />
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void autoFindTool("wolvenkit")}
-                  title={t("settings.wolvenkitAutoTip")}
-                >
-                  <FolderSearch size={13} /> {t("settings.toolAutoFind")}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => void browseTool("wolvenkit")}
-                  title={t("settings.wolvenkitManualTip")}
-                >
-                  <FolderOpen size={13} /> {t("settings.toolManualPick")}
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() =>
-                    update({
-                      wolvenkitCliPath: wolvenkitPath.trim(),
-                      wolvenkitTimeoutSecs: wolvenkitTimeout,
-                    })
-                  }
-                  disabled={
-                    wolvenkitPath.trim() === settings.wolvenkitCliPath &&
-                    wolvenkitTimeout === settings.wolvenkitTimeoutSecs
-                  }
-                >
-                  {t("common.save")}
-                </button>
-              </div>
-              <div className="settings-field-row wolvenkit-timeout-row">
-                <span className="platform-label">{t("settings.wolvenkitTimeoutLabel")}</span>
-                <input
-                  className="input wolvenkit-timeout-input"
-                  type="number"
-                  min={10}
-                  max={600}
-                  step={10}
-                  value={wolvenkitTimeout}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    if (Number.isFinite(next)) setWolvenkitTimeout(Math.round(next));
-                  }}
-                  aria-label={t("settings.wolvenkitTimeoutAria")}
-                />
-              </div>
-              <small>
-                {t("settings.wolvenkitNoteLead")}{" "}
-                <code>dotnet tool install -g wolvenkit.cli</code>{" "}
-                {t("settings.wolvenkitNoteTail")}
-              </small>
-              {toolNote.wolvenkit ? (
-                <small className="path-note">{toolNote.wolvenkit}</small>
-              ) : null}
             </div>
           </section>
 

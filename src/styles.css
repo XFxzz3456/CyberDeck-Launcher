@@ -18089,3 +18089,113 @@ body::before {
   color: var(--muted-2);
   font-size: var(--fs-hint);
 }
+
+/* ── 设置搜索 ────────────────────────────────────────────────────────
+   8 个分区、几十个控件，找「限速」得先猜分区。搜索框放在标签栏下面一行，
+   输入别名直接跳分区；结果浮层绝对定位，不把内容顶下去。 */
+.settings-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  margin: -4px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.settings-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+.settings-search input::placeholder {
+  color: var(--muted-2);
+}
+
+.settings-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.settings-search-clear:hover {
+  color: var(--text);
+}
+
+.settings-search-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+}
+
+.settings-search-panel button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-search-panel button:hover,
+.settings-search-panel button[aria-selected="true"] {
+  background: rgba(var(--accent-rgb), 0.12);
+}
+
+.settings-search-panel strong {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-title);
+  color: var(--text);
+}
+
+.settings-search-panel em {
+  font-size: var(--fs-hint);
+  font-style: normal;
+  color: var(--muted-2);
+}
+
+.settings-search-empty {
+  margin: 0;
+  padding: 8px 9px;
+  font-size: var(--fs-hint);
+  color: var(--muted-2);
+}
+
+/* 每页「恢复默认」按钮，跟在搜索框右侧 */
+.settings-search-reset {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
