@@ -74,7 +74,7 @@ import type {
   DriveSuggestion,
   BatchEnableReport,
   SwitchProfileReport, StagingMoveReport, ToolProbe,
-  DownloadTask, DownloadQueueSettings } from "../types";
+  DownloadTask, DownloadQueueSettings, DownloadRoute } from "../types";
 import type { CollectionDeployReport, CollectionPlan } from "./collection";
 import type {
   BackfillProposal,
@@ -1173,15 +1173,27 @@ export const api = {
     dir?: string | null,
     proxy?: string | null,
     speedLimitMbps?: number,
+    route?: DownloadRoute,
+    segments?: number,
   ): Promise<DownloadQueueSettings> {
     if (!isTauri)
-      return mockApi.downloadQueueSetSettings(concurrency, autoImport, dir, proxy, speedLimitMbps);
+      return mockApi.downloadQueueSetSettings(
+        concurrency,
+        autoImport,
+        dir,
+        proxy,
+        speedLimitMbps,
+        route,
+        segments,
+      );
     return call<DownloadQueueSettings>("download_queue_settings_set", {
       concurrency,
       autoImport,
       dir,
       proxy,
       speedLimitMbps: speedLimitMbps ?? null,
+      route: route ?? null,
+      segments: segments ?? null,
     });
   },
 

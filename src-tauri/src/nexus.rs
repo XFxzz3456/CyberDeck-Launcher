@@ -19,6 +19,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
@@ -35,13 +36,92 @@ pub fn key_path_from(data_dir: &Path) -> PathBuf {
     data_dir.join("secrets").join("nexus-api.key")
 }
 
-pub(crate) fn http_client() -> AppResult<Client> {
-    Client::builder()
-        .timeout(Duration::from_secs(30))
+/// 下载链路与分片设置（进程级）。
+///
+/// 为什么放全局：`http_client()` 是自由函数，被检查更新、API 校验、封面补全等十几处
+/// 调用；改成逐层传 `Store` 会污染所有签名。设置只在启动与保存时写一次，读多写少。
+#[derive(Debug, Clone)]
+pub struct HttpRoute {
+    /// 不走任何代理（含系统环境变量）。
+    pub direct: bool,
+    /// 自定义代理；`direct == false && proxy == None` 时跟随系统环境变量。
+    pub proxy: Option<String>,
+    /// 大文件分片数（1 = 不分片）。
+    pub segments: u32,
+}
+
+fn route_slot() -> &'static Mutex<HttpRoute> {
+    static SLOT: OnceLock<Mutex<HttpRoute>> = OnceLock::new();
+    SLOT.get_or_init(|| {
+        Mutex::new(HttpRoute {
+            direct: false,
+            proxy: None,
+            segments: 4,
+        })
+    })
+}
+
+/// 由下载设置调用。`route` 取 `auto` / `direct` / `proxy`。
+pub fn set_http_route(route: &str, proxy: Option<String>, segments: u32) {
+    let trimmed = proxy
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mut slot = route_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match route {
+        "direct" => {
+            slot.direct = true;
+            slot.proxy = None;
+        }
+        "proxy" if trimmed.is_some() => {
+            slot.direct = false;
+            slot.proxy = trimmed;
+        }
+        _ => {
+            slot.direct = false;
+            slot.proxy = None;
+        }
+    }
+    slot.segments = segments.clamp(1, crate::multipart::MAX_SEGMENTS);
+}
+
+fn current_route() -> (bool, Option<String>, u32) {
+    let slot = route_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    (slot.direct, slot.proxy.clone(), slot.segments)
+}
+
+/// `total_timeout = None` 表示只限连接建立时间，不限制整个请求——
+/// 下载几百 MB 时 30 秒总超时会把传输直接掐死。
+fn build_http_client(total_timeout: Option<Duration>) -> AppResult<Client> {
+    let (direct, proxy, _) = current_route();
+    let mut builder = Client::builder()
         .connect_timeout(Duration::from_secs(12))
-        .user_agent("CyberDeckLauncher/0.7.0 (Tauri; Windows; Nexus-API)")
+        .user_agent("CyberDeckLauncher/0.7.0 (Tauri; Windows; Nexus-API)");
+    if let Some(timeout) = total_timeout {
+        builder = builder.timeout(timeout);
+    }
+    if direct {
+        builder = builder.no_proxy();
+    } else if let Some(proxy) = proxy {
+        let proxy = reqwest::Proxy::all(&proxy)
+            .map_err(|e| CommandError::new("NEXUS_HTTP", format!("代理地址无效：{e}")))?;
+        builder = builder.proxy(proxy);
+    }
+    builder
         .build()
         .map_err(|e| CommandError::new("NEXUS_HTTP", format!("无法创建网络客户端：{e}")))
+}
+
+pub(crate) fn http_client() -> AppResult<Client> {
+    build_http_client(Some(Duration::from_secs(30)))
+}
+
+/// 下载专用客户端：不设总超时。队列也用这个，保证「检查更新」与「下载」走同一条链路。
+pub(crate) fn download_client() -> AppResult<Client> {
+    build_http_client(None)
 }
 
 pub(crate) fn api_key(store: &Store) -> AppResult<String> {
@@ -1231,6 +1311,68 @@ pub(crate) fn download_file(
         // 慢速链路（代理 / 免费账号）重下一次要几十分钟，看起来就像「卡死」。
         let part = target.with_extension("part");
         let part_len = std::fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0);
+
+        // 大文件优先分片并发：同链路实测单连接 107 KB/s、4 连接 451 KB/s（瓶颈是
+        // 按连接限速）。只在本地没有 .part 时走分片——已有 .part 说明上次走的是
+        // 单连接续传，两套落盘格式混用会得到坏文件。
+        let segments = current_route().2;
+        if part_len == 0 && segments > 1 {
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            let dl = download_client()?;
+            let head_total = dl
+                .head(&link.uri)
+                .header("apikey", &key)
+                .send()
+                .ok()
+                .filter(|response| response.status().is_success())
+                .and_then(|response| response.content_length());
+            if let Some(total) = head_total.filter(|value| *value >= crate::multipart::MIN_MULTIPART_BYTES)
+            {
+                match crate::multipart::download_multipart(
+                    &dl,
+                    &link.uri,
+                    Some(&key),
+                    &part,
+                    total,
+                    segments,
+                    &cancel,
+                    |received, total| {
+                        let _ = app.emit(
+                            "nexus-download-progress",
+                            DownloadProgress {
+                                mod_id,
+                                file_id,
+                                received,
+                                total,
+                            },
+                        );
+                    },
+                ) {
+                    Ok(()) => {
+                        if target.exists() {
+                            let _ = std::fs::remove_file(&target);
+                        }
+                        std::fs::rename(&part, &target).map_err(|e| {
+                            CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}"))
+                        })?;
+                        return Ok(DownloadedFile {
+                            path: target.clone(),
+                            file_name: download_name.clone(),
+                            file_id,
+                            version: Some(detail.version.clone())
+                                .filter(|value| !value.trim().is_empty()),
+                            category: Some(detail.category_name.clone())
+                                .filter(|value| !value.trim().is_empty()),
+                            picture_url: detail.picture_url.clone(),
+                            reused: false,
+                        });
+                    }
+                    // 服务端不支持 Range：退回单连接，不要报错。
+                    Err(err) if err.code == crate::multipart::CODE_UNSUPPORTED => {}
+                    Err(err) => return Err(err),
+                }
+            }
+        }
 
         let mut request = client.get(&link.uri).header("apikey", &key);
         if part_len > 0 {

@@ -355,6 +355,8 @@ export function SettingsView({
           merged.dir,
           merged.proxy,
           merged.speedLimitMbps,
+          merged.route,
+          merged.segments,
         );
         // 只有这次仍是"最后一笔"时才用后端返回值覆盖，否则会把用户刚改的
         // 下一项拉回旧值（后端返回的是它落盘那一刻的整份设置）。
@@ -1541,6 +1543,58 @@ export function SettingsView({
                   checked={queueSettings.autoImport}
                   onChange={(checked) => void updateQueueSettings({ autoImport: checked })}
                 />
+                <div className="settings-field">
+                  <span>{t("downloads.routeLabel")}</span>
+                  <div className="settings-field-row">
+                    <div className="btn-group" role="group" aria-label={t("downloads.routeLabel")}>
+                      {(
+                        [
+                          { value: "auto" as const, label: t("downloads.routeAuto") },
+                          { value: "direct" as const, label: t("downloads.routeDirect") },
+                          { value: "proxy" as const, label: t("downloads.routeProxy") },
+                        ] as const
+                      ).map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`btn btn-sm ${queueSettings.route === option.value ? "btn-primary" : "btn-ghost"}`}
+                          aria-pressed={queueSettings.route === option.value}
+                          onClick={() => void updateQueueSettings({ route: option.value })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <small className="settings-hint">{t("downloads.routeHint")}</small>
+                  </div>
+                </div>
+                <div className="settings-field">
+                  <span>{t("downloads.segmentsLabel")}</span>
+                  <div className="settings-field-row">
+                    <div className="btn-group" role="group" aria-label={t("downloads.segmentsLabel")}>
+                      {(
+                        [
+                          { value: 1, label: t("downloads.segmentsOff") },
+                          { value: 2, label: "2" },
+                          { value: 4, label: "4" },
+                          { value: 6, label: "6" },
+                          { value: 8, label: "8" },
+                        ] as const
+                      ).map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`btn btn-sm ${queueSettings.segments === option.value ? "btn-primary" : "btn-ghost"}`}
+                          aria-pressed={queueSettings.segments === option.value}
+                          onClick={() => void updateQueueSettings({ segments: option.value })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <small className="settings-hint">{t("downloads.segmentsHint")}</small>
+                  </div>
+                </div>
                 <div className="settings-field">
                   <span>{t("downloads.proxyLabel")}</span>
                   <div className="settings-field-row">

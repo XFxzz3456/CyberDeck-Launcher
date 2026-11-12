@@ -86,7 +86,7 @@ import type {
   NxmStatus,
   DeepScanRef,
   DeepScanReport, StagingMoveReport, ToolProbe,
-  DownloadTask, DownloadQueueSettings, ProfileImportReport, BatchEnableReport,
+  DownloadTask, DownloadQueueSettings, DownloadRoute, ProfileImportReport, BatchEnableReport,
   ExternalToolEntry, DriveSuggestion, CoverCacheReport, CoverCacheStats } from "../types";
 import type { CollectionDeployReport } from "./collection";
 import type { ApiSurface } from "./api";
@@ -2390,6 +2390,8 @@ export const mockApi = {
     dir?: string | null,
     proxy?: string | null,
     speedLimitMbps?: number,
+    route?: DownloadRoute,
+    segments?: number,
   ): Promise<DownloadQueueSettings> {
     mockQueue.settings = {
       concurrency: Math.min(3, Math.max(1, concurrency)),
@@ -2398,6 +2400,8 @@ export const mockApi = {
       proxy: proxy?.trim() ? proxy.trim() : null,
       speedLimitMbps:
         speedLimitMbps && speedLimitMbps > 0 ? Math.min(100, Math.max(1, Math.round(speedLimitMbps))) : 0,
+      route: route ?? mockQueue.settings.route,
+      segments: segments ? Math.min(8, Math.max(1, segments)) : mockQueue.settings.segments,
     };
     return { ...mockQueue.settings };
   },

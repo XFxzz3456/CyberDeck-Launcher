@@ -95,6 +95,21 @@ pub struct DownloadQueueSettings {
     /// set_settings 钳制 0–100；多任务并发时各自限速，总速率 ≈ limit × concurrency。
     #[serde(default)]
     pub speed_limit_mbps: u32,
+    /// 下载链路：`auto`（跟随系统代理环境变量）/ `direct`（直连）/ `proxy`（用 proxy 字段）。
+    /// 实测同一网络下「代理节点」与「直连」能差十几倍，必须让用户能选。
+    #[serde(default = "default_route")]
+    pub route: String,
+    /// 大文件分片数（1 = 不分片）。实测 4 连接比单连接快 4 倍（按连接限速）。
+    #[serde(default = "default_segments")]
+    pub segments: u32,
+}
+
+fn default_route() -> String {
+    "auto".to_string()
+}
+
+fn default_segments() -> u32 {
+    4
 }
 
 impl Default for DownloadQueueSettings {
@@ -105,6 +120,8 @@ impl Default for DownloadQueueSettings {
             dir: None,
             proxy: None,
             speed_limit_mbps: 0,
+            route: "auto".to_string(),
+            segments: 4,
         }
     }
 }
@@ -211,22 +228,10 @@ fn save_state(data_dir: &Path) {
 
 // ---------------------------------------------------------------- HTTP 客户端
 
-fn build_client(proxy: Option<&str>) -> AppResult<Client> {
-    let mut builder = Client::builder()
-        // 下载大文件不能设总超时：只限连接建立时间。
-        .connect_timeout(Duration::from_secs(12))
-        .user_agent("CyberDeckLauncher/0.7.0 (Tauri; Windows; Nexus-API)");
-    if let Some(proxy) = proxy
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-    {
-        let proxy = reqwest::Proxy::all(&proxy)
-            .map_err(|e| CommandError::new("DOWNLOAD_PROXY", format!("代理地址无效：{e}")))?;
-        builder = builder.proxy(proxy);
-    }
-    builder
-        .build()
-        .map_err(|e| CommandError::new("DOWNLOAD_HTTP", format!("无法创建网络客户端：{e}")))
+/// 队列与 Nexus 更新共用同一套链路设置（`nexus::set_http_route` 写入）。
+/// 分成两套客户端只会在「检查更新走代理、下载走直连」这种地方制造惊喜。
+fn build_client() -> AppResult<Client> {
+    crate::nexus::download_client()
 }
 
 /// 拿直链。有 NXM 签名就走免 Key 通道；否则必须带 API Key。
@@ -292,6 +297,15 @@ fn parse_link_response(response: Response) -> AppResult<String> {
 /// 恢复启动前的持久化队列（setup 阶段调用一次）。
 pub fn init(data_dir: &Path) {
     load_state(data_dir);
+    let (route, proxy, segments) = {
+        let state = lock_state();
+        (
+            state.settings.route.clone(),
+            state.settings.proxy.clone(),
+            state.settings.segments,
+        )
+    };
+    crate::nexus::set_http_route(&route, proxy, segments);
 }
 
 fn flags_for(state: &mut QueueState, id: &str) -> Arc<TaskFlags> {
@@ -338,6 +352,8 @@ pub fn set_settings(data_dir: &Path, mut next: DownloadQueueSettings) -> Downloa
     {
         let mut state = lock_state();
         next.speed_limit_mbps = next.speed_limit_mbps.min(100);
+        next.segments = next.segments.clamp(1, crate::multipart::MAX_SEGMENTS);
+        crate::nexus::set_http_route(&next.route, next.proxy.clone(), next.segments);
         state.settings = next;
         let snapshot = state.settings.clone();
         drop(state);
@@ -584,7 +600,7 @@ fn worker_body(app: &AppHandle, id: &str) {
     drop(store);
 
     loop {
-        let (task, flags, proxy, downloads_dir, auto_import) = {
+        let (task, flags, downloads_dir, auto_import) = {
             let mut state = lock_state();
             let Some(task) = state.tasks.iter().find(|task| task.id == id).cloned() else {
                 return; // 任务被移除
@@ -598,11 +614,11 @@ fn worker_body(app: &AppHandle, id: &str) {
                 .clone()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| data_dir.join("downloads"));
-            (task, flags, settings.proxy.clone(), dir, settings.auto_import)
+            (task, flags, dir, settings.auto_import)
         };
         let do_install = auto_import && task.auto_import;
 
-        let client = match build_client(proxy.as_deref()) {
+        let client = match build_client() {
             Ok(client) => client,
             Err(err) => {
                 finish_failure(app, &data_dir, id, &err.message);
@@ -1113,6 +1129,8 @@ mod tests {
                 dir: Some("D://Downloads".into()),
                 proxy: Some("http://127.0.0.1:7890".into()),
                 speed_limit_mbps: 0,
+                route: "auto".to_string(),
+                segments: 4,
             },
         );
         assert_eq!(next.concurrency, 99);

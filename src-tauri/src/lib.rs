@@ -11,6 +11,7 @@ mod ailoc;
 mod ailabel;
 mod ailoc_full;
 mod backfill;
+mod multipart;
 mod backup;
 mod pack;
 mod category;
@@ -2670,6 +2671,8 @@ fn download_queue_settings_set(
     dir: Option<String>,
     proxy: Option<String>,
     speed_limit_mbps: Option<u32>,
+    route: Option<String>,
+    segments: Option<u32>,
 ) -> AppResult<download_queue::DownloadQueueSettings> {
     let store = app.state::<Store>();
     let data_dir = store.data_dir.clone();
@@ -2680,6 +2683,8 @@ fn download_queue_settings_set(
         dir: dir.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
         proxy: proxy.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
         speed_limit_mbps: speed_limit_mbps.unwrap_or(0),
+        route: route.unwrap_or_else(|| "auto".to_string()),
+        segments: segments.unwrap_or(4),
     };
     let snapshot = download_queue::set_settings(&data_dir, next);
     download_queue::pump(&app);

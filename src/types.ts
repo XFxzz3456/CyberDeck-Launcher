@@ -931,6 +931,9 @@ export interface DownloadTask {
   retries: number;
 }
 
+/** 下载链路：跟随系统代理 / 直连 / 自定义代理。 */
+export type DownloadRoute = "auto" | "direct" | "proxy";
+
 export interface DownloadQueueSettings {
   concurrency: number;
   autoImport: boolean;
@@ -938,6 +941,10 @@ export interface DownloadQueueSettings {
   proxy: string | null;
   /** 单任务限速 MiB/s；0 = 不限（deepseek 任务·模块二）。 */
   speedLimitMbps: number;
+  /** 走哪条链路；实测代理与直连能差十几倍。 */
+  route: DownloadRoute;
+  /** 大文件分片数（1 = 不分片，最多 8）。 */
+  segments: number;
 }
 
 export interface AiStatus {
