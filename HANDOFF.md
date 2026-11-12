@@ -6,8 +6,15 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.2`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（@@EXE_SIZE@@ / md5 `@@EXE_MD5@@`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip` 仍是 1.8.0 那版，**1.8.2 的 ZIP 未打**（按规则需单独确认）；GitHub Release 最新仍是 [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)。
+**本仓库的实际版本是 `1.8.2`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.0 便携版.zip` 仍是 1.8.0 那版，**1.8.2 的 ZIP 未打**（按规则需单独确认）；GitHub Release 最新仍是 [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0)。
 
+- **2026-11-13 00:22 发布 1.8.2**（用户「好，顺便升为新版本吧」）：
+  三处版本号 1.8.0 → **1.8.2**（含 Cargo.lock 与 README / SESSION-START / HANDOFF 三处横幅），
+  把 [未发布] 收编成 `[1.8.2]`：批量更新进度+断点续传、下载链路三态、大文件分片并发、Nexus 多镜像择优、
+  设置页分区重划 + 搜索 + 每页恢复默认。构建中发现并修掉两个自身回归：**存档三个设置随卡片被误删**
+  （已搬进存档管理页「存档偏好」卡）与**两张同名「外部工具」卡**（路径卡改名「工具路径」）。
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump --allow-no-tag`（门禁 43/43 + 编译 204s，总 377s）；
+  exe 11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`，PE 1.8.2。`cargo test --lib` **395 passed / 2 ignored**。**便携 ZIP 未重打。**
 - **2026-11-12 23:34 同版本重构建：Nexus 多镜像择优**（用户「Nexus 多镜像择优没做这条做一下吧」）：
   `download_link.json` 返回数组，过去只取第一条。现在并发探测全部候选（`Range: bytes=0-0` / 6s 超时）取首字节延迟最低，全失败回退第一条，延迟相等保序；探测结果按 host 进程内缓存。
   新 exe 11,161,600 B / md5 `b5fab18af0af197522594cb99aa034aa`，PE 仍 1.8.0；`cargo test --lib` 395 passed。
