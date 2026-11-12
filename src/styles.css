@@ -18042,3 +18042,50 @@ body::before {
     display: none;
   }
 }
+
+/* ── 下载中心的「批量更新」卡片 ────────────────────────────────────────
+   批量更新走的是 updates::apply_updates，不在下载队列里，所以在队列列表上方
+   单开一张卡；否则用户在下载中心完全看不到「模组库那边正在更新」。 */
+.dl-update-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.dl-update-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dl-update-head strong {
+  font-size: var(--fs-title);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.dl-update-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--fs-body);
+}
+
+.dl-update-head code {
+  font-family: var(--mono);
+  font-size: var(--fs-hint);
+  color: var(--accent);
+}
+
+.dl-update-meta {
+  color: var(--muted-2);
+  font-size: var(--fs-hint);
+}
