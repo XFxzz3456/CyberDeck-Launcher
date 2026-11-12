@@ -12,7 +12,10 @@
   <a href="https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-%E4%BE%BF%E6%90%BA%E7%89%88%20ZIP-fcee0a?labelColor=111111"></a>
 </p>
 
-> 版本号的唯一事实源是 `package.json` 的三处 `version`（`node scripts/check-version-sync.mjs` 校验）；本行、`docs/SESSION-START.md` §3、`HANDOFF.md` §0 的「当前版本」由同一脚本一并校验。历史版本见 [CHANGELOG](CHANGELOG.md)。
+> [!IMPORTANT]
+> **本项目使用 AI 辅助编程。** 代码、测试、文档由作者与 AI 结对完成：AI 负责起草与批量改造，作者负责设计取舍、代码审查与真机验收。
+> 合入 `main` 的每一笔改动都要过门禁（Rust 单元测试 + 浏览器 UI 脚本），但**请以实际行为为准**——发现不对的地方，欢迎直接开 Issue。
+> 版本历史见 [CHANGELOG](CHANGELOG.md)。
 
 一个只服务《赛博朋克 2077》的轻量 Mod 启动器。**Tauri 2 + React 19 + TypeScript + Rust**，免安装、单 exe（约 10.6 MB）。
 
