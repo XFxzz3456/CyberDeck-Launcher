@@ -1434,11 +1434,12 @@ export function SettingsView({
           <section className="panel settings-card">
             <div className="panel-head">
               <div>
-                <div className="panel-eyebrow">// EXTERNAL TOOLS</div>
-                <h2>{t("settings.toolsTitle")}</h2>
+                <div className="panel-eyebrow">// TOOL PATHS</div>
+                <h2>{t("settings.toolPathsTitle")}</h2>
               </div>
               <Wrench size={18} />
             </div>
+            <p className="panel-note">{t("settings.toolPathsDesc")}</p>
             <div className="settings-field archive-tool-field">
               <span>{t("settings.archiveToolLabel")}</span>
               <div className="settings-field-row">

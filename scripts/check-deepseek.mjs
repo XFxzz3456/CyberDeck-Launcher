@@ -46,9 +46,17 @@ async function openSettingsTab(name) {
   await page.waitForTimeout(500);
 }
 
-// ── 模块一：游戏与路径 ──────────────────────────────────────────────
+// ── 模块一：游戏与路径（启动相关） ──────────────────────────────────
 await openSettingsTab("游戏与路径");
 
+const gpuGroup = page.locator(".platform-chips").filter({ hasText: "独立显卡" });
+check("显卡偏好 chips 渲染", (await gpuGroup.count()) >= 1, "", "gpuChips");
+const priorityGroup = page.locator(".platform-chips").filter({ hasText: "高" }).filter({ hasText: "常规" });
+check("进程优先级 chips 渲染", (await priorityGroup.count()) >= 1, "", "priorityChips");
+check("前置命令输入渲染", (await page.getByPlaceholder(/RestartRouter/).count()) === 1, "", "preCommandInput");
+
+// 暂存区建议与部署方式 2026-11-13 随「存储与路径」卡搬到「下载」分区
+await openSettingsTab("下载");
 const deployGroup = page.getByRole("group", { name: "部署方式" });
 check("部署方式选择组渲染", (await deployGroup.count()) === 1, "", "deployGroup");
 await deployGroup.getByRole("button", { name: "直接复制" }).click();
@@ -59,20 +67,14 @@ const storedDeploy = await page.evaluate(() => {
 });
 check("部署方式「直接复制」写入设置", storedDeploy === "copy", String(storedDeploy), "deployCopySaved");
 
-const gpuGroup = page.locator(".platform-chips").filter({ hasText: "独立显卡" });
-check("显卡偏好 chips 渲染", (await gpuGroup.count()) >= 1, "", "gpuChips");
-const priorityGroup = page.locator(".platform-chips").filter({ hasText: "高" }).filter({ hasText: "常规" });
-check("进程优先级 chips 渲染", (await priorityGroup.count()) >= 1, "", "priorityChips");
-check("前置命令输入渲染", (await page.getByPlaceholder(/RestartRouter/).count()) === 1, "", "preCommandInput");
-
 // 暂存区建议：mock 返回 3 个磁盘
 await page.getByRole("button", { name: "建议" }).click();
 await page.waitForTimeout(900);
 check("暂存区建议列表出现", (await page.locator(".drive-suggest").count()) === 1, "", "suggestList");
 check("磁盘候选 3 行", (await page.locator(".drive-suggest-row").count()) === 3, "", "suggestRows");
 
-// ── 模块二：下载设置（工具组件 Tab） ────────────────────────────────
-await openSettingsTab("工具组件");
+// ── 模块二：下载设置（下载 Tab；2026-11-13 独立成页，不再寄生在工具组件） ──
+await openSettingsTab("下载");
 const speedGroup = page.getByRole("group", { name: "速度限制" });
 check("限速按钮组渲染", (await speedGroup.count()) === 1, "", "speedGroup");
 await speedGroup.getByRole("button", { name: "10", exact: true }).click();
@@ -86,6 +88,9 @@ check(
 );
 
 check("NXM 修复按钮渲染", (await page.getByRole("button", { name: /修复（接管协议）/ }).count()) === 1, "", "nxmRepair");
+
+// 外部工具管理器仍在「工具组件」
+await openSettingsTab("工具组件");
 check("外部工具卡片渲染", (await page.locator('[data-testid="external-tools-card"]').count()) === 1, "", "toolsCard");
 await page.waitForTimeout(600);
 check("演示工具 2 行", (await page.locator('[data-testid="external-tool-row"]').count()) === 2, "", "toolRows");

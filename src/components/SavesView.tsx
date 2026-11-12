@@ -23,10 +23,10 @@ import {
   Trash2,
   Wrench,
 } from "lucide-react";
-import type { EnvSnapshot, SaveGameEntry, SaveScanReport } from "../types";
+import type { EnvSnapshot, SaveGameEntry, SaveScanReport, Settings } from "../types";
 import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
-import { ConfirmDialog, Spinner } from "./ui";
+import { ConfirmDialog, Spinner, SwitchRow } from "./ui";
 import { formatBytes } from "../lib/format";
 
 /**
@@ -65,14 +65,13 @@ const TRIGGER_KEYS: Record<EnvSnapshot["trigger"], MessageKey> = {
 };
 
 export function SavesView({
-  saveEditorPath,
-  onOpenSettings,
+  settings,
+  onSettings,
   onError,
 }: {
-  /** 设置里配的外部存档编辑器路径（空 = 未配置）。 */
-  saveEditorPath: string;
-  /** 跳到「设置 → 工具组件」配置编辑器。 */
-  onOpenSettings: () => void;
+  /** 全局设置：自动快照、快照上限、外部编辑器路径原本在前端设置页，2026-11-13 搬到本页。 */
+  settings: Settings;
+  onSettings: (next: Settings) => void;
   onError: (error: unknown, fallback: string) => void;
 }) {
   const [snapshots, setSnapshots] = useState<EnvSnapshot[] | null>(null);
@@ -342,6 +341,58 @@ export function SavesView({
         ) : null}
       </section>
 
+      {/* ── ③ 存档偏好 ─────────────────────────────────────────────
+          这三项原本在「设置 → 工具组件」的一张卡里，和存档页是两个入口、状态还可能
+          不同步。2026-11-13 按「一个动作一个入口」搬到本页：配置就在使用它的地方。 */}
+      <section className="panel saves-panel">
+        <div className="panel-head">
+          <div>
+            <div className="panel-eyebrow">// PREFERENCES</div>
+            <h2>{t("saves.prefsTitle")}</h2>
+          </div>
+        </div>
+        <div className="sidebar-pref">
+          <SwitchRow
+            title={t("saves.settingsAutoSnapshot")}
+            description={t("saves.settingsAutoSnapshotDesc")}
+            checked={settings.autoSnapshot}
+            onChange={(value) => onSettings({ ...settings, autoSnapshot: value })}
+          />
+        </div>
+        <div className="setting-row">
+          <div className="setting-copy">
+            <strong>{t("saves.settingsSnapshotLimit")}</strong>
+            <p>{t("saves.settingsSnapshotLimitDesc")}</p>
+          </div>
+          <select
+            className="font-select save-limit-select"
+            value={settings.snapshotLimit}
+            onChange={(event) => onSettings({ ...settings, snapshotLimit: Number(event.target.value) })}
+            aria-label={t("saves.settingsSnapshotLimit")}
+          >
+            {[5, 10, 20, 30, 50].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="setting-row">
+          <div className="setting-copy">
+            <strong>{t("saves.settingsEditorPath")}</strong>
+            <p>{t("saves.settingsEditorPathDesc")}</p>
+          </div>
+          <input
+            className="input save-editor-input"
+            value={settings.saveEditorPath}
+            placeholder={t("saves.editorNotConfigured")}
+            onChange={(event) => onSettings({ ...settings, saveEditorPath: event.target.value })}
+            spellCheck={false}
+            aria-label={t("saves.settingsEditorPath")}
+          />
+        </div>
+      </section>
+
       {/* ── ③ 外部修复工具 ───────────────────────────────────────── */}
       <section className="panel saves-panel">
         <div className="panel-head">
@@ -357,18 +408,15 @@ export function SavesView({
           <div className="save-tool-copy">
             <strong>{t("saves.editorName")}</strong>
             <p>{t("saves.editorHint")}</p>
-            <code>{saveEditorPath.trim() ? saveEditorPath : t("saves.editorUnset")}</code>
+            <code>{settings.saveEditorPath.trim() ? settings.saveEditorPath : t("saves.editorUnset")}</code>
           </div>
           <div className="save-tool-actions">
-            {saveEditorPath.trim() ? (
+            {settings.saveEditorPath.trim() ? (
               <button className="btn btn-primary" onClick={() => void openEditor()} disabled={openingEditor}>
                 {openingEditor ? <Spinner size={14} /> : <ExternalLink size={14} />}
                 {t("saves.launchEditor")}
               </button>
             ) : null}
-            <button className="btn btn-ghost" onClick={onOpenSettings}>
-              {t("saves.configureEditor")}
-            </button>
           </div>
         </div>
         <p className="save-tool-warning">

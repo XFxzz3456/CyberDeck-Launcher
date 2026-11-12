@@ -118,10 +118,10 @@ const afterValue = await currentLabel();
 const toastText = await page.locator(".toast, .toast-item").first().innerText().catch(() => "");
 await page.screenshot({ path: "shots/audit/interaction-profile-switched.png" });
 
-// 设置页播放集面板在「工具组件」分区里（不是游戏分区）；不切标签页就是 display:none。
+// 设置页播放集面板在「游戏与路径」分区里（2026-11-13 从工具组件搬来）；不切标签页就是 display:none。
 await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(900);
-await page.locator("#settings-tab-tools").click();
+await page.locator("#settings-tab-game").click();
 await page.waitForTimeout(600);
 await page.locator(".profile-panel").scrollIntoViewIfNeeded();
 await page.waitForTimeout(300);

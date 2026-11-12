@@ -34,7 +34,7 @@ await page.waitForTimeout(1200);
 // 入口：侧栏「设置」→ 顶部 Tab「帮助」（r22 从侧栏挪进设置页，两步可达）
 await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(400);
-await page.getByRole("tab", { name: "帮助", exact: true }).click();
+await page.getByRole("tab", { name: "帮助与关于", exact: true }).click();
 await page.waitForTimeout(600);
 
 const tutorials = await page.locator(".help-block", { hasText: "教程" }).locator(".help-item").count();

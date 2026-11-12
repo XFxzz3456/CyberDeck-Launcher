@@ -43,7 +43,7 @@ await page.waitForTimeout(1200);
 // ── 1. 播放集导入/导出按钮在位 ───────────────────────────────────────
 await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(400);
-await page.getByRole("tab", { name: "工具组件", exact: true }).click();
+await page.getByRole("tab", { name: "游戏与路径", exact: true }).click();
 await page.waitForTimeout(500);
 
 const importBtn = page.getByRole("button", { name: "导入", exact: true }).first();

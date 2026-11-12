@@ -3201,8 +3201,8 @@ function AppShell() {
             {view === "saves" ? (
               <Suspense fallback={<ViewFallback />}>
                 <SavesView
-                  saveEditorPath={snapshot.state.settings.saveEditorPath ?? ""}
-                  onOpenSettings={() => handleNavigate("settings", "tools")}
+                  settings={snapshot.state.settings}
+                  onSettings={handleSettings}
                   onError={showError}
                 />
               </Suspense>

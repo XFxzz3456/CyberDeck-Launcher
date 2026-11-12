@@ -56,7 +56,8 @@ await page.waitForTimeout(600);
 await page.getByRole("button", { name: "存档管理", exact: true }).click();
 await page.waitForTimeout(600);
 check("saves page title", (await page.locator(".saves-page h1").innerText()).includes("存档管理"));
-check("three panels", (await page.locator(".saves-panel").count()) === 3);
+// 2026-11-13：新增「存档偏好」卡（自动快照/上限/编辑器路径搬进来），四段式。
+check("four panels", (await page.locator(".saves-panel").count()) === 4);
 check(
   "empty hint",
   (await page.locator(".saves-empty p").first().innerText()).includes("还没有快照"),
@@ -114,24 +115,18 @@ await page.waitForTimeout(300);
 check("saves 返回时直接渲染缓存", (await page.locator(".save-card:not(.is-skeleton)").count()) >= 1);
 check("saves 返回时不显示骨架屏", (await page.locator(".save-card.is-skeleton").count()) === 0);
 
-// 5) 设置页有「存档与工具」卡 + 三项
-await page.getByRole("button", { name: "设置", exact: true }).click();
-await page.waitForTimeout(400);
-await page.locator("#settings-tab-tools").click();
-await page.waitForTimeout(500);
-const headings = await page.locator("#settings-panel-tools h2").allInnerTexts();
-check("settings save card present", headings.some((h) => h.includes("存档与工具")));
+// 5) 存档偏好就在本页（2026-11-13 从「设置 → 工具组件」搬来，一个动作一个入口）
+const prefsTitle = await page.getByText("存档偏好", { exact: false }).count();
+check("saves prefs card present", prefsTitle >= 1);
 check("auto snapshot switch", (await page.locator(".save-limit-select").count()) === 1);
 check("editor path input", (await page.locator(".save-editor-input").count()) === 1);
-
-// 6) 「去配置」跳回工具 Tab
-await page.getByRole("button", { name: "存档管理", exact: true }).click();
-await page.waitForTimeout(400);
-await page.getByRole("button", { name: "去配置", exact: true }).click();
+// 设置页不应再有「存档与工具」卡（同一份配置两个入口的时代结束了）
+await page.getByRole("button", { name: "设置", exact: true }).click();
 await page.waitForTimeout(500);
+const settingsHeads = await page.locator(".settings-tab-panel h2").allInnerTexts();
 check(
-  "jump lands on tools tab",
-  (await page.locator(".settings-tab.active").innerText()).includes("工具组件"),
+  "settings no longer duplicates save prefs",
+  !settingsHeads.some((h) => h.includes("存档与工具") || h.includes("存档偏好")),
 );
 
 console.log(`pageerrors=${errors.length}`);
