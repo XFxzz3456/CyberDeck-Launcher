@@ -417,7 +417,10 @@ export function SettingsView({
 
   // 分区切换只改 state，不给内容区加 key —— 六个面板常驻 DOM，
   // 未保存的输入和子组件内部状态不会因为切换而丢失。
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
+  // 「关于」已经并进「帮助」：老代码/深链如果还传 about，落到 help 而不是空面板。
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(
+    (initialTab as string) === "about" ? "help" : initialTab,
+  );
   // 外部入口（如存档页「去配置」）在组件已挂载时也能切换 Tab：
   // initialTab 只决定首次渲染，后续请求靠这个 effect 跟上。
   useEffect(() => {
@@ -1469,6 +1472,16 @@ export function SettingsView({
           </section>
 
           {/* ── 下载设置（r20 从下载中心页搬入；下载中心只留任务列表） ── */}
+        </section>
+
+        {/* ── 下载 ───────────────────────────────────────── */}
+        <section
+          className="settings-tab-panel settings-grid settings-grid--single"
+          role="tabpanel"
+          id="settings-panel-downloads"
+          aria-labelledby="settings-tab-downloads"
+          hidden={activeTab !== "downloads"}
+        >
           <section className="panel settings-card">
             <div className="panel-head">
               <div>
@@ -1835,16 +1848,7 @@ export function SettingsView({
             </div>
             <HelpCenterView embedded />
           </section>
-        </section>
 
-        {/* ── 关于 ───────────────────────────────────────── */}
-        <section
-          className="settings-tab-panel settings-grid"
-          role="tabpanel"
-          id="settings-panel-about"
-          aria-labelledby="settings-tab-about"
-          hidden={activeTab !== "about"}
-        >
           <section className="panel settings-card about-card">
             <div className="panel-head">
               <div>
@@ -1904,6 +1908,8 @@ export function SettingsView({
             ) : null}
           </section>
         </section>
+
+
       </div>
     </div>
   );

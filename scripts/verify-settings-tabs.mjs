@@ -50,11 +50,11 @@ await page.waitForTimeout(600);
 // ── 1. 分区数量与标签 ──────────────────────────────────────────
 const tabLabels = (await page.locator('.settings-tab').allInnerTexts()).map((t) => t.trim());
 console.log('tabs:', JSON.stringify(tabLabels));
-check('six tabs rendered', tabLabels.length === 6);
+check('eight tabs rendered', tabLabels.length === 8);
 check(
   'tab labels match spec',
   JSON.stringify(tabLabels) ===
-    JSON.stringify(['外观与主题', '游戏与路径', 'AI 配置', '工具组件', '安全与维护', '关于']),
+    JSON.stringify(['个性化', '通知', '游戏与路径', '下载', 'AI 配置', '工具组件', '安全与维护', '帮助与关于']),
 );
 check('exactly one visible panel', (await page.locator('.settings-tab-panel:visible').count()) === 1);
 
@@ -126,7 +126,7 @@ const scrollReset = await page.evaluate(async () => {
   box.scrollTop = 400;
   await new Promise((r) => setTimeout(r, 120));
   const before = box.scrollTop;
-  document.querySelector('#settings-tab-about').click();
+  document.querySelector('#settings-tab-help').click();
   await new Promise((r) => setTimeout(r, 350));
   const after = box.scrollTop;
   document.querySelector('#settings-tab-tools').click();
@@ -144,7 +144,7 @@ await page.waitForTimeout(300);
 // ── 6. 每个分区的内容归属 ──────────────────────────────────────
 const panelContent = await page.evaluate(async () => {
   const out = {};
-  for (const id of ['appearance', 'game', 'ai', 'tools', 'security', 'about']) {
+  for (const id of ['appearance', 'game', 'downloads', 'ai', 'tools', 'security', 'help']) {
     document.querySelector(`#settings-tab-${id}`).click();
     await new Promise((r) => setTimeout(r, 250));
     const panel = document.querySelector(`#settings-panel-${id}`);
@@ -161,7 +161,10 @@ check('tools panel has profile list', /播放集/.test(panelContent.tools ?? '')
 check('tools panel has Nexus integration', /账号与发现/.test(panelContent.tools ?? ''));
 check('security panel has safety policy', /安全策略/.test(panelContent.security ?? ''));
 check('security panel has backup card', /备份与回滚/.test(panelContent.security ?? ''));
-check('about panel has about card', /关于 CyberDeck Launcher/.test(panelContent.about ?? ''));
+check('downloads panel has download settings', /下载设置/.test(panelContent.downloads ?? ''));
+check('downloads panel has route choice', /下载链路/.test(panelContent.downloads ?? ''));
+check('help panel has guide', /帮助中心/.test(panelContent.help ?? ''));
+check('help panel has about card', /关于 CyberDeck Launcher/.test(panelContent.help ?? ''));
 
 // ── 7. 键盘导航与 ARIA ─────────────────────────────────────────
 await page.evaluate(() => document.querySelector('#settings-tab-appearance').click());

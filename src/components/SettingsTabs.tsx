@@ -2,13 +2,13 @@ import { useRef } from "react";
 import type { KeyboardEvent } from "react";
 import type { LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
-import { Bell, BookOpen, BrainCircuit, Gamepad2, Info, Palette, ShieldCheck, Wrench } from "lucide-react";
+import { Bell, BookOpen, BrainCircuit, Download, Gamepad2, Palette, ShieldCheck, Wrench } from "lucide-react";
 import { t } from "../i18n";
 import { indicatorLayoutId, useMotionSprings } from "../lib/motion";
 import { useMotionEnabled } from "../lib/preferences";
 
 /**
- * 设置页顶部的六个分区。
+ * 设置页顶部的八个分区。
  *
  * id 同时用于 tab 按钮的 id（settings-tab-<id>）和面板的
  * aria-labelledby 目标（settings-panel-<id>），改名字要同步改 DOM 引用。
@@ -17,11 +17,11 @@ export type SettingsTabId =
   | "appearance"
   | "notifications"
   | "game"
+  | "downloads"
   | "ai"
   | "tools"
   | "security"
-  | "help"
-  | "about";
+  | "help";
 
 export interface SettingsTabDef {
   id: SettingsTabId;
@@ -33,12 +33,16 @@ export const SETTINGS_TABS: SettingsTabDef[] = [
   { id: "appearance", label: t("settings.tabs.appearance"), icon: Palette },
   { id: "notifications", label: t("settings.tabs.notifications"), icon: Bell },
   { id: "game", label: t("settings.tabs.game"), icon: Gamepad2 },
+  // 下载设置原本寄生在「工具组件」里：并发 / 限速 / 链路 / 分片 / 代理 / 目录
+  // 六组设置，比「通知」还多，却没有自己的位置，用户根本猜不到点哪。
+  { id: "downloads", label: t("settings.tabs.downloads"), icon: Download },
   { id: "ai", label: t("settings.tabs.ai"), icon: BrainCircuit },
   { id: "tools", label: t("settings.tabs.tools"), icon: Wrench },
   { id: "security", label: t("settings.tabs.security"), icon: ShieldCheck },
   // 帮助中心从侧栏挪进来的：它不是高频入口，占着左侧主菜单只会挤压主流程。
+  // 「关于」并进「帮助」：两者都是低频信息页，合并后总数仍是 8 个，
+  // 既给下载腾出位置，又不会把标签栏挤成需要横向滚动。
   { id: "help", label: t("settings.tabs.help"), icon: BookOpen },
-  { id: "about", label: t("settings.tabs.about"), icon: Info },
 ];
 
 /**
