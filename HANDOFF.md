@@ -8,6 +8,11 @@
 
 **本仓库的实际版本是 `1.8.0`（2026-11-12 补发：同版本重构建，用户明确「这个改动也算是1.8版本的」）。** 三处 `version` 一致、tag `v1.8.0` 未动；`release/CyberDeck Launcher.exe` 已是补发包（11,138,560 B / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源仍为 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B / md5 `679a342d82c00f8668328019c5dd4b4d`；GitHub Release [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0) 的资产 `CyberDeck.Launcher.1.8.0.zip` 已删旧传新，远端回读字节一致。**同版本号不会有更新提示，已下载首发版的用户需手动重下。**
 
+- **2026-11-12 23:18 同版本重构建：下载链路 + 分片并发 + 更新进度进下载中心**（用户「探索有没有别的下载路径可以加快速度…」）：
+  先做实验（直连 8 MB：单连接 107 KB/s、4 并发 451 KB/s）证明瓶颈是**按连接限速**，且当时的代理节点比直连慢十余倍。
+  新增 `multipart.rs`（Range 分片 + 段级续传）、`nexus::set_http_route`（auto/direct/proxy 三态进程级配置，队列与更新共用）、`DownloadQueueSettings.route|segments`、设置页链路与分片选择、`DownloadsView` 更新进度卡片。
+  新 exe 11,153,920 B / md5 `190669e047a1ff15e5011edee1d3ed9d`，PE 仍 1.8.0；`cargo test --lib` 391 passed。**便携 ZIP 未重打。**
+
 - **2026-11-12 22:58 同版本重构建（用户「mod更新一直卡着啊」→「构建吧」）**：
   定位到不是死锁：批量更新串行下载，实测 34–37 KB/s（本机 `HTTPS_PROXY=127.0.0.1:56252`），19 个模组要十几小时；界面只有一粒转圈，无法区分「在下第 4 个」和「卡死」。
   修三处：`apply_updates` 每项发 `update-apply-progress`（前端按钮显示 `4/19 · 37%`）、`nexus::download_file` 改 Range 断点续传（206 续写 / 200 重下 / 416 判定已下完）、进度事件改 250ms 时间节流。
