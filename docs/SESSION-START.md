@@ -47,7 +47,7 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.8.0**（tag `v1.8.0`；exe 已构建并替换 release；便携版 ZIP 已打并上传 GitHub Release） |
+| 版本 | **1.8.2**（tag `v1.8.2`；exe 构建中，产物哈希见下） |
 | 远端 | `main` 含 1.8.0 发版提交；tag 最新 **`v1.8.0`** |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**，标签 `P0` / `P1` / `P2` / `migrated` |
 | 门禁基线 | `cargo test --lib` **382 passed / 2 ignored**；全量门禁 **39/39 全绿**；`tsc --noEmit` 0 错误 |

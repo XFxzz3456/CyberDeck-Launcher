@@ -2,7 +2,7 @@
 
 # CyberDeck Launcher
 
-**v1.8.0 · 最新正式版（STABLE）**
+**v1.8.2 · 最新正式版（STABLE）**
 
 > 版本号的唯一事实源是 `package.json` 的三处 `version`（`node scripts/check-version-sync.mjs` 校验）；本行、`docs/SESSION-START.md` §3、`HANDOFF.md` §0 的「当前版本」由同一脚本一并校验。历史版本见 [CHANGELOG](CHANGELOG.md)。
 
