@@ -1207,6 +1207,104 @@ pub(crate) struct DownloadedFile {
 }
 
 /// 下载指定文件到 `downloads` 目录，**不**安装。阻塞调用。
+/// 一次探测的结果：给纯函数 `choose_fastest` 用（便于单测）。
+fn probe_link(client: &Client, uri: &str, key: &str) -> Option<Duration> {
+    let started = std::time::Instant::now();
+    let response = client
+        .get(uri)
+        // 只要 1 字节：目的是测「多久能拿到响应头」，不是测吞吐。
+        .header("Range", "bytes=0-0")
+        .header("apikey", key)
+        .timeout(Duration::from_secs(6))
+        .send()
+        .ok()?;
+    let status = response.status();
+    // 206 正常；416 说明文件对得上但起点越界（也算可达）；200 表示不支持 Range 但可用。
+    if !status.is_success()
+        && status != StatusCode::PARTIAL_CONTENT
+        && status != StatusCode::RANGE_NOT_SATISFIABLE
+    {
+        return None;
+    }
+    Some(started.elapsed())
+}
+
+/// 纯函数：从探测结果里挑最快的一条，全失败则回退第一条。
+///
+/// 回退而不是报错：探测失败可能只是 Range 被拒（黑洞代理），真正的 GET 仍可能成功。
+fn choose_fastest(probes: &[(usize, Option<Duration>)]) -> usize {
+    probes
+        .iter()
+        .filter_map(|(index, elapsed)| elapsed.map(|value| (*index, value)))
+        .min_by_key(|(_, value)| *value)
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+/// 同一会话内按 host 缓存探测结果：一次批量更新有 19 个模组，
+/// 每个都重新探测 3 条镜像等于白烧 57 个请求。
+fn probe_cache() -> &'static Mutex<std::collections::HashMap<String, Duration>> {
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<String, Duration>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn host_of(uri: &str) -> String {
+    uri.split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or(uri)
+        .to_string()
+}
+
+/// 多镜像择优：Nexus 的 `download_link.json` 是数组，历史上会给不同 CDN 域名。
+/// 国内网络下「哪个域名能通」比「哪个更快」更要紧，所以不赌第一条。
+fn pick_fastest_link(client: &Client, key: &str, candidates: Vec<String>) -> String {
+    if candidates.len() <= 1 {
+        return candidates.into_iter().next().unwrap_or_default();
+    }
+    let mut probes: Vec<(usize, Option<Duration>)> = Vec::with_capacity(candidates.len());
+    for (index, uri) in candidates.iter().enumerate() {
+        let host = host_of(uri);
+        let cached = probe_cache()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&host)
+            .copied();
+        probes.push((index, cached));
+    }
+    // 只对没命中缓存的做并发探测。
+    let pending: Vec<(usize, String)> = probes
+        .iter()
+        .filter(|(_, elapsed)| elapsed.is_none())
+        .map(|(index, _)| (*index, candidates[*index].clone()))
+        .collect();
+    if !pending.is_empty() {
+        let measured: Vec<(usize, Option<Duration>)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = pending
+                .into_iter()
+                .map(|(index, uri)| scope.spawn(move || (index, probe_link(client, &uri, key))))
+                .collect();
+            handles
+                .into_iter()
+                .filter_map(|handle| handle.join().ok())
+                .collect()
+        });
+        let mut cache = probe_cache()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for (index, elapsed) in measured {
+            if let Some(ref value) = elapsed {
+                cache.insert(host_of(&candidates[index]), *value);
+            }
+            if let Some(slot) = probes.iter_mut().find(|(slot_index, _)| *slot_index == index) {
+                slot.1 = elapsed;
+            }
+        }
+    }
+    let chosen = choose_fastest(&probes);
+    candidates.into_iter().nth(chosen).unwrap_or_default()
+}
+
 /// 续传决策：只看「.part 现有长度 + 响应状态 + Content-Length」三件事。
 ///
 /// 单独抽出来是因为三条分支里任意一条写错都会得到一个**坏 ZIP**（比不续传更糟）：
@@ -1295,16 +1393,20 @@ pub(crate) fn download_file(
                 "{API_BASE}/games/{GAME_DOMAIN}/mods/{mod_id}/files/{file_id}/download_link.json"
             ),
         )?;
-        let link = links
+        let candidates: Vec<String> = links
             .into_iter()
-            .find(|link| !link.uri.trim().is_empty())
-            .ok_or_else(|| {
-                CommandError::new(
-                    "NEXUS_NO_DOWNLOAD",
-                    "Nexus 没有返回下载地址。免费账号请打开模组页面用浏览器下载；\
-                     启动器在拿到 ZIP 后会自动导入。",
-                )
-            })?;
+            .map(|link| link.uri.trim().to_string())
+            .filter(|uri| !uri.is_empty())
+            .collect();
+        if candidates.is_empty() {
+            return Err(CommandError::new(
+                "NEXUS_NO_DOWNLOAD",
+                "Nexus 没有返回下载地址。免费账号请打开模组页面用浏览器下载；\
+                 启动器在拿到 ZIP 后会自动导入。",
+            ));
+        }
+        // 多镜像时按首字节延迟择优（结果按 host 缓存，批量更新不会重复探测）。
+        let link_uri = pick_fastest_link(&client, &key, candidates);
 
         // 断点续传：.part 有多少就从多少继续（与 download_queue 同一套语义）。
         // 以前这里一进来就 `remove_file(.part)`，几百 MB 下到一半断网就等于全废；
@@ -1320,7 +1422,7 @@ pub(crate) fn download_file(
             let cancel = std::sync::atomic::AtomicBool::new(false);
             let dl = download_client()?;
             let head_total = dl
-                .head(&link.uri)
+                .head(&link_uri)
                 .header("apikey", &key)
                 .send()
                 .ok()
@@ -1330,7 +1432,7 @@ pub(crate) fn download_file(
             {
                 match crate::multipart::download_multipart(
                     &dl,
-                    &link.uri,
+                    &link_uri,
                     Some(&key),
                     &part,
                     total,
@@ -1374,7 +1476,7 @@ pub(crate) fn download_file(
             }
         }
 
-        let mut request = client.get(&link.uri).header("apikey", &key);
+        let mut request = client.get(&link_uri).header("apikey", &key);
         if part_len > 0 {
             request = request.header("Range", format!("bytes={part_len}-"));
         }
@@ -1653,5 +1755,48 @@ mod resume_tests {
             plan_resume(0, StatusCode::PARTIAL_CONTENT, Some(500)),
             ResumePlan::Restart { total: Some(500) }
         );
+    }
+}
+
+#[cfg(test)]
+mod link_choice_tests {
+    use super::choose_fastest;
+    use std::time::Duration;
+
+    #[test]
+    fn picks_lowest_latency() {
+        let probes = vec![
+            (0, Some(Duration::from_millis(320))),
+            (1, Some(Duration::from_millis(90))),
+            (2, Some(Duration::from_millis(180))),
+        ];
+        assert_eq!(choose_fastest(&probes), 1);
+    }
+
+    #[test]
+    fn skips_unreachable_mirrors() {
+        let probes = vec![
+            (0, None),
+            (1, Some(Duration::from_millis(400))),
+            (2, Some(Duration::from_millis(250))),
+        ];
+        assert_eq!(choose_fastest(&probes), 2);
+    }
+
+    #[test]
+    fn falls_back_to_first_when_all_probes_fail() {
+        // 探测失败可能只是 Range 被拒（黑洞代理），真正的 GET 仍可能成功。
+        let probes = vec![(0, None), (1, None), (2, None)];
+        assert_eq!(choose_fastest(&probes), 0);
+    }
+
+    #[test]
+    fn keeps_order_when_latency_ties() {
+        let probes = vec![
+            (0, Some(Duration::from_millis(100))),
+            (1, Some(Duration::from_millis(100))),
+        ];
+        // 相等时保留靠前的，避免同一网络下每次选中不同域名。
+        assert_eq!(choose_fastest(&probes), 0);
     }
 }
