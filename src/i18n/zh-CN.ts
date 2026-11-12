@@ -1168,6 +1168,8 @@ export const zhCN = {
     categorySaved: "已更新 {count} 个模组的分类",
     aiLocSelected: "汉化选中（{count}）",
     aiLocAll: "汉化全部（{count}）",
+    applyAllProgress: "{index}/{total} · {percent}%",
+    applyAllProgressHint: "第 {index}/{total} 个：{name}（已下载 {received} / {totalSize}）。剩下的会依次处理，旧版本都会留备份。",
     applyAllTitle: "把有更新的模组一次性更新到最新版；每个旧版本都会先在本地留备份，可回滚",
     checkUpdatesTitle: "批量检查已装模组的新版本（只发现，不安装）",
     clipboardFailed: "剪贴板不可用，手动复制。",

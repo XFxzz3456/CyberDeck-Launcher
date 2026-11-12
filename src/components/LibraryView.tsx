@@ -44,6 +44,7 @@ import type {
   FrameworkStatus,
   ModEntry,
   Snapshot,
+  UpdateApplyProgress,
 } from "../types";
 import { CATEGORIES } from "../types";
 import { categoryIcon, formatBytes } from "../lib/format";
@@ -152,6 +153,7 @@ export function LibraryView({
   updateChecking = false,
   onApplyUpdates,
   applyingUpdates = false,
+  updateProgress = null,
   onAiLocBatch,
   aiLocBusy = false,
   onEnrichMetadata,
@@ -203,6 +205,8 @@ export function LibraryView({
   /** P5-5B：一次性更新所有命中的模组（后端会先备份旧版本）。 */
   onApplyUpdates?: (entryIds: string[]) => void;
   applyingUpdates?: boolean;
+  /** 批量更新进度；null 表示还在等第一个 start 事件。 */
+  updateProgress?: UpdateApplyProgress | null;
   /** AI 汉化批量入口：传入选中的（或全库的）模组 id，进度由 App 里的任务条呈现。 */
   onAiLocBatch?: (entryIds: string[]) => void;
   aiLocBusy?: boolean;
@@ -1008,10 +1012,36 @@ export function LibraryView({
                   className="btn btn-sm btn-primary"
                   onClick={() => onApplyUpdates?.([...(updateMap?.keys() ?? [])])}
                   disabled={applyingUpdates || !onApplyUpdates}
-                  title={t("library.applyAllTitle")}
+                  title={
+                    applyingUpdates && updateProgress
+                      ? t("library.applyAllProgressHint", {
+                          index: updateProgress.index,
+                          total: updateProgress.total,
+                          name: updateProgress.name,
+                          received: formatBytes(updateProgress.received ?? 0),
+                          totalSize: updateProgress.totalBytes
+                            ? formatBytes(updateProgress.totalBytes)
+                            : "?",
+                        })
+                      : t("library.applyAllTitle")
+                  }
                 >
                   {applyingUpdates ? <Spinner size={13} /> : <Download size={13} />}
-                  {t("library.applyAll")}
+                  {applyingUpdates && updateProgress
+                    ? t("library.applyAllProgress", {
+                        index: updateProgress.index,
+                        total: updateProgress.total,
+                        percent:
+                          updateProgress.totalBytes && updateProgress.totalBytes > 0
+                            ? Math.min(
+                                99,
+                                Math.round(
+                                  ((updateProgress.received ?? 0) / updateProgress.totalBytes) * 100,
+                                ),
+                              )
+                            : 0,
+                      })
+                    : t("library.applyAll")}
                 </button>
               ) : null}
 

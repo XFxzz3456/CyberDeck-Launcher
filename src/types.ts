@@ -885,6 +885,24 @@ export interface NexusDownloadProgress {
   total: number | null;
 }
 
+/**
+ * 批量更新的逐项进度（对应 Rust `updates::UpdateApplyProgress`）。
+ *
+ * `received` / `totalBytes` 后端不发——它们来自 `nexus-download-progress`，
+ * 由前端按 `modId` 对到当前这一项上。这样下载器只要维持一种事件。
+ */
+export interface UpdateApplyProgress {
+  /** 1-based，直接拿来做「4/19」。 */
+  index: number;
+  total: number;
+  entryId: string;
+  name: string;
+  modId: number | null;
+  phase: "start" | "done" | "failed";
+  received?: number;
+  totalBytes?: number | null;
+}
+
 /** 下载中心任务状态（r13，与 Rust download_queue::DownloadStatus 对应）。 */
 export type DownloadTaskStatus =
   | "queued"

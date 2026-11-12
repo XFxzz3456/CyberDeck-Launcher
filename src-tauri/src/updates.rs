@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 /// 单个模组的更新结果。
 #[derive(Debug, Clone, Serialize)]
@@ -352,6 +352,26 @@ pub fn apply_update(
 }
 
 /// 批量更新：逐个来，单个失败不影响后面的。
+/// 批量更新时逐个上报进度。
+///
+/// 为什么必须有：`apply_updates` 是串行阻塞的，19 个模组在慢速链路上要几十分钟，
+/// 前端过去只能拿到一个 `applyingUpdates=true`，界面上就是一粒永久转圈——
+/// 用户无法区分「在下第 4 个」和「卡死」。事件里带 index/total 与 modId，
+/// 前端把 index/total 显示在按钮上，字节进度继续复用 `nexus-download-progress`。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateApplyProgress {
+    /// 1-based，直接给「4/19」这种文案用。
+    pub index: usize,
+    pub total: usize,
+    pub entry_id: String,
+    pub name: String,
+    /// 让前端把 `nexus-download-progress` 里同一 mod 的字节数对到当前这一项。
+    pub mod_id: Option<u64>,
+    /// `start` / `done` / `failed`。
+    pub phase: &'static str,
+}
+
 pub fn apply_updates(
     app: &AppHandle,
     store: &Store,
@@ -359,29 +379,65 @@ pub fn apply_updates(
     entry_ids: &[String],
 ) -> AppResult<UpdateApplyReport> {
     let mut items: Vec<UpdateApplyItem> = Vec::new();
-    for entry_id in entry_ids {
-        match apply_update(app, store, game, entry_id) {
-            Ok(item) => items.push(item),
-            Err(err) => {
-                let name = store
-                    .snapshot_data()
-                    .mods
+    let total = entry_ids.len();
+    // 名字与 modId 先拍一次快照：循环里每轮再读 state 会跟 apply_update 的写锁抢。
+    let labels: Vec<(String, Option<u64>)> = {
+        let data = store.snapshot_data();
+        entry_ids
+            .iter()
+            .map(|id| {
+                data.mods
                     .iter()
-                    .find(|mod_entry| &mod_entry.id == entry_id)
-                    .map(|mod_entry| mod_entry.name.clone())
-                    .unwrap_or_else(|| entry_id.clone());
-                items.push(UpdateApplyItem {
-                    entry_id: entry_id.clone(),
-                    name,
-                    ok: false,
-                    from_version: None,
-                    to_version: None,
-                    backup_id: None,
-                    error: Some(err.message),
-                    warning: None,
-                });
-            }
-        }
+                    .find(|item| &item.id == id)
+                    .map(|item| {
+                        (
+                            item.name.clone(),
+                            item.nexus.as_ref().map(|reference| reference.mod_id),
+                        )
+                    })
+                    .unwrap_or_else(|| (id.clone(), None))
+            })
+            .collect()
+    };
+
+    for (offset, entry_id) in entry_ids.iter().enumerate() {
+        let (name, mod_id) = &labels[offset];
+        let _ = app.emit(
+            "update-apply-progress",
+            UpdateApplyProgress {
+                index: offset + 1,
+                total,
+                entry_id: entry_id.clone(),
+                name: name.clone(),
+                mod_id: *mod_id,
+                phase: "start",
+            },
+        );
+        let item = match apply_update(app, store, game, entry_id) {
+            Ok(item) => item,
+            Err(err) => UpdateApplyItem {
+                entry_id: entry_id.clone(),
+                name: name.clone(),
+                ok: false,
+                from_version: None,
+                to_version: None,
+                backup_id: None,
+                error: Some(err.message),
+                warning: None,
+            },
+        };
+        let _ = app.emit(
+            "update-apply-progress",
+            UpdateApplyProgress {
+                index: offset + 1,
+                total,
+                entry_id: entry_id.clone(),
+                name: name.clone(),
+                mod_id: *mod_id,
+                phase: if item.ok { "done" } else { "failed" },
+            },
+        );
+        items.push(item);
     }
     let applied = items.iter().filter(|item| item.ok).count();
     let failed = items.len() - applied;

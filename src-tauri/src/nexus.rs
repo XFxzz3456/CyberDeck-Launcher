@@ -1127,6 +1127,35 @@ pub(crate) struct DownloadedFile {
 }
 
 /// 下载指定文件到 `downloads` 目录，**不**安装。阻塞调用。
+/// 续传决策：只看「.part 现有长度 + 响应状态 + Content-Length」三件事。
+///
+/// 单独抽出来是因为三条分支里任意一条写错都会得到一个**坏 ZIP**（比不续传更糟）：
+/// - 206 却 truncate → 白下；
+/// - 200 却 append → 旧 .part 接在新内容后面，文件长度对不上、CRC 必错；
+/// - 416 不特判 → 永远下不完（起点已在末尾，服务端不会再给数据）。
+#[derive(Debug, PartialEq)]
+enum ResumePlan {
+    /// `.part` 已经完整（416 Range Not Satisfiable），只差改名。
+    Completed,
+    /// 从 `offset` 接着写，`total` 是含已下载部分的完整长度。
+    Resume { offset: u64, total: Option<u64> },
+    /// 服务端忽略 Range（200），只能 truncate 从头写。
+    Restart { total: Option<u64> },
+}
+
+fn plan_resume(part_len: u64, status: StatusCode, content_length: Option<u64>) -> ResumePlan {
+    if status == StatusCode::RANGE_NOT_SATISFIABLE && part_len > 0 {
+        return ResumePlan::Completed;
+    }
+    if status == StatusCode::PARTIAL_CONTENT && part_len > 0 {
+        return ResumePlan::Resume {
+            offset: part_len,
+            total: content_length.map(|len| part_len + len),
+        };
+    }
+    ResumePlan::Restart { total: content_length }
+}
+
 pub(crate) fn download_file(
     app: &AppHandle,
     store: &Store,
@@ -1197,73 +1226,123 @@ pub(crate) fn download_file(
                 )
             })?;
 
-        let response = client
-            .get(&link.uri)
-            .header("apikey", &key)
+        // 断点续传：.part 有多少就从多少继续（与 download_queue 同一套语义）。
+        // 以前这里一进来就 `remove_file(.part)`，几百 MB 下到一半断网就等于全废；
+        // 慢速链路（代理 / 免费账号）重下一次要几十分钟，看起来就像「卡死」。
+        let part = target.with_extension("part");
+        let part_len = std::fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0);
+
+        let mut request = client.get(&link.uri).header("apikey", &key);
+        if part_len > 0 {
+            request = request.header("Range", format!("bytes={part_len}-"));
+        }
+        let mut response = request
             .send()
             .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("下载连接失败：{e}")))?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(api_error(status, &body));
-        }
-        let total = response.content_length();
-        if let Some(total) = total {
-            if total > MAX_DOWNLOAD_BYTES {
+
+        // 续传决策抽成纯函数（plan_resume），三条分支都有单测：
+        // 206 接着写 / 200 从头写 / 416 其实已下完。
+        let plan = plan_resume(part_len, response.status(), response.content_length());
+        if plan == ResumePlan::Completed {
+            if target.exists() {
+                let _ = std::fs::remove_file(&target);
+            }
+            std::fs::rename(&part, &target)
+                .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}")))?;
+        } else {
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().unwrap_or_default();
+                return Err(api_error(status, &body));
+            }
+            let (resuming, offset, total) = match plan {
+                ResumePlan::Resume { offset, total } => (true, offset, total),
+                ResumePlan::Restart { total } => (false, 0, total),
+                ResumePlan::Completed => unreachable!("Completed 已在上面处理"),
+            };
+            if let Some(total) = total {
+                if total > MAX_DOWNLOAD_BYTES {
+                    return Err(CommandError::new(
+                        "NEXUS_DOWNLOAD_TOO_LARGE",
+                        "这个文件超过 8 GB，启动器拒绝下载。",
+                    ));
+                }
+            }
+            let mut output = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(!resuming)
+                .append(resuming)
+                .open(&part)
+                .map_err(|e| {
+                    CommandError::new("NEXUS_DOWNLOAD", format!("无法创建下载文件：{e}"))
+                })?;
+            let mut received: u64 = offset;
+            // 按时间节流而不是按字节：慢速链路上 1 MB 要几十秒，按字节发事件
+            // 等于半天不动一下，用户只能看到转圈。
+            let mut last_emit = std::time::Instant::now();
+            let mut buffer = [0u8; 128 * 1024];
+            loop {
+                let read = response
+                    .read(&mut buffer)
+                    .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("下载中断：{e}")))?;
+                if read == 0 {
+                    break;
+                }
+                received += read as u64;
+                if received > MAX_DOWNLOAD_BYTES {
+                    let _ = std::fs::remove_file(&part);
+                    return Err(CommandError::new(
+                        "NEXUS_DOWNLOAD_TOO_LARGE",
+                        "下载超过 8 GB，已中止。",
+                    ));
+                }
+                output.write_all(&buffer[..read]).map_err(|e| {
+                    CommandError::new("NEXUS_DOWNLOAD", format!("写入下载文件失败：{e}"))
+                })?;
+                if last_emit.elapsed() >= Duration::from_millis(250) {
+                    let _ = app.emit(
+                        "nexus-download-progress",
+                        DownloadProgress {
+                            mod_id,
+                            file_id,
+                            received,
+                            total,
+                        },
+                    );
+                    last_emit = std::time::Instant::now();
+                }
+            }
+            output.flush().ok();
+            drop(output);
+            if received == part_len && resuming {
+                // 续传请求成功但一个字节都没来：保留 .part，下次接着下，别把进度清掉。
                 return Err(CommandError::new(
-                    "NEXUS_DOWNLOAD_TOO_LARGE",
-                    "这个文件超过 8 GB，启动器拒绝下载。",
+                    "NEXUS_DOWNLOAD_EMPTY",
+                    "续传没有拿到新数据，已保留已下载部分，可稍后重试。",
                 ));
             }
-        }
-        let part = target.with_extension("part");
-        let _ = std::fs::remove_file(&part);
-        let mut output = std::fs::File::create(&part)
-            .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法创建下载文件：{e}")))?;
-        let mut response = response;
-        let mut received: u64 = 0;
-        let mut buffer = [0u8; 128 * 1024];
-        loop {
-            let read = response
-                .read(&mut buffer)
-                .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("下载中断：{e}")))?;
-            if read == 0 {
-                break;
-            }
-            received += read as u64;
-            if received > MAX_DOWNLOAD_BYTES {
+            if received == 0 {
                 let _ = std::fs::remove_file(&part);
-                return Err(CommandError::new(
-                    "NEXUS_DOWNLOAD_TOO_LARGE",
-                    "下载超过 8 GB，已中止。",
-                ));
+                return Err(CommandError::new("NEXUS_DOWNLOAD_EMPTY", "下载到 0 字节，已中止。"));
             }
-            output.write_all(&buffer[..read]).map_err(|e| {
-                CommandError::new("NEXUS_DOWNLOAD", format!("写入下载文件失败：{e}"))
+            if target.exists() {
+                let _ = std::fs::remove_file(&target);
+            }
+            std::fs::rename(&part, &target).map_err(|e| {
+                CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}"))
             })?;
-            if received % (1024 * 1024) < 128 * 1024 {
-                let _ = app.emit(
-                    "nexus-download-progress",
-                    DownloadProgress {
-                        mod_id,
-                        file_id,
-                        received,
-                        total,
-                    },
-                );
-            }
         }
-        output.flush().ok();
-        drop(output);
-        if received == 0 {
-            let _ = std::fs::remove_file(&part);
-            return Err(CommandError::new("NEXUS_DOWNLOAD_EMPTY", "下载到 0 字节，已中止。"));
-        }
-        if target.exists() {
-            let _ = std::fs::remove_file(&target);
-        }
-        std::fs::rename(&part, &target)
-            .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法完成下载文件：{e}")))?;
+        // 续传完成时也要发一次终值，否则前端停在最后一个节流点（比如 97%）。
+        let _ = app.emit(
+            "nexus-download-progress",
+            DownloadProgress {
+                mod_id,
+                file_id,
+                received: std::fs::metadata(&target).map(|meta| meta.len()).unwrap_or(0),
+                total: std::fs::metadata(&target).map(|meta| meta.len()).ok(),
+            },
+        );
     }
 
     Ok(DownloadedFile {
@@ -1386,4 +1465,51 @@ pub fn prune_downloads(store: &Store, days: u64) -> usize {
         }
     }
     removed
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::{plan_resume, ResumePlan};
+    use reqwest::StatusCode;
+
+    #[test]
+    fn resumes_from_partial_content() {
+        // 已有 100 字节，服务端回 206 并告知剩余 900：总长应是 1000，偏移 100。
+        assert_eq!(
+            plan_resume(100, StatusCode::PARTIAL_CONTENT, Some(900)),
+            ResumePlan::Resume { offset: 100, total: Some(1000) }
+        );
+    }
+
+    #[test]
+    fn restarts_when_server_ignores_range() {
+        // 服务端不认 Range 回 200：必须 truncate 重写，否则旧 .part 会接在新内容前面。
+        assert_eq!(
+            plan_resume(100, StatusCode::OK, Some(1000)),
+            ResumePlan::Restart { total: Some(1000) }
+        );
+    }
+
+    #[test]
+    fn treats_range_not_satisfiable_as_completed() {
+        // .part 长度已等于文件大小（上次 rename 前中断）：直接收尾，不要从零重下。
+        assert_eq!(
+            plan_resume(1000, StatusCode::RANGE_NOT_SATISFIABLE, None),
+            ResumePlan::Completed
+        );
+        // 没有 .part 时 416 说明文件在服务端已不可用，按普通错误走。
+        assert_eq!(
+            plan_resume(0, StatusCode::RANGE_NOT_SATISFIABLE, None),
+            ResumePlan::Restart { total: None }
+        );
+    }
+
+    #[test]
+    fn zero_part_never_resumes() {
+        // 没有 .part 时服务端仍回 206（异常情况）：按从头写处理，避免 append 到空文件之外。
+        assert_eq!(
+            plan_resume(0, StatusCode::PARTIAL_CONTENT, Some(500)),
+            ResumePlan::Restart { total: Some(500) }
+        );
+    }
 }

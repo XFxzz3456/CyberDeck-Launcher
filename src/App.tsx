@@ -18,6 +18,7 @@ import type {
   ModEntry,
   NexusDownloadProgress,
   NxmLink,
+  UpdateApplyProgress,
   NexusStatus,
   NexusUpdateItem,
   NexusUpdateReport,  UpdateBackup,
@@ -378,6 +379,8 @@ function AppShell() {
   // #1 更新检查：结果与进行中标记。updates 按 entryId 索引供列表/抽屉查。
   const [updateReport, setUpdateReport] = useState<NexusUpdateReport | null>(null);
   const [applyingUpdates, setApplyingUpdates] = useState(false);
+  // 批量更新的逐项进度：null 表示没在跑或刚跑完。字节数由 nexus-download-progress 补。
+  const [updateProgress, setUpdateProgress] = useState<UpdateApplyProgress | null>(null);
   const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
   const [appUpdating, setAppUpdating] = useState(false);
   // AI 汉化：接口是否可用 + 单条弹窗目标 + 批量是否在跑（进度走任务中心）。
@@ -922,6 +925,7 @@ function AppShell() {
 
     let unlistenLink: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
+    let unlistenApply: (() => void) | undefined;
     void (async () => {
       if (!isTauri) return;
       try {
@@ -937,6 +941,25 @@ function AppShell() {
                   : item,
               ),
             );
+            // 同一份字节进度也给「全部更新」按钮用：批量更新走的是同一条下载器，
+            // 只是它过去没有把它接到界面上，19 个串行下载就只剩一粒转圈。
+            setUpdateProgress((current) =>
+              current && current.modId === modId
+                ? { ...current, received, totalBytes: total }
+                : current,
+            );
+          },
+        );
+        unlistenApply = await listen<UpdateApplyProgress>(
+          "update-apply-progress",
+          (event) => {
+            const payload = event.payload;
+            // done / failed 立刻清掉，下一项的 start 会重新填；中途停下也不会留残值。
+            setUpdateProgress(
+              payload.phase === "start"
+                ? { ...payload, received: 0, totalBytes: null }
+                : null,
+            );
           },
         );
       } catch {
@@ -948,6 +971,7 @@ function AppShell() {
       offStatus();
       unlistenLink?.();
       unlistenProgress?.();
+      unlistenApply?.();
     };
   }, [addNxmLink]);
 
@@ -2336,6 +2360,7 @@ function AppShell() {
         showError(error, t("err.applyUpdate"));
       } finally {
         setApplyingUpdates(false);
+        setUpdateProgress(null);
       }
     },
     [applyingUpdates, recordActivity, refresh, showError, toast],
@@ -3090,6 +3115,7 @@ function AppShell() {
                 updateChecking={updateChecking}
                 onApplyUpdates={(ids) => void handleApplyUpdates(ids)}
                 applyingUpdates={applyingUpdates}
+                updateProgress={updateProgress}
                 onAiLocBatch={(ids) => void handleAiLocBatch(ids)}
                 aiLocBusy={aiLocBusy}
                 onEnrichMetadata={() => void runEnrichMetadata()}
