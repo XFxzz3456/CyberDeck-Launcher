@@ -58,7 +58,7 @@
 ## [1.8.2] - 2026-11-13（下载链路可选 · 分片并发 · 设置页重构）
 
 > 来源：用户「mod更新一直卡着啊」+「尝试探索有没有别的下载路径可以加快速度，以及把更新进度放在下载中心里显示，然后给下载设置增加不同链路的选择」+「Nexus 多镜像择优没做这条做一下吧」+「现在的分类是不是不够清晰，像下载这样的高频操作都不知道在哪」+「好，都按照你的，然后把那两项次要问题也解决了」+「好，顺便升为新版本吧」。
-> 产物 `release/CyberDeck Launcher.exe`：11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`，PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携 ZIP 本轮未重打（需单独确认）。
+> 产物 `release/CyberDeck Launcher.exe`：11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`，PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携 ZIP 已打包并上传 GitHub Release（5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`）。
 
 ### 修复
 
@@ -74,7 +74,8 @@
 ### 产物
 
 - `release/CyberDeck Launcher.exe`：11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`，mtime 2026-11-13 00:22:47，PE 版本资源 1.8.2（三处 `version` 与 tag `v1.8.2` 同步，旧包备份为 `.prev.exe`）。
-- **便携 ZIP 与 GitHub Release 未动**：`CyberDeck.Launcher.1.8.0.zip` 仍是 1.8.0 那版（不含本版全部改动），需要对外分发时单独确认后再打包上传。
+- 便携版 `发布产物/CyberDeck Launcher 1.8.2 便携版.zip`：5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685` / sha256 `c403015abf87ea9dd74aff29d435a4652fe9b20d9407fa116dfa519471504f34`，4 个条目（exe / WebView2Loader.dll / 使用说明.txt / cyberdeck-data/说明-数据目录.txt），UTF-8 文件名，CRC 通过，包内 exe md5 与 release 版一致。
+- 已创建 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2)（ID 443216984，非 draft / 非预发布），资产 `CyberDeck.Launcher.1.8.2.zip`，**回读 5,728,620 B 与本地逐字节一致**，API digest 与本地 sha256 相同。
 
 ### 设置页信息架构重构
 
