@@ -8,6 +8,11 @@
 
 **本仓库的实际版本是 `1.8.0`（2026-11-12 补发：同版本重构建，用户明确「这个改动也算是1.8版本的」）。** 三处 `version` 一致、tag `v1.8.0` 未动；`release/CyberDeck Launcher.exe` 已是补发包（11,138,560 B / md5 `dc1b04b8193b7678c6e3270b19cd441c`），PE 版本资源仍为 1.8.0（`FileVersion` / `ProductVersion` 均为 1.8.0），旧包备份为 `.prev.exe`。便携版 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`，5,713,404 B / md5 `679a342d82c00f8668328019c5dd4b4d`；GitHub Release [v1.8.0](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.0) 的资产 `CyberDeck.Launcher.1.8.0.zip` 已删旧传新，远端回读字节一致。**同版本号不会有更新提示，已下载首发版的用户需手动重下。**
 
+- **2026-11-12 22:58 同版本重构建（用户「mod更新一直卡着啊」→「构建吧」）**：
+  定位到不是死锁：批量更新串行下载，实测 34–37 KB/s（本机 `HTTPS_PROXY=127.0.0.1:56252`），19 个模组要十几小时；界面只有一粒转圈，无法区分「在下第 4 个」和「卡死」。
+  修三处：`apply_updates` 每项发 `update-apply-progress`（前端按钮显示 `4/19 · 37%`）、`nexus::download_file` 改 Range 断点续传（206 续写 / 200 重下 / 416 判定已下完）、进度事件改 250ms 时间节流。
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 252s + 同步，总 454s）；新 exe 11,141,632 B / md5 `ea0df34be7b402537e3cd34464704387`，PE 仍 1.8.0。**便携 ZIP 未重打**。
+
 - **2026-11-12 00:4x 1.8.0 补发（用户「构建+收尾，同时这个改动也算是1.8版本的，把github上的便携版重新打包上传」）**：
   用 `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（全量门禁 → **跳过升版** → 构建 → 同步 release），把「整合包入口收口」与「ico 微圆角」两批源码一起打进产物。
   三处版本号、tag `v1.8.0` 全部保持不变；按 1.5.0 口径重打便携 ZIP 并**删除后重新上传**同名 Release 资产（不是新建 Release），同步更新 Release 说明里的哈希。
