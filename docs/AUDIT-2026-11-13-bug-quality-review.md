@@ -122,4 +122,11 @@
 - 复核中确认**已修而非遗留**的两项：rar 分支已改「前置列清单 `list_archive_entries` → `validate_archive_entries` → 再解压」；`.tmp-` 崩溃残留由 `store.rs` 回收。
 - 全仓 `expect("… poisoned")` 已统一为 `unwrap_or_else`（grep 0 命中），§7 的中毒面描述不再成立。
 
-验证：`cargo check --lib` 通过；`cargo test --lib` 399 passed / 0 failed / 2 ignored；`tsc --noEmit` 0 错误；`npm run build` 通过。
+验证：`cargo check --lib` 通过；`cargo test --lib` 399 passed / 0 failed / 2 ignored；`tsc --noEmit` 0 错误；`npm run build` 通过；全量门禁 39/39（437s）。
+
+### 复盘（得失）
+
+- **现象 → 真因**：本轮最严重的是 H1——`percent_decode` 把「按字节找 `%`」和「按字符边界切 `&str`」混在一起，`%中` 就落在 UTF-8 字符中间；`panic="abort"` 让它从「一条链接解析失败」升级成「整个进程退出」。同类的还有 `modsettings::replace_line_value`：把**整行**的 `=` 位置套到**剥掉注释后**的片段上，用 `min(len)` 兜底反而制造了 `[..=len]` 越界。两处真因是同一个：**把一个字符串的索引误用在另一个字符串上**。
+- **走过的错误假设**：① 以为 `eq.min(before_comment.len())` 已经防住越界（其实恰好制造越界）；② `merge_disabled_order` 第一版「按上一轮槽位依次替换」把启用项挤到末尾，被单测直接抓到，改成按锚点插入才符合「disabled 也记住位置」；③ 浏览器验证 M1 时把「启动参数」输入框（同样叫 `.launch-args-input`）误当「前置命令」，两次 fill 超时才发现要用 placeholder / 分区定位；④ Python 批量替换第一次全盘失败，真因是 `installer.rs` 为 CRLF 而脚本按 LF 匹配——**改 Rust 文件先确认换行**，已写进脚本 helper。
+- **代价 / 新约束**：`windows-sys` 多一个 `Win32_UI_WindowsAndMessaging` feature；redMod 编译新增 15 分钟硬超时（超时返回 `REDMOD_TIMEOUT` 而不是无限等）；Archive 布局遇到同名文件从「静默覆盖」改成**明确拒装**；前置命令从「逐字落盘」改成「失焦/回车 + 二次确认」；版本口径统一回 1.8.3，远端 `v1.8.4` tag 已删除、`v1.8.3` 强制更新到最新提交。
+- **下次第一步查什么**：遇到「审查报告说还会 panic」，先按报告给的**最小输入**写一条单测复现（本轮 `%中`、`a;b=1 ; note=x=y` 都是这样确认的），再动手改；改完先 `cargo test --lib <名字>`，不要等全量门禁。批量脚本先打印目标片段的 `repr()` 并统一换行，避免「断言失败但前半段已写盘」的半状态。
