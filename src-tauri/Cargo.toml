@@ -1,6 +1,6 @@
 [package]
 name = "cyberdeck-launcher"
-version = "1.8.3"
+version = "1.8.4"
 description = "A focused Cyberpunk 2077 mod launcher"
 authors = ["CyberDeck Launcher"]
 edition = "2021"
