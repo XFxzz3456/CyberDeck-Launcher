@@ -132,8 +132,14 @@ fn percent_decode(value: &str) -> String {
     let mut index = 0;
     while index < bytes.len() {
         if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let hex = &value[index + 1..index + 3];
-            if let Ok(byte) = u8::from_str_radix(hex, 16) {
+            // 必须走 get()：`%` 后面可能是多字节 UTF-8（如 `%中`），按字节切
+            // &value[i+1..i+3] 会落在字符边界内直接 panic。panic="abort" 下
+            // 这就是「点一个 nxm:// 链接，整个启动器进程没了」。
+            // 顺带用 ASCII hex 过滤，避免把 `%+1` 之类当成有效转义往前跳。
+            let hex = value
+                .get(index + 1..index + 3)
+                .filter(|h| h.len() == 2 && h.bytes().all(|b| b.is_ascii_hexdigit()));
+            if let Some(byte) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
                 out.push(byte);
                 index += 3;
                 continue;

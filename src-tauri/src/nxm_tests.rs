@@ -205,3 +205,21 @@ fn same_handler_is_not_archived_twice() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// H1 回归：`%` 后跟多字节字符时，旧实现按字节切 `&str` 直接 panic
+/// （panic="abort" 会让整个启动器退出）。链接解析必须容错，不能崩。
+#[test]
+fn percent_decode_multibyte_does_not_panic() {
+    let link = nxm::parse_link("nxm://cyberpunk2077/mods/107/files/1234?key=%中&expires=1")
+        .expect("多字节转义不该让解析失败");
+    assert_eq!(link.mod_id, 107);
+    assert_eq!(link.key.as_deref(), Some("%中"));
+    assert_eq!(link.expires.as_deref(), Some("1"));
+
+    // 末尾残缺、非 hex、混合中英文：都不许 panic，也要保留原字节。
+    for query in ["key=%", "key=%3", "key=%zz", "key=%E4%B8%AD", "key=ab%中cd"] {
+        let uri = format!("nxm://cyberpunk2077/mods/1/files/1?{query}");
+        let parsed = nxm::parse_link(&uri).unwrap();
+        assert!(parsed.key.is_some(), "{query}");
+    }
+}
