@@ -438,6 +438,23 @@ function AppShell() {
     if (importTimerRef.current !== null) window.clearTimeout(importTimerRef.current);
   }, []);
 
+  // 文本选择口径（3F 修订）：CSS 放行内容文本让用户能拖选复制，但「误触 Ctrl+A
+  // 把整页文字框成一片蓝」是当初加全局 user-select:none 要解决的毛病，不能带回来。
+  // 所以只拦「焦点不在输入框/可编辑区」的 Ctrl/Cmd+A；输入框里照常全选自己那点内容。
+  // 内容文本的复制走鼠标拖选（已放行），或组件自带的「复制」按钮。
+  useEffect(() => {
+    const guard = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
+      const target = event.target as HTMLElement | null;
+      const editable = target?.closest?.(
+        "input, textarea, [contenteditable='true'], [contenteditable='']",
+      );
+      if (!editable) event.preventDefault();
+    };
+    window.addEventListener("keydown", guard, true);
+    return () => window.removeEventListener("keydown", guard, true);
+  }, []);
+
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(() =>
     loadNotificationPrefs(),
   );

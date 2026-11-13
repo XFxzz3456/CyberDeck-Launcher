@@ -9518,14 +9518,105 @@ body,
   -webkit-user-select: none;
 }
 
+/* 3F 修订（1.8.3）：原白名单只有 input/textarea/pre/code/toast-copy，
+   实测模组库 95/95、设置页 197/236 的文本节点都选不了——连说明正文、
+   表格数据、路径、报错详情这些「本来就该能复制」的内容也被一并挡住。
+   改成按内容类型放行叶子节点；UI chrome 仍在下面单独钉死为 none。 */
 input,
 textarea,
+[contenteditable="true"],
 pre,
 code,
+kbd,
+samp,
+p,
+li,
+dd,
+dt,
+td,
+th,
+blockquote,
+figcaption,
+small,
 .toast-copy,
-.selectable-text {
+.selectable-text,
+[data-copyable],
+/* 带 title 的通常是被省略号截断的完整值，正是用户想复制的目标。 */
+[title]:not(button):not([role="button"]),
+.panel-copy,
+.panel-note,
+.inline-warning,
+.inline-warning div,
+.danger-confirm-detail,
+.danger-command,
+.root-fault-detail,
+.issue-copy,
+.summary-copy,
+.summary-detail,
+.ai-run-copy,
+.conflict-ai-copy,
+.adopt-row-copy,
+.appearance-card-copy,
+.family-copy,
+.palette-field-copy,
+.command-copy,
+.mod-name,
+.mod-version,
+.meta-value,
+.detail-value,
+.path-value,
+.bg-path,
+.cover-cache-path,
+.dl-update-item-name,
+.version-item-version,
+.version-item-meta,
+.path-link,
+.log-line-text,
+.eula-body,
+.eula-text,
+.help-copy {
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* 父容器一放行，user-select:auto 的按钮/标签会跟着变可选（Chrome 里 auto
+   跟随祖先）。这里显式钉死 UI chrome：拖选不会把按钮字、导航、标题一起框蓝。 */
+button,
+[role="button"],
+.btn,
+label,
+summary,
+.tag,
+.badge,
+.chip,
+.tab,
+.nav-label,
+.nav-en,
+.sidebar-section-label,
+.brand-name,
+.brand-sub,
+.titlebar-game,
+.titlebar-build,
+.titlebar-demo,
+.page-head h1,
+.panel-head h2,
+.modal-head h2,
+.logo-sys,
+.eula-consent,
+.danger-hold,
+.log-line-number,
+/* 内容容器（如 .appearance-card-copy）放行后，里面的装饰标签会跟着 auto 变可选：
+   这些是「// THEME / PALETTE」一类的版式文字，不是要复制的内容，钉回 none。 */
+.panel-eyebrow,
+.page-eyebrow,
+.section-label,
+.field-label,
+.platform-label,
+.panel-kicker,
+.eyebrow,
+.badge-label {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Display face for titles and chrome; Inter for every piece of reading text. */
