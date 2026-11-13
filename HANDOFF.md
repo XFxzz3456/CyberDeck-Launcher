@@ -6,7 +6,14 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.3`（2026-11-13，统一口径）。** 三处 `version` + `Cargo.lock` 一致；当晚曾短时以 1.8.4 发布，按用户决定把 1.8.4 与后续审查修复**全部并入 1.8.3**，`v1.8.4` tag 已删除、`v1.8.3` tag 移到最新提交。`release/CyberDeck Launcher.exe` 已于 2026-11-13 23:13 按 1.8.3 重构建并替换（11,176,960 B / md5 `5906af219d4052e3193bc2e06266ed11`，PE `FileVersion` / `ProductVersion` 均为 1.8.3），用户 localhost 验收已确认；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。便携版仍是 1.8.2（`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B / md5 `8d028e1b8a6bcf4141f59988c5123685`，GitHub Release `v1.8.2`），本轮未重打。
+**本仓库的实际版本是 `1.8.3`（2026-11-13，统一口径）。** 三处 `version` + `Cargo.lock` 一致；当晚曾短时以 1.8.4 发布，按用户决定把 1.8.4 与后续审查修复**全部并入 1.8.3**，`v1.8.4` tag 已删除、`v1.8.3` tag 移到最新提交。`release/CyberDeck Launcher.exe` 已于 2026-11-13 23:13 按 1.8.3 重构建并替换（11,176,960 B / md5 `5906af219d4052e3193bc2e06266ed11`，PE `FileVersion` / `ProductVersion` 均为 1.8.3），用户 localhost 验收已确认；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。便携版已按 1.8.3 重打（`发布产物/CyberDeck Launcher 1.8.3 便携版.zip`，5,714,563 B / md5 `1a61d735ac45bdb111f7f34013187fbd`），并创建 GitHub Release `v1.8.3`（资产 `CyberDeck.Launcher.1.8.3.zip`）。
+
+- **2026-11-13 23:24 便携版补发 1.8.3**（用户「需要」= 确认打 ZIP + 发 Release）：
+  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.3 便携版.zip`（5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`），
+  4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.3` Release（ID `444391436`，非 draft / 非预发布、设为 latest）并上传资产 `CyberDeck.Launcher.1.8.3.zip`（ID `744131201`），
+  API `digest` = 本地 sha256、size 一致，并经 API 资产端点直连回读 5,714,563 B 与本地**逐字节一致**。
+  **网络口径**：`api.github.com` / `uploads.github.com` 直连可用（Python 显式 `ProxyHandler({})` 关掉环境代理）；
+  `github.com/releases/download/...` 走会话代理 70s 只拿到 2.4 MB，改用 API 资产端点（`Accept: application/octet-stream`）直连即可完整回读。
 
 - **2026-11-13 22:10– 1.8.3 第三批（三份审查报告核销）**：
   H1 `nxm::percent_decode` 字节切片 panic 改 `get()` + 回归；M1 前置命令前后端二次确认与校验；

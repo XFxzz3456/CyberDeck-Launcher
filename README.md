@@ -25,12 +25,12 @@
 
 ![模组库](docs/screenshots/library.png)
 
-## 1.8.2 有什么变化
+## 1.8.3 有什么变化
 
-- **下载更快**：链路三选一（跟随系统 / 直连 / 自定义代理）——同一网络下两者实测能差十余倍；大文件按 `Range` 分片并发 + 段级续传；Nexus 多镜像按首字节延迟择优。
-- **进度不再是黑盒**：批量更新逐项上报，按钮显示 `4/19 · 37%`，下载中心单开一张卡片显示当前模组与已下载/总大小。
-- **设置更好找**：8 个分区按语义重划（下载独立成页），新增**设置搜索**与**每页恢复默认**。
-- **一个动作一个入口**：整合包收到顶部常驻按钮；存档偏好搬回存档管理页（配置就在用它的人眼前）。
+- **下载中心看得见更新**：批量更新摊开成逐项清单，可暂停 / 继续 / 取消；进度与实时速度一起显示，待更新模组自动置顶。
+- **少一点噪音、多一点控制**：任务中心活动流收进顶栏铃铛一处；多版本模组可按版本删除多余版本（「−」）。
+- **缺陷审查收口**：核销三份审查报告——nxm 链接解码 panic、前置命令二次确认、Archive 同名拒装、redMod 输出保序与 15 分钟超时、禁用 REDmod 位置等。
+- **该能复制的能复制**：正文、路径、报错详情、模组名可拖选复制；按钮 / 导航 / 标签仍不可选，误触 Ctrl/Cmd+A 不再整页框蓝。
 
 完整变更见 [CHANGELOG](CHANGELOG.md)。
 
@@ -521,16 +521,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 -
 
 ## 下载安装
 
-1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.2**，资产名 `CyberDeck.Launcher.1.8.2.zip`。
+1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.3**，资产名 `CyberDeck.Launcher.1.8.3.zip`。
 2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`（`WebView2Loader.dll` 必须和它放在一起）。首次启动会引导你定位游戏目录。
 3. 数据保存在 exe 同级的 `cyberdeck-data`（便携模式，一旦存在就固定用它）；没有该目录时用 `%APPDATA%\com.arol.cyberdeck`。删掉这个目录即等于清空启动器数据，不动游戏文件。
 
-**校验**（1.8.2，可核对下载是否完整）：
+**校验**（1.8.3，可核对下载是否完整）：
 
 | 产物 | 大小 | md5 |
 | --- | --- | --- |
-| `CyberDeck Launcher.exe` | 11,165,696 B（10.65 MB） | `11b32961281214f13ca4a7ccd0ee49bd` |
-| `CyberDeck.Launcher.1.8.2.zip` | 5,728,620 B（5.46 MiB） | `8d028e1b8a6bcf4141f59988c5123685` |
+| `CyberDeck Launcher.exe` | 11,176,960 B（10.66 MB） | `5906af219d4052e3193bc2e06266ed11` |
+| `CyberDeck.Launcher.1.8.3.zip` | 5,714,563 B（5.45 MiB） | `1a61d735ac45bdb111f7f34013187fbd` |
 
 从旧版（NightCity Loader / 0.x）升级：直接替换 exe，数据目录会自动识别与迁移。
 

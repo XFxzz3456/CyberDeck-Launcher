@@ -152,7 +152,8 @@
 
 - `cargo test --lib`：**399 passed / 0 failed / 2 ignored**（新增 4 条回归：H1 容错、ini 越界、禁用顺序 2 条）。
 - `tsc --noEmit` 0 错误；`i18n:check` 0 处；`npm run build` 通过；全量门禁 39/39（首次 437s），发版链路二次全量门禁 **39/39 全绿**（207s / 合计 390s 工时）。
-- **产物（2026-11-13 23:14，用户 localhost 验收确认后重构建）**：`npm run release -- --skip-bump`（不升版）→ `release/CyberDeck Launcher.exe` **11,176,960 B（10.66 MB）/ md5 `5906af219d4052e3193bc2e06266ed11`**，mtime 2026-11-13 23:13:59，PE `FileVersion` / `ProductVersion` 均为 **1.8.3**；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。构建 196s、链路总耗时 403s。便携 ZIP 未重打，GitHub Release 最新仍 `v1.8.2`。
+- **产物（2026-11-13 23:14，用户 localhost 验收确认后重构建）**：`npm run release -- --skip-bump`（不升版）→ `release/CyberDeck Launcher.exe` **11,176,960 B（10.66 MB）/ md5 `5906af219d4052e3193bc2e06266ed11`**，mtime 2026-11-13 23:13:59，PE `FileVersion` / `ProductVersion` 均为 **1.8.3**；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。构建 196s、链路总耗时 403s。
+- **便携版与 GitHub Release（23:24，用户确认「需要」后补发）**：`发布产物/CyberDeck Launcher 1.8.3 便携版.zip` **5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`**；4 条目（exe / WebView2Loader.dll / 使用说明.txt / cyberdeck-data/说明-数据目录.txt）、UTF-8 文件名、CRC 通过，包内 exe md5 与 release 一致。已创建 GitHub Release [v1.8.3](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.3)（ID `444391436`，非 draft / 非预发布、设为 latest），上传资产 `CyberDeck.Launcher.1.8.3.zip`（ID `744131201`，5,714,563 B），API `digest` = 本地 sha256，且经 API 资产端点直连回读 5,714,563 B 与本地**逐字节一致**；说明含本版内容与校验数据。
 
 ### 四、文本选择口径修正（22:53，用户「屏蔽过头了」）
 
