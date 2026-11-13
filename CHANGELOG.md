@@ -151,8 +151,8 @@
 #### 验证
 
 - `cargo test --lib`：**399 passed / 0 failed / 2 ignored**（新增 4 条回归：H1 容错、ini 越界、禁用顺序 2 条）。
-- `tsc --noEmit` 0 错误；`i18n:check` 0 处；`npm run build` 通过；全量门禁见本轮发布记录。
-- **产物待回填**：`release/CyberDeck Launcher.exe` 目前仍是 1.8.4 的临时包；按交付顺序规则先 localhost 验收，用户确认后再按 1.8.3 重构建并替换。
+- `tsc --noEmit` 0 错误；`i18n:check` 0 处；`npm run build` 通过；全量门禁 39/39（首次 437s），发版链路二次全量门禁 **39/39 全绿**（207s / 合计 390s 工时）。
+- **产物（2026-11-13 23:14，用户 localhost 验收确认后重构建）**：`npm run release -- --skip-bump`（不升版）→ `release/CyberDeck Launcher.exe` **11,176,960 B（10.66 MB）/ md5 `5906af219d4052e3193bc2e06266ed11`**，mtime 2026-11-13 23:13:59，PE `FileVersion` / `ProductVersion` 均为 **1.8.3**；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。构建 196s、链路总耗时 403s。便携 ZIP 未重打，GitHub Release 最新仍 `v1.8.2`。
 
 ### 四、文本选择口径修正（22:53，用户「屏蔽过头了」）
 
