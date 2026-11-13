@@ -53,3 +53,19 @@ issue 推荐路线里的「替换 / 新增 CET `user.ini` 与 RED4ext TOML/JSON 
 ## 5. 未变的红线
 
 卸载只信 `deployed_files`；路径过 `safe_join` + `is_within`；硬链接身份用 `GetFileInformationByHandle`；**Mutex 内不做 IO**；新增 Tauri 命令必须同时定义 + 注册 + 前端调用（`scripts/check-commands.mjs`）；改完先门禁 → 提交 → localhost 验收 → 用户确认后才构建 exe。
+
+## 6. 落地复核（2026-11-13，三份审查报告核销批次）
+
+本文是**范围签字结论**，不是 bug 清单。本轮按「三篇都核」的要求逐项复核，结论：**签字项均已落地，红线未被破坏，无需改功能**。
+
+| 签字项 | 复核证据 |
+| --- | --- |
+| M1 独立本地化映射 | `src-tauri/src/ailabel.rs` 存在，产物落 `data_dir/ai-labels/<modId>.json`，`mod_id` 过 sanitize。 |
+| 原始标签来源 | `config_resolver::raw_mod_sources` 存在；`mod_config` 在返回前套覆盖层并把过期提示放进 `warnings`。 |
+| 词表优先 / 不覆盖 user 译文 | `ailabel` 走 `ai::translate_locale_strings` 与既有词表规则，`by = "ai"`。 |
+| 挂载与 best-effort | `ailoc::apply` / `ailoc::revert` 挂接，失败只进 `warnings`。 |
+| 不写游戏配置值 / 不动 `launcher-state.json` schema | 复核未发现写 `user.ini` / TOML 配置值的路径；产物均为独立 JSON。 |
+| FOMOD / 框架探针口径 | `installer::fomod_unsupported` 已落地；`compat.rs` / `deps.rs` / `diagnostics.rs` 主判据均为 `scc.exe`。 |
+| 红线：Mutex 内不做 IO、命令定义+注册+前端调用 | 本轮未新增 Tauri 命令；`check-commands.mjs` 由全量门禁覆盖。 |
+
+已知边界（原文 §4）仍成立：M1 依附现有「AI 汉化」入口、无独立 UI 按钮；游戏内框架菜单（范围 ②）未做。

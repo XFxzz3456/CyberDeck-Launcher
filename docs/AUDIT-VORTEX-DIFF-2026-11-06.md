@@ -305,3 +305,26 @@ CET 自造目录层（`:1179-1181`）；rar 先解压后校验（`:382→478-484
 ---
 
 *本报告第 1–8 节的行号基于 2026-11-06 的仓库状态（HEAD `2010e6c`）；第 9 节为当日收尾批次的对账。*
+
+## 10. 第二轮核销（2026-11-13，统一计入 1.8.3）
+
+用户要求把三份审查报告一起核实修复。§9 已落地的 P0 / 大部分 P1 复核为**仍有效**（FOMOD 识别拒绝、scc.exe 探针、9 项 compat 表、配置包 `Option` 字段、problems 收集器、DEPLOY_GATE 扩展到部署路径、Copy 删除身份校验等均在代码中）。本轮处理剩余 P2 与顺延项的复核结论：
+
+| # | 状态 | 落地 / 理由 |
+| --- | --- | --- |
+| P2 · `modsettings.rs:369-377` 越界 panic | ✅ 已修 | `replace_line_value` 不再把「整行的 `=` 位置」套到剥注释后的片段；改在片段里 `find('=')`。新增回归用例（key 含 `;`、注释里含 `=`、中文 key、空串）。 |
+| P2 · Archive 拍平不做目标去重 | ✅ 已修 | `plan_for` 记录 `archive_targets`，同名目标报 `ARCHIVE_TARGET_CONFLICT`，不再两条同 `relative_path` 造成静默覆盖与卸载假告警。 |
+| P2 · 两个清洗器口径不一致 | ✅ 已修 | `modname::LEADING_NOISE` 改 `pub(crate)`，`category::clean_name` 直接复用；`~ + % $ & * ^ @ =` 不再漏。 |
+| P2 · config_pack 非原子导出 | ✅ 已修 | `export_to` 改 `store::write_atomic`（临时文件 + rename）。 |
+| P2 · stdout/stderr 丢序 | ✅ 已修 | `redmod::run_deploy` 把两路输出重定向到同一个日志文件，`failure_reason` 能拿到真实最后一行。 |
+| P2 · redMod 无超时 | ✅ 已修 | `try_wait` 轮询 + 15 分钟上限，超时 kill 并报 `REDMOD_TIMEOUT`（不再无限挂住调用线程）。 |
+| P2 · `-rttiSchemaPath` 分隔符混排 | ✅ 已修 | `deploy_args` 改逐段 `Path::join("tools").join("redmod").join("metadata.json")`，常量仍供写文件侧使用。 |
+| P2 · 禁用 REDmod 丢位置 | ✅ 已修 | 新增 `redmod::merge_disabled_order`：`save_redmod_order` 先按上一轮骨架把缺席（禁用）项按锚点插回，再 `normalize_order`。2 条单测。 |
+| P2 · expect 中毒面 / `.tmp-` 残留 / rar 先解压后校验 | ✅ 复核已修 | 见 §8 补充核销（本报告 §5.4 / §1 行号基于 11-06，代码已变）。 |
+| P1-3 Archive 保子路径 | ⏸ 顺延（理由不变） | 会迁移**已部署**模组的目标路径，风险高于收益；本轮用「同名冲突明确报错」消除了数据面损害，但不改落位。 |
+| P1-4 MultiType | ⏸ 顺延（理由不变） | 要重写 `plan_for` 返回结构；现有 `layout_skipped` warning 已消除静默丢文件。 |
+| P1-8 抽 `framework.rs` | ⏸ 顺延 | 结构性重构；当前 4 处口径已统一到 9 项 compat 表与 `scc.exe`，无相反结论，属可维护性而非功能缺陷。 |
+| P1-9 暂停写 modlist 不删文件 | ⏸ 顺延（产品决策） | 「关开关就删游戏目录文件」是破坏性动作，需先定删哪些 / 怎么提示 / 能否撤销。UI 已有 `MODLIST PRESENT / PAUSED` 红标与 warn 面板明确告知磁盘顺序仍生效，信息不对称已消除。 |
+| CET 自造目录层 / GBK 文件名 / 同步命令占主线程 / state 锁内 IO | ⏸ 顺延 | 分别涉及已部署路径迁移、新增编码依赖、Tauri 命令改异步 + 前端进度、大范围锁重构，均属独立批次。 |
+
+本轮未改「§7 已领先，不要动」的任何一项。验证：`cargo test --lib` 399 passed / 0 failed / 2 ignored；`cargo check` / `tsc --noEmit` / `npm run build` 通过。

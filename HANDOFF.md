@@ -6,14 +6,20 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.4`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2)（资产 `CyberDeck.Launcher.1.8.2.zip`，回读字节一致）。
+**本仓库的实际版本是 `1.8.3`（2026-11-13，统一口径）。** 三处 `version` + `Cargo.lock` 一致；当晚曾短时以 1.8.4 发布，按用户决定把 1.8.4 与后续审查修复**全部并入 1.8.3**，`v1.8.4` tag 已删除、`v1.8.3` tag 移到最新提交。`release/CyberDeck Launcher.exe` 目前仍是 1.8.4 的临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`），**待用户 localhost 验收确认后按 1.8.3 重构建并替换**；旧包备份 `.prev.exe`。便携版仍是 1.8.2（`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B / md5 `8d028e1b8a6bcf4141f59988c5123685`，GitHub Release `v1.8.2`），本轮未重打。
 
-- **2026-11-13 21:55 发布 1.8.4**（用户三连问：活动/通知重复、多版本缺删除、更新任务不能暂停取消且折叠）：
+- **2026-11-13 22:10– 1.8.3 第三批（三份审查报告核销）**：
+  H1 `nxm::percent_decode` 字节切片 panic 改 `get()` + 回归；M1 前置命令前后端二次确认与校验；
+  L1–L6 全部落地（LazyLock / file_name 兜底 / 定时器 cleanup / `where` 排除 CWD / main 启动失败日志+MessageBox / poison expect）。
+  Vortex 审计剩余 P2：ini 越界 panic、Archive 同名覆盖、清洗器口径、配置包原子导出、redMod 输出保序+超时+路径分隔符、禁用 REDmod 位置。
+  `cargo test --lib` 399 passed / 0 failed / 2 ignored。**exe 待验收后按 1.8.3 重构建。**
+
+- **2026-11-13 21:55 · 1.8.3 第二批**（用户三连问：活动/通知重复、多版本缺删除、更新任务不能暂停取消且折叠）：
   TaskCenter 去掉活动流（只留铃铛一处）；VersionChip 每行加「−」删除单版本（Vortex 条目不显示）；
   批量更新新增 `update-apply-plan` 清单事件 + `download_gate()` 暂停闸 + 取消标志，下载中心摊开成逐项列表并加暂停/取消，速度统计计入更新字节。
   exe 11,169,280 B（10.65 MB） / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4；提交 4fd4f5d / 29dee8d / 断言修正；**便携 ZIP 未重打。**
 
-- **2026-11-13 21:22 发布 1.8.3**（用户「更新中但下载中心不显示，且待更新应排前面」）：
+- **2026-11-13 21:22 · 1.8.3 第一批**（用户「更新中但下载中心不显示，且待更新应排前面」）：
   `DownloadsView` 改为接收 `App` 的 `updateProgress`（原先自己 listen，切视图才挂载 → 事件稀疏时卡片长期空白）；
   列表分组新增「待更新」置顶分组，平铺模式同样把更新项提前。
   exe 11,165,696 B（10.65 MB） / md5 `e671e059392fa3e4e64209a3bd37dc10`，PE 1.8.3；`check-library-view` 新增置顶断言。**便携 ZIP 未重打。**
