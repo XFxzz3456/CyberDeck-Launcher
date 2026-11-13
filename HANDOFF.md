@@ -8,6 +8,11 @@
 
 **本仓库的实际版本是 `1.8.4`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2)（资产 `CyberDeck.Launcher.1.8.2.zip`，回读字节一致）。
 
+- **2026-11-13 21:55 发布 1.8.4**（用户三连问：活动/通知重复、多版本缺删除、更新任务不能暂停取消且折叠）：
+  TaskCenter 去掉活动流（只留铃铛一处）；VersionChip 每行加「−」删除单版本（Vortex 条目不显示）；
+  批量更新新增 `update-apply-plan` 清单事件 + `download_gate()` 暂停闸 + 取消标志，下载中心摊开成逐项列表并加暂停/取消，速度统计计入更新字节。
+  exe 11,169,280 B（10.65 MB） / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4；提交 4fd4f5d / 29dee8d / 断言修正；**便携 ZIP 未重打。**
+
 - **2026-11-13 21:22 发布 1.8.3**（用户「更新中但下载中心不显示，且待更新应排前面」）：
   `DownloadsView` 改为接收 `App` 的 `updateProgress`（原先自己 listen，切视图才挂载 → 事件稀疏时卡片长期空白）；
   列表分组新增「待更新」置顶分组，平铺模式同样把更新项提前。

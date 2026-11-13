@@ -47,11 +47,11 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 | 项 | 值 |
 |---|---|
-| 版本 | **1.8.4**（tag `v1.8.3`；exe 已构建并替换 release；便携 ZIP 未重打） |
+| 版本 | **1.8.4**（tag `v1.8.4`；exe 已构建并替换 release；便携 ZIP 未重打） |
 | 远端 | `main` 含 1.8.2 发版提交；tag 最新 **`v1.8.2`** |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**，标签 `P0` / `P1` / `P2` / `migrated` |
 | 门禁基线 | `cargo test --lib` **395 passed / 2 ignored**；全量门禁 **43/43 全绿**；`tsc --noEmit` 0 错误 |
-| release exe | 11,165,696 B（10.65 MB） / md5 `e671e059392fa3e4e64209a3bd37dc10`；PE `1.8.3`（2026-11-13 21:22） |
+| release exe | 11,169,280 B（10.65 MB） / md5 `d033d82dd1088e5cf692a839469e203e`；PE `1.8.4`（2026-11-13 21:55） |
 | 便携版 ZIP | `发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`；GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2) 资产 `CyberDeck.Launcher.1.8.2.zip` |
 | 未做 | 内置 Nexus 窗口端到端真机（登录 → Mod Manager Download → 任务条）；第三方 OAuth 登录；UI/UX 顺延（首次向导 / 选择态上提 / 技术信息分层 / 样式全量令牌化）；#8 实机双端验收；全类型汉化真机样本；Vortex A1–A10；腾讯文档进度表停在 1.5.0，是否继续维护待定 |
 
