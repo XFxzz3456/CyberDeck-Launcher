@@ -5,7 +5,7 @@
 //   - 单次开关：完全静默（0 条 toast）——结果在卡片角标上看得见；
 //   - 连串开关：2 秒合并窗口结束只留 **1 条** 汇总（走 deploy 类别，可被设置页关掉）；
 //   - 任务中心：轻操作不再占一行任务（taskRows=0）；
-//   - 活动流：逐条记，一条不少（activityRows>=5）；
+//   - 活动流：逐条记，一条不少（铃铛面板内 activityRows>=5）；
 //   - 卡片角标：5 张卡都得真的翻过来（badgesOk=1）。
 //
 // 浏览器（mock）模式：演示库里 Model 的开关走 mockApi.setModEnabled，
@@ -116,7 +116,15 @@ async function clickToggle(name, mode = "pointer") {
 
 const toastCount = () => page.locator(".toast-host .toast").count();
 const taskRows = () => page.locator(".task-row").count();
-const activityRows = () => page.locator(".activity-row").count();
+// 活动流只在顶栏铃铛里渲染（2026-11-13 起任务中心不再重复一份），所以要先把面板打开。
+const activityRows = async () => {
+  const bell = page.locator(".btn-bell");
+  if ((await bell.getAttribute("aria-expanded")) !== "true") {
+    await bell.click();
+    await page.waitForTimeout(300);
+  }
+  return page.locator(".bell-panel .activity-row").count();
+};
 
 const initial = await readCards();
 const targets = initial.filter((card) => card.name && !card.missing).slice(0, 5);
