@@ -6,7 +6,7 @@
 
 ## 0. 版本口径（先看这一条）
 
-**本仓库的实际版本是 `1.8.2`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2)（资产 `CyberDeck.Launcher.1.8.2.zip`，回读字节一致）。
+**本仓库的实际版本是 `1.8.3`（2026-11-13）。** 三处 `version` 一致、tag `v1.8.2`；`release/CyberDeck Launcher.exe` 已替换（11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`），PE 版本资源 1.8.2（`FileVersion` / `ProductVersion` 均为 1.8.2），旧包备份为 `.prev.exe`。便携版：`发布产物/CyberDeck Launcher 1.8.2 便携版.zip`，5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685`；已上传 GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.2)（资产 `CyberDeck.Launcher.1.8.2.zip`，回读字节一致）。
 
 - **2026-11-13 00:30 便携版补发 1.8.2**（用户「全部收尾吧」）：
   按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.2 便携版.zip`（5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685` / sha256 `c403015abf87ea9dd74aff29d435a4652fe9b20d9407fa116dfa519471504f34`），
