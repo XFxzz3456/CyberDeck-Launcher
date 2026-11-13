@@ -18231,6 +18231,24 @@ body::before {
   color: var(--red);
 }
 
+/* 启动前置命令警告：任意命令执行，文案必须比普通说明更显眼。 */
+.danger-note {
+  color: var(--red);
+}
+
+.danger-command {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 68, 68, 0.06);
+  font-family: var(--mono);
+  font-size: var(--fs-hint);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+}
+
 .dl-update-meta {
   color: var(--muted-2);
   font-size: var(--fs-hint);

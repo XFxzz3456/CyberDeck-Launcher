@@ -124,8 +124,10 @@ fn has_fragment(haystack: &str, words: &[&str]) -> bool {
 /// - `_` 与 `-` 视为分隔符（换成空格），保留 `.`（`2.0` 不能被拆成 `2 0`）；
 /// - 连续空白压成一个；去尾部空白；转小写。
 fn clean_name(raw: &str) -> String {
+    // 与 modname.rs 共用同一份噪声表：过去这里漏了 `~ + % $ & * ^ @ =`，
+    // 同一个模组在「展示名」和「分类关键词」里被剥掉的字符不一样（P2）。
     let trimmed = raw.trim_start_matches(|c: char| {
-        c.is_whitespace() || matches!(c, '!' | '#' | '_' | '-' | '.' | '[' | ']')
+        c.is_whitespace() || crate::modname::LEADING_NOISE.contains(&c)
     });
     let mut out = String::with_capacity(trimmed.len());
     let mut prev_space = false;

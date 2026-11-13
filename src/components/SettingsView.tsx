@@ -32,7 +32,7 @@ import { compactPath, formatBytes, relativeTime } from "../lib/format";
 import { useAppVersion } from "../lib/appVersion";
 import { api, normalizeError, reportBackgroundFailure } from "../lib/api";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Badge, Spinner, SwitchRow } from "./ui";
+import { Badge, ConfirmDialog, Spinner, SwitchRow } from "./ui";
 import { ExternalToolsCard } from "./ExternalToolsCard";
 import type { HiddenViewsMap, HideableView } from "../lib/uiPrefs";
 import { NexusSettingsCard } from "./NexusSettingsCard";
@@ -129,10 +129,16 @@ function NotificationDurationRow({
 
   const customActive = typeof value === "number" && !NOTIFICATION_DURATION_PRESETS.includes(value as 3 | 5 | 10);
 
+  useEffect(() => () => {
+    if (hintTimer.current !== null) window.clearTimeout(hintTimer.current);
+  }, []);
   const flash = (message: string) => {
     setHint(message);
     if (hintTimer.current !== null) window.clearTimeout(hintTimer.current);
-    hintTimer.current = window.setTimeout(() => setHint(""), 2400);
+    hintTimer.current = window.setTimeout(() => {
+      hintTimer.current = null;
+      setHint("");
+    }, 2400);
   };
 
   const commit = (raw: string) => {
@@ -370,9 +376,17 @@ export function SettingsView({
       alive = false;
     };
   }, []);
+  const flashQueueTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashQueueTimerRef.current !== null) window.clearTimeout(flashQueueTimerRef.current);
+  }, []);
   const flashQueue = (message: string) => {
     setQueueNote(message);
-    window.setTimeout(() => setQueueNote((current) => (current === message ? null : current)), 2600);
+    if (flashQueueTimerRef.current !== null) window.clearTimeout(flashQueueTimerRef.current);
+    flashQueueTimerRef.current = window.setTimeout(() => {
+      flashQueueTimerRef.current = null;
+      setQueueNote((current) => (current === message ? null : current));
+    }, 2600);
   };
   // 下载设置是「全量参数」接口（concurrency/autoImport/dir/proxy/speedLimit 一起传），
   // 以前每次都从闭包里取旧值拼参：刚改完并发数、请求还没回来时再切一次自动导入，
@@ -529,6 +543,26 @@ export function SettingsView({
   }, [activeTab]);
 
   const update = (patch: Partial<Settings>) => onSettings({ ...settings, ...patch });
+  // 启动前置命令 = 系统命令行任意命令。不能直接把输入框绑到 onSettings：
+  // 逐字 onChange 会在用户还没看清时就把命令写进设置。改成「草稿 → 失焦/回车
+  // → 二次确认 → 才落盘」，清空则无需确认（减少权限而不是增加）。
+  const [preCommandDraft, setPreCommandDraft] = useState(settings.launchPreCommand ?? "");
+  const [preCommandPending, setPreCommandPending] = useState<string | null>(null);
+  useEffect(() => {
+    if (preCommandPending === null) setPreCommandDraft(settings.launchPreCommand ?? "");
+  }, [settings.launchPreCommand, preCommandPending]);
+
+  const commitPreCommand = () => {
+    const next = preCommandDraft.trim();
+    const current = settings.launchPreCommand ?? "";
+    if (next === current) return;
+    if (next === "") {
+      update({ launchPreCommand: "" });
+      return;
+    }
+    setPreCommandPending(next);
+  };
+
 
   // ── 自定义背景图（看板【皮肤 UI 优化】P0 子项）────────────────────
   // 选图只把路径写进设置；读图/渲染由 App 统一走 read_background_image。
@@ -1203,14 +1237,21 @@ export function SettingsView({
               <input
                 className="input launch-args-input"
                 type="text"
-                value={settings.launchPreCommand ?? ""}
-                onChange={(event) => update({ launchPreCommand: event.target.value })}
+                value={preCommandDraft}
+                onChange={(event) => setPreCommandDraft(event.target.value)}
+                onBlur={commitPreCommand}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
                 placeholder={t("settings.preCommandPlaceholder")}
                 spellCheck={false}
                 maxLength={512}
               />
             </div>
-            <p className="panel-note">{t("settings.preCommandNote")}</p>
+            <p className="panel-note danger-note">{t("settings.preCommandNote")}</p>
           </section>
 
           <section className="panel profile-panel">
@@ -1998,6 +2039,27 @@ export function SettingsView({
           </section>
         </section>
 
+
+      <ConfirmDialog
+        open={preCommandPending !== null}
+        title={t("settings.preCommandConfirmTitle")}
+        danger
+        confirmLabel={t("settings.preCommandConfirmLabel")}
+        detail={
+          <>
+            <p>{t("settings.preCommandConfirmDetail")}</p>
+            <pre className="danger-command">{preCommandPending}</pre>
+          </>
+        }
+        onConfirm={() => {
+          if (preCommandPending !== null) update({ launchPreCommand: preCommandPending });
+          setPreCommandPending(null);
+        }}
+        onClose={() => {
+          setPreCommandPending(null);
+          setPreCommandDraft(settings.launchPreCommand ?? "");
+        }}
+      />
 
       </div>
     </div>

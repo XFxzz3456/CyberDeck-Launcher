@@ -158,7 +158,9 @@ fn lock_state() -> std::sync::MutexGuard<'static, QueueState> {
     QUEUE
         .get_or_init(|| Mutex::new(QueueState::default()))
         .lock()
-        .expect("queue mutex poisoned")
+        // panic="abort" 下不可能 poison（panic 即进程终止），这里仍走恢复分支，
+        // 与全仓 state 锁口径一致，避免留一个语义上「不可达」的 expect。
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn now_secs() -> u64 {

@@ -1,6 +1,6 @@
 [package]
 name = "cyberdeck-launcher"
-version = "1.8.4"
+version = "1.8.3"
 description = "A focused Cyberpunk 2077 mod launcher"
 authors = ["CyberDeck Launcher"]
 edition = "2021"
@@ -53,6 +53,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_Memory",
   "Win32_System_Threading",
   "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 # shellexecute-on-windows: that_detached 走 ShellExecuteW（与 Win+R 同机制）。
 # open 5.4 默认的 powershell/explorer 启动链在 Tauri 进程内会静默失败（2026-10-25 回归）。

@@ -538,11 +538,20 @@ pub(crate) fn which(name: &str) -> Result<PathBuf, std::io::Error> {
         ));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // Windows `where` 会先搜当前目录，命中时甚至返回相对路径。启动器 CWD 若
+    // 被第三方写入，同名 7z.exe 就会被拉起来。兜底阶段只认绝对路径，且跳过
+    // 正好位于 CWD 的结果（与 find_archive_tool 的「配置路径 → ProgramFiles」优先序配套）。
+    let cwd = std::env::current_dir().unwrap_or_default();
     stdout
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())
+        .filter(|line| !line.is_empty())
         .map(PathBuf::from)
+        .find(|path| {
+            path.is_absolute()
+                && path.is_file()
+                && path.parent().is_some_and(|parent| parent != cwd.as_path())
+        })
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "empty where output"))
 }
 
@@ -1340,6 +1349,10 @@ pub(crate) fn plan_for(entry: &ModEntry) -> AppResult<Vec<PlanFile>> {
     };
 
     let mut plan = Vec::new();
+    // Archive 布局把所有 .archive 拍平成 archive/pc/mod/{basename}。
+    // 包里 `a.archive` + `sub/a.archive` 会生成两条同 relative_path 的部署记录：
+    // 装完互相覆盖，卸载时第二条走「拒绝删除」分支产生假告警。宁可明确拒装。
+    let mut archive_targets: HashSet<String> = HashSet::new();
     let folder = entry.mod_folder.clone().unwrap_or_else(|| {
         sanitize_folder(&entry.name, &entry.id[..entry.id.len().min(12)])
     });
@@ -1362,7 +1375,17 @@ pub(crate) fn plan_for(entry: &ModEntry) -> AppResult<Vec<PlanFile>> {
                     continue;
                 }
                 let filename = relative.rsplit('/').next().unwrap_or(&relative);
-                format!("archive/pc/mod/{filename}")
+                let target = format!("archive/pc/mod/{filename}");
+                if !archive_targets.insert(target.clone()) {
+                    return Err(CommandError::new(
+                        "ARCHIVE_TARGET_CONFLICT",
+                        format!(
+                            "包里有多个同名文件「{filename}」，拍平后会互相覆盖。\
+                             请拆开分别导入，或先给其中一个改名。"
+                        ),
+                    ));
+                }
+                target
             }
             InstallLayout::Redmod => format!("mods/{folder}/{relative}"),
             InstallLayout::Cet => format!(

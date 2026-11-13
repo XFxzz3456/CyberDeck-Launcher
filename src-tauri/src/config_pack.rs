@@ -142,7 +142,9 @@ pub fn export_to(store: &Store, path: &Path, app_version: &str) -> AppResult<usi
     let pack = collect_pack(&data, app_version);
     let text = serde_json::to_string_pretty(&pack)
         .map_err(|e| CommandError::new("CONFIG_PACK_ENCODE", format!("配置序列化失败：{e}")))?;
-    std::fs::write(path, &text)
+    // 与 state / modlist 一样走「临时文件 + rename」：直接 fs::write 写一半
+    // 被中断会留下截断的 JSON，导入方看到的是坏包而不是「导出失败」。
+    crate::store::write_atomic(path, text.as_bytes())
         .map_err(|e| CommandError::new("CONFIG_PACK_WRITE", format!("无法写入配置文件：{e}")))?;
     Ok(text.len())
 }

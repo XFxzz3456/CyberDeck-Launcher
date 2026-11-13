@@ -20,6 +20,7 @@ use crate::schema::{
 use crate::secret;
 use crate::store::{now_iso, Store};
 use regex::Regex;
+use std::sync::LazyLock;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -364,6 +365,14 @@ fn tail_chars(text: &str, limit: usize) -> String {
     format!("{LOG_TRUNCATED_MARK}（省略前 {skipped} 个字符）\n{tail}")
 }
 
+/// 编译期常量正则：只编译一次，生产代码里不留 Regex::new(...).unwrap()。
+static PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(?:[A-Z]:\\[^\s"']+|\\\\[A-Za-z0-9.$_-]+\\[^\s"']+)"#).expect("静态路径正则应可编译")
+});
+static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#).expect("静态邮箱正则应可编译")
+});
+
 fn redact(text: &str, game_root: Option<&Path>, data_dir: &Path) -> (String, usize) {
     let mut redactions = 0usize;
     let mut result = text.to_string();
@@ -389,14 +398,11 @@ fn redact(text: &str, game_root: Option<&Path>, data_dir: &Path) -> (String, usi
     // Any remaining absolute Windows path or UNC path is replaced as a whole.
     // Keeping only generic file names would make log evidence less useful, so
     // this is intentionally conservative: replace paths, keep messages.
-    let path_re =
-        Regex::new(r#"(?i)(?:[A-Z]:\\[^\s"']+|\\\\[A-Za-z0-9.$_-]+\\[^\s"']+)"#).unwrap();
-    redactions += path_re.find_iter(&result).count();
-    result = path_re.replace_all(&result, "<PATH>").to_string();
+    redactions += PATH_RE.find_iter(&result).count();
+    result = PATH_RE.replace_all(&result, "<PATH>").to_string();
 
-    let email_re = Regex::new(r#"(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#).unwrap();
-    redactions += email_re.find_iter(&result).count();
-    result = email_re.replace_all(&result, "<EMAIL>").to_string();
+    redactions += EMAIL_RE.find_iter(&result).count();
+    result = EMAIL_RE.replace_all(&result, "<EMAIL>").to_string();
     (result, redactions)
 }
 

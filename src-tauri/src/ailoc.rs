@@ -793,8 +793,14 @@ pub fn apply(
             format!("游戏目录缺少 archive/pc/mod：{}", mod_dir.display()),
         ));
     }
+    // 路径是 root.join("{mod_id}-ai-loc.archive") 造出来的，正常必有 file_name；
+    // 但不留生产 unwrap：拿不到时退回同一个确定性名字，行为不变。
+    let archive_name = archive_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| format!("{mod_id}-ai-loc.archive"));
     let deploys = [
-        (archive_path.clone(), format!("archive/pc/mod/{}", archive_path.file_name().unwrap().to_string_lossy())),
+        (archive_path.clone(), format!("archive/pc/mod/{archive_name}")),
         (xl_path.clone(), format!("archive/pc/mod/{xl_name}")),
     ];
     let mut deployed: Vec<DeployedFile> = Vec::new();

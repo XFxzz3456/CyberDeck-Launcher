@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pin, PinOff, Plus, Terminal, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import type { ExternalToolEntry } from "../types";
@@ -37,9 +37,17 @@ export function ExternalToolsCard({ onError }: Props) {
     void reload();
   }, [reload]);
 
+  const flashTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+  }, []);
   const flash = (message: string) => {
     setNote(message);
-    window.setTimeout(() => setNote((current) => (current === message ? null : current)), 2600);
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = window.setTimeout(() => {
+      flashTimerRef.current = null;
+      setNote((current) => (current === message ? null : current));
+    }, 2600);
   };
 
   /** 列表变更后广播，让 App 侧栏的固定工具区同步刷新。 */

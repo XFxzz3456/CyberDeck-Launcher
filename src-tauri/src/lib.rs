@@ -1908,7 +1908,9 @@ fn save_redmod_order(store: State<'_, Store>, order: Vec<String>) -> AppResult<L
         }
     }
 
-    data.redmod_order = order;
+    // 前端只提交可见（启用）项：先按上一轮骨架把禁用项插回原位，再归一化。
+    let previous = data.redmod_order.clone();
+    data.redmod_order = redmod::merge_disabled_order(&valid, &order, &previous);
     let requested = data.redmod_order.clone();
     data.redmod_order = redmod::normalize_order(&data, &requested);
     redmod::mark_dirty();
@@ -2229,6 +2231,21 @@ fn detect_tool(tool: String) -> AppResult<ToolProbe> {
 #[tauri::command]
 fn set_settings(store: State<'_, Store>, settings: Settings) -> AppResult<Settings> {
     let mut data = store.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // 启动前置命令会被系统命令行原样执行：渲染层若被攻破，改这个字段就是
+    // 现成的宿主任意命令执行入口。前端有二次确认，后端仍做一道长度/控制字符
+    // 校验（M1 纵深防御），不让一整段脚本或换行拼接的命令通过。
+    if settings.launch_pre_command.chars().count() > 512 {
+        return Err(CommandError::new(
+            "INVALID_SETTING",
+            "启动前置命令不能超过 512 个字符。",
+        ));
+    }
+    if settings.launch_pre_command.chars().any(|ch| ch.is_control()) {
+        return Err(CommandError::new(
+            "INVALID_SETTING",
+            "启动前置命令不能包含换行或控制字符，请写成单行命令或脚本路径。",
+        ));
+    }
     let launch = settings.launch_method.as_str();
     if !matches!(launch, "auto" | "steam" | "direct") {
         return Err(CommandError::new(
@@ -4586,6 +4603,34 @@ pub fn self_check(args: &[String]) -> Option<i32> {
     selfcheck::run(args).or_else(|| selfcheck::run_nxm(args))
 }
 
+/// 启动失败时留一份可读证据并给用户一个可见提示。
+///
+/// `panic = "abort"` 下 `.expect()` 会让窗口一闪而过、连日志都没有；
+/// 这类失败（WebView2 缺失、资源打包错、端口被占）用户完全无法自救。
+#[cfg(windows)]
+fn report_fatal_startup(error: &dyn std::fmt::Display) {
+    let message = format!("CyberDeck Launcher 启动失败：{error}");
+    let log = std::env::temp_dir().join("cyberdeck-launcher-startup-error.log");
+    let _ = std::fs::write(&log, format!("{message}\n"));
+    eprintln!("{message}（日志：{}）", log.display());
+
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    let text: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = "CyberDeck Launcher"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: 两个指针都指向以 0 结尾的 UTF-16 缓冲区，hwnd 传空表示无父窗口。
+    unsafe {
+        MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), MB_OK | MB_ICONERROR);
+    }
+}
+
+#[cfg(not(windows))]
+fn report_fatal_startup(error: &dyn std::fmt::Display) {
+    eprintln!("CyberDeck Launcher 启动失败：{error}");
+}
+
 pub fn run() {
     tauri::Builder::default()
         // 单实例必须第一个注册：它要在任何窗口/插件初始化之前抢占命名互斥量，
@@ -4968,7 +5013,7 @@ pub fn run() {
             close_window_action
         ])
         .run(tauri::generate_context!())
-        .expect("error while running CyberDeck Launcher");
+        .unwrap_or_else(|error| report_fatal_startup(&error));
 }
 
 #[cfg(test)]

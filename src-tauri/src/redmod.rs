@@ -28,7 +28,8 @@ use crate::store::Store;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// 部署器本体（REDmod DLC 自带）。
 pub const REDMOD_EXE: &str = "tools/redmod/bin/redMod.exe";
@@ -138,13 +139,20 @@ pub fn deploy_args(game_root: &Path) -> Vec<String> {
         "-reportProgress".to_string(),
         "-root".to_string(),
         game_root.to_string_lossy().to_string(),
+        // 分段 join：用户游戏目录带正斜杠时，直接 join("tools/redmod/…")
+        // 会产出 D:/Games/CP2077\tools\... 这类混排路径。Path::join 逐段
+        // 拼能让分隔符跟平台一致（常量仍是给写文件那侧用的相对路径）。
         format!(
             "-rttiSchemaPath={}",
-            game_root.join(RTTI_METADATA).to_string_lossy()
+            game_root
+                .join("tools")
+                .join("redmod")
+                .join("metadata.json")
+                .to_string_lossy()
         ),
         format!(
             "-modlist={}",
-            game_root.join(MODLIST_RELATIVE).to_string_lossy()
+            game_root.join("V2077").join("modlist.txt").to_string_lossy()
         ),
     ]
 }
@@ -356,6 +364,10 @@ pub fn failure_reason(exit_code: Option<i32>, output: &str) -> String {
     }
 }
 
+/// redMod 编译大型整合包可能跑很久，但不能无限挂住调用线程。
+/// 15 分钟足够覆盖常见规模；超时就 kill 并明确报错，不再让界面永远转圈。
+const REDMOD_TIMEOUT_SECS: u64 = 15 * 60;
+
 /// 调用 redMod 部署。返回的 `exit_code != Some(0)` 由调用方决定怎么呈现。
 pub fn run_deploy(game_root: &Path) -> AppResult<DeployOutcome> {
     let tool = probe_toolchain(game_root)
@@ -374,23 +386,64 @@ pub fn run_deploy(game_root: &Path) -> AppResult<DeployOutcome> {
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let output = command.output().map_err(|err| {
+    // stdout / stderr 汇到同一个文件：`output()` 分开读会丢交错顺序，
+    // 「失败行在 stdout、原因在 stderr」时 failure_reason 就退化成「退出码 N」。
+    // 日志名带纳秒时间戳，即便哪天 DEPLOY_GATE 漏了也不会互相覆盖。
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    let log_path = std::env::temp_dir().join(format!(
+        "cdl-redmod-{}-{stamp}.log",
+        std::process::id()
+    ));
+    let log_file = fs::File::create(&log_path).map_err(|err| {
+        CommandError::new("REDMOD_SPAWN", format!("无法创建 redMod 输出日志：{err}"))
+    })?;
+    let stdout_file = log_file.try_clone().map_err(|err| {
+        CommandError::new("REDMOD_SPAWN", format!("无法复制 redMod 日志句柄：{err}"))
+    })?;
+    command.stdout(Stdio::from(stdout_file));
+    command.stderr(Stdio::from(log_file));
+
+    let mut child = command.spawn().map_err(|err| {
         CommandError::new(
             "REDMOD_SPAWN",
             format!("无法启动 redMod.exe：{err}。请确认游戏目录没有被杀软拦写。"),
         )
     })?;
-
-    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.trim().is_empty() {
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
+    let deadline = Instant::now() + Duration::from_secs(REDMOD_TIMEOUT_SECS);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&log_path);
+                return Err(CommandError::new(
+                    "REDMOD_TIMEOUT",
+                    format!(
+                        "redMod 编译超过 {} 分钟，已中止。可重试；若反复超时请检查游戏目录是否被杀软拦截。",
+                        REDMOD_TIMEOUT_SECS / 60
+                    ),
+                ));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(200)),
+            Err(err) => {
+                return Err(CommandError::new(
+                    "REDMOD_SPAWN",
+                    format!("等待 redMod.exe 失败：{err}"),
+                ))
+            }
         }
-        text.push_str(&stderr);
-    }
+    };
+    // redMod 偶尔输出非 UTF-8（本地化错误信息），按 lossy 处理而不是整段丢掉。
+    let text = fs::read(&log_path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default();
+    let _ = fs::remove_file(&log_path);
     Ok(DeployOutcome {
-        exit_code: output.status.code(),
+        exit_code: status.code(),
         output: text.trim().to_string(),
     })
 }
@@ -540,6 +593,50 @@ pub fn sync_from_store(store: &Store, game_root: &Path) -> AppResult<Option<Sync
 /// 归一化 REDmod 加载顺序：去重、剔除不存在的 id、补上未登记的条目。
 ///
 /// 前端拖完顺序后调用，保证存下来的是一份自洽的列表，而不是「拖到一半」的脏数据。
+/// 合并拖拽提交的顺序与上一轮完整顺序，保住被禁用项的位置。
+///
+/// 视图只收 `enabled`，前端拖拽后只提交「看得见」的条目；若直接拿它覆盖
+/// `state.redmod_order`，禁用的 REDmod 就会被 `normalize_order` 按字母序丢到
+/// 末尾，重新启用时位置全变（官方明确 disabled 也记住位置）。
+/// 做法：以 `previous` 为骨架，出现在本轮提交里的槽位按 `requested` 顺序
+/// 依次填，其余仍在库中的条目原地保留。
+pub fn merge_disabled_order(
+    known: &HashSet<String>,
+    requested: &[String],
+    previous: &[String],
+) -> Vec<String> {
+    use std::collections::{BTreeMap, HashMap};
+    // 每个缺席项挂到「上一轮里它前面最近的、本轮仍在的锚点」后面。
+    // 用槽位骨架直接替换会把启用项挤到末尾（实测过 [a,b,c,d] + [d,a]
+    // 会变成 [d,b,c,a]）， anchored 插入才能既尊重拖拽又保住禁用项位置。
+    let position: HashMap<&str, i32> = requested
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index as i32))
+        .collect();
+    let mut buckets: BTreeMap<i32, Vec<String>> = BTreeMap::new();
+    let mut anchor: i32 = -1;
+    for id in previous {
+        if let Some(&index) = position.get(id.as_str()) {
+            anchor = index;
+        } else if known.contains(id) {
+            buckets.entry(anchor).or_default().push(id.clone());
+        }
+        // 已卸载的 id 直接淘汰。
+    }
+    let mut out: Vec<String> = Vec::with_capacity(previous.len() + requested.len());
+    if let Some(leading) = buckets.get(&-1) {
+        out.extend(leading.iter().cloned());
+    }
+    for (index, id) in requested.iter().enumerate() {
+        out.push(id.clone());
+        if let Some(tail) = buckets.get(&(index as i32)) {
+            out.extend(tail.iter().cloned());
+        }
+    }
+    out
+}
+
 pub fn normalize_order(state: &AppStateData, requested: &[String]) -> Vec<String> {
     let known: HashSet<&str> = state
         .mods
@@ -844,4 +941,36 @@ mod tests {
             vec!["a".to_string()]
         );
     }
+    /// 拖拽只提交启用项时，禁用项不能掉到末尾。
+    #[test]
+    fn merge_disabled_order_keeps_disabled_positions() {
+        let known: HashSet<String> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|value| value.to_string())
+            .collect();
+        let previous = vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ];
+        // 用户把 d 拖到 a 前面，且只提交了启用项 a/d（b、c 被禁用）。
+        let requested = vec!["d".to_string(), "a".to_string()];
+        let merged = merge_disabled_order(&known, &requested, &previous);
+        assert_eq!(merged, vec!["d", "a", "b", "c"]);
+    }
+
+    /// 禁用项本来排在第一位时，也要留在最前。
+    #[test]
+    fn merge_disabled_order_keeps_leading_disabled() {
+        let known: HashSet<String> = ["a", "b", "c"]
+            .iter()
+            .map(|value| value.to_string())
+            .collect();
+        let previous = vec!["b".to_string(), "a".to_string(), "c".to_string()];
+        let requested = vec!["c".to_string(), "a".to_string()];
+        let merged = merge_disabled_order(&known, &requested, &previous);
+        assert_eq!(merged, vec!["b", "c", "a"]);
+    }
+
 }

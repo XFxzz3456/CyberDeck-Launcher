@@ -429,6 +429,14 @@ function AppShell() {
   const pendingImports = useRef<PendingImport[]>([]);
   const importRunning = useRef(false);
   const adoptTaskRef = useRef<number | null>(null);
+  // 一次性 UI 定时器统一由 ref 持有，卸载时清掉（L3：组件不在了就不再 setState）。
+  const eulaTimerRef = useRef<number | null>(null);
+  const importTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (eulaTimerRef.current !== null) window.clearTimeout(eulaTimerRef.current);
+    if (importTimerRef.current !== null) window.clearTimeout(importTimerRef.current);
+  }, []);
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(() =>
     loadNotificationPrefs(),
@@ -2784,7 +2792,11 @@ function AppShell() {
     markEulaAccepted();
     setEulaClosing(true);
     // 与 CSS 的 .eula-portal 过渡时长保持一致，淡完再卸载。
-    window.setTimeout(() => setEulaAccepted(true), EULA_FADE_MS);
+    if (eulaTimerRef.current !== null) window.clearTimeout(eulaTimerRef.current);
+    eulaTimerRef.current = window.setTimeout(() => {
+      eulaTimerRef.current = null;
+      setEulaAccepted(true);
+    }, EULA_FADE_MS);
   };
 
   /**
@@ -3407,7 +3419,11 @@ function AppShell() {
         libraryMods={snapshot.state.mods}
         onClose={() => {
           setImportOpen(false);
-          window.setTimeout(() => setImportOutcomes(null), 250);
+          if (importTimerRef.current !== null) window.clearTimeout(importTimerRef.current);
+          importTimerRef.current = window.setTimeout(() => {
+            importTimerRef.current = null;
+            setImportOutcomes(null);
+          }, 250);
         }}
         onImport={queueImports}
         onSaveCategories={saveImportCategories}

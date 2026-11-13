@@ -390,14 +390,14 @@ pub(crate) fn update_ini_text(raw: &str, section: &str, key: &str, value: &str) 
         for (index, line) in lines.iter().enumerate().take(end).skip(start + 1) {
             if let Some(eq) = line.find('=') {
                 if line[..eq].trim().eq_ignore_ascii_case(key) {
-                    found = Some((index, eq));
+                    found = Some(index);
                     break;
                 }
             }
         }
 
-        if let Some((index, eq)) = found {
-            lines[index] = replace_line_value(&lines[index], eq, value);
+        if let Some(index) = found {
+            lines[index] = replace_line_value(&lines[index], value);
         } else {
             lines.insert(end, format!("{key}={value}"));
         }
@@ -419,9 +419,14 @@ pub(crate) fn update_ini_text(raw: &str, section: &str, key: &str, value: &str) 
     format!("{bom}{rendered}")
 }
 
-fn replace_line_value(line: &str, eq: usize, value: &str) -> String {
+fn replace_line_value(line: &str, value: &str) -> String {
     let (before_comment, comment) = split_comment(line);
-    let eq = eq.min(before_comment.len());
+    // eq 原本是「整行」里 '=' 的字节位置，行内注释被剥掉后它可能越界，
+    // 也可能落进多字节字符中间——旧实现用 min() 兜底仍会 `[..=eq]` 越界 panic。
+    // 在剥注释后的片段里重新找：'=' 是 ASCII，find() 返回的必是合法字符边界。
+    let Some(eq) = before_comment.find('=') else {
+        return line.to_string();
+    };
     let lhs = &before_comment[..=eq];
     let rhs = &before_comment[eq + 1..];
     let leading = &rhs[..rhs.len() - rhs.trim_start().len()];
@@ -511,7 +516,7 @@ pub(crate) fn replace_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{get, infer_kind, restore_backup, save, settings_path, update_ini_text};
+    use super::{get, infer_kind, replace_line_value, restore_backup, save, settings_path, update_ini_text};
     use crate::store::Store;
     use std::fs;
     use std::path::PathBuf;
@@ -642,4 +647,22 @@ mod tests {
         assert_eq!(infer_kind("-12.5"), "number");
         assert_eq!(infer_kind("hello"), "string");
     }
+}
+
+/// Vortex 差异审计 P2：`&before_comment[..=eq]` 越界 panic（ini key 含 `;` /
+/// 注释里先出现 `=` 时必触发）。panic="abort" 下会直接终结启动器。
+#[test]
+fn replace_line_value_never_panics_on_comment_with_equals() {
+    for (line, value) in [
+        ("a;b=1 ; note=x=y", "2"),
+        ("键=值 ; note=a=b", "2"),
+        ("没有等号的一行", "2"),
+        ("", "2"),
+    ] {
+        let _ = replace_line_value(line, value);
+    }
+    assert_eq!(
+        replace_line_value("foo=bar ; note=x=y", "baz"),
+        "foo=baz ; note=x=y"
+    );
 }

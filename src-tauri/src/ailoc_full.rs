@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -312,14 +313,17 @@ fn pack(cli: &Path, source: &Path, output: &Path) -> Result<(), String> {
 // ── P2：脚本类显示文本 ─────────────────────────────────────────────────────
 
 /// 只取「显示类赋值」的字符串，避免把用于逻辑比较的键翻成中文。
-fn display_regex(kind: CarrierKind) -> Regex {
-    let pattern = if kind == CarrierKind::Reds {
-        r#"(?i)\blet\s+\w*(text|label|message|title|desc|name|caption)\w*\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')"#
-    } else {
-        r#"(?i)\b(label|name|title|text|description|tooltip|hint|category|option|display|caption|button)\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')"#
-    };
-    Regex::new(pattern).expect("静态正则应可编译")
+fn display_regex(kind: CarrierKind) -> &'static Regex {
+    if kind == CarrierKind::Reds { &REDS_DISPLAY_RE } else { &INI_DISPLAY_RE }
 }
+
+/// 两条都是编译期常量，用 LazyLock 只编译一次，避免每次调用都 expect。
+static REDS_DISPLAY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\blet\s+\w*(text|label|message|title|desc|name|caption)\w*\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')"#).expect("静态 reds 正则应可编译")
+});
+static INI_DISPLAY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\b(label|name|title|text|description|tooltip|hint|category|option|display|caption|button)\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')"#).expect("静态 ini 正则应可编译")
+});
 
 fn usable_text(text: &str) -> bool {
     let trimmed = text.trim();

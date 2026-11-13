@@ -2037,7 +2037,10 @@ export const zhCN = {
     priorityTip: "高优先级可减少掉帧，但后台多任务时可能卡系统；没有明确需求保持常规。",
     preCommandLabel: "启动前置命令",
     preCommandPlaceholder: "例如 D:\\Tools\\RestartRouter.cmd（留空不执行）",
-    preCommandNote: "启动游戏前用 cmd /C 执行一次；失败会中止启动并显示输出。",
+    preCommandNote: "⚠ 启动游戏前由系统命令行执行一次，拥有你账户的全部权限：只填你信任的命令。失败会中止启动并显示输出；修改需要二次确认。",
+    preCommandConfirmTitle: "确认修改启动前置命令",
+    preCommandConfirmDetail: "这条命令会在每次启动游戏前自动执行，拥有你账户的全部权限。确认它来自你信任的来源：",
+    preCommandConfirmLabel: "我确认，保存",
     storageTitle: "存储与路径",
     tabs: {
       ai: "AI 配置",
