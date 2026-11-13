@@ -67,7 +67,7 @@
 ## [1.8.3] - 2026-11-13（更新进度进下载中心 · 待更新置顶）
 
 > 来源：用户反馈「现在在更新中了，但是还是不在下载中心显示，而且应该把待更新的 mod 排在前面」（附截图，按钮已显示 `2/20 · 73%`）。
-> 产物 `release/CyberDeck Launcher.exe`：@@EXE_SIZE@@ / md5 `@@EXE_MD5@@`，PE 1.8.3。
+> 产物 `release/CyberDeck Launcher.exe`：11,165,696 B（10.65 MB） / md5 `e671e059392fa3e4e64209a3bd37dc10`，PE 1.8.3。
 
 ### 修复
 
