@@ -1419,6 +1419,7 @@ export function LibraryView({
               mods={versionGrouping.display}
               versionGroups={versionGrouping.groups}
               onSwitchVersion={onSwitchVersion}
+              onDeleteVersion={(version) => onUninstall(version)}
               listItems={listItems}
               listHeader={
                 <ModListHeader

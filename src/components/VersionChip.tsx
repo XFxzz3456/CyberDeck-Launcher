@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, Minus, ChevronDown } from "lucide-react";
 import type { ModEntry } from "../types";
 import { formatBytes } from "../lib/format";
 import { currentUiZoom } from "../lib/uiScale";
@@ -40,6 +40,7 @@ export function VersionChip({
   versions,
   busy,
   onSwitch,
+  onDelete,
   placement = "cover",
 }: {
   /** 当前代表这一张卡的条目（正在启用的那个，或版本最高的）。 */
@@ -48,6 +49,11 @@ export function VersionChip({
   versions: ModEntry[];
   busy: boolean;
   onSwitch: (version: ModEntry) => void;
+  /**
+   * 删除某一个版本（Vortex 那套「−」）。不传则不显示按钮。
+   * Vortex 托管的条目由调用方决定是否给出——它的文件在 Vortex 仓库，这边删会造成两边不一致。
+   */
+  onDelete?: (version: ModEntry) => void;
   /** cover = 卡片封面底栏（向上弹）；row = 列表行（对齐右侧）。 */
   placement?: "cover" | "row";
 }) {
@@ -169,31 +175,55 @@ export function VersionChip({
               {versions.map((version) => {
                 const active = version.id === current.id;
                 return (
-                  <button
+                  <div
                     key={version.id}
-                    type="button"
+                    className={`version-row ${active ? "is-current" : ""}`}
                     role="option"
                     aria-selected={active}
-                    className={`version-item ${active ? "is-current" : ""}`}
-                    disabled={busy}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setOpen(false);
-                      if (!active) onSwitch(version);
-                    }}
                   >
-                    <span className="version-item-version">
-                      {version.version ? `v${version.version}` : t("modCard.noVersion")}
-                    </span>
-                    <span className="version-item-meta">
-                      {active
-                        ? t("version.activeTag")
-                        : version.enabled
-                          ? t("version.alsoEnabledTag", { size: formatBytes(version.sizeBytes) })
-                          : formatBytes(version.sizeBytes)}
-                    </span>
-                    {active ? <Check size={12} className="version-item-check" /> : null}
-                  </button>
+                    <button
+                      type="button"
+                      className={`version-item ${active ? "is-current" : ""}`}
+                      disabled={busy}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpen(false);
+                        if (!active) onSwitch(version);
+                      }}
+                    >
+                      <span className="version-item-version">
+                        {version.version ? `v${version.version}` : t("modCard.noVersion")}
+                      </span>
+                      <span className="version-item-meta">
+                        {active
+                          ? t("version.activeTag")
+                          : version.enabled
+                            ? t("version.alsoEnabledTag", { size: formatBytes(version.sizeBytes) })
+                            : formatBytes(version.sizeBytes)}
+                      </span>
+                      {active ? <Check size={12} className="version-item-check" /> : null}
+                    </button>
+                    {onDelete && versions.length > 1 && version.origin !== "vortex" ? (
+                      <button
+                        type="button"
+                        className="version-remove"
+                        title={t("version.removeTitle", {
+                          version: version.version ? `v${version.version}` : t("modCard.noVersion"),
+                        })}
+                        aria-label={t("version.removeAria", {
+                          version: version.version ? `v${version.version}` : t("modCard.noVersion"),
+                        })}
+                        disabled={busy}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpen(false);
+                          onDelete(version);
+                        }}
+                      >
+                        <Minus size={12} />
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>,

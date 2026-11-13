@@ -3254,6 +3254,19 @@ async fn nexus_apply_update(app: tauri::AppHandle, entry_id: String) -> AppResul
     .map_err(|e| CommandError::new("NEXUS_TASK", format!("更新任务异常：{e}")))?
 }
 
+/// 暂停 / 继续批量更新。暂停会真的把当前下载停住（字节数不再增长），
+/// 恢复后从断点续传继续；只影响批量更新，不碰下载队列里用户自己排的任务。
+#[tauri::command]
+fn nexus_updates_pause(paused: bool) {
+    updates::set_batch_paused(paused);
+}
+
+/// 取消批量更新：立即中断当前下载，剩下的不再开始；已下好的部分保留，下次可续传。
+#[tauri::command]
+fn nexus_updates_cancel() {
+    updates::request_batch_cancel();
+}
+
 /// P5-5B：批量更新。「全部更新」按钮走这条，单个失败不连坐。
 #[tauri::command]
 async fn nexus_apply_updates(
@@ -4880,6 +4893,8 @@ pub fn run() {
             nexus_check_updates,
             nexus_apply_update,
             nexus_apply_updates,
+            nexus_updates_pause,
+            nexus_updates_cancel,
             nexus_rollback_update,
             nexus_list_update_backups,
     nexus_refresh_covers,

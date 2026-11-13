@@ -28,6 +28,7 @@ export function ModCard({
   updateVersion,
   versions,
   onSwitchVersion,
+  onDeleteVersion,
   busy,
   onToggle,
   onOpen,
@@ -50,6 +51,8 @@ export function ModCard({
   /** 同一个 mod 的全部版本（新→旧）。长度 > 1 时封面底栏换成版本切换胶囊。 */
   versions?: ModEntry[];
   onSwitchVersion?: (mod: ModEntry) => void;
+  /** 删除某个版本（Vortex 托管条目不给）。 */
+  onDeleteVersion?: (mod: ModEntry) => void;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
   onOpen: () => void;
@@ -210,6 +213,7 @@ export function ModCard({
               versions={versions}
               busy={busy}
               onSwitch={(next) => onSwitchVersion?.(next)}
+              onDelete={onDeleteVersion ? (next) => onDeleteVersion(next) : undefined}
             />
           ) : (
             <span className="cover-version">v{mod.version ?? "—"}</span>

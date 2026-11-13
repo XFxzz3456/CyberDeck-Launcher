@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FolderOpen, FolderSearch, Gauge, Pause, Play, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleDashed,
+  FolderOpen,
+  FolderSearch,
+  Gauge,
+  LoaderCircle,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import type {
   DownloadTask,
   DownloadTaskStatus,
+  UpdateApplyPlan,
   UpdateApplyProgress,
 } from "../types";
 import { api, normalizeError } from "../lib/api";
@@ -91,6 +106,11 @@ export function DownloadsView({
   onOpenNexusSettings,
   dataDir,
   updateProgress = null,
+  updatePlan = null,
+  updateResults = {},
+  updatePaused = false,
+  onToggleUpdatePause,
+  onCancelUpdates,
 }: {
   onNavigateDiscover?: () => void;
   /** Nexus 鉴权失败时的一键出口：跳到「设置 → 工具插件 → Nexus Mods」。 */
@@ -105,6 +125,13 @@ export function DownloadsView({
    * 状态放在常驻的 `App` 里，挂载瞬间就能拿到当前值。
    */
   updateProgress?: UpdateApplyProgress | null;
+  /** 本轮批量更新的完整清单（含还没轮到的），用来把「12 个」摊开成列表。 */
+  updatePlan?: UpdateApplyPlan | null;
+  /** 逐项结果：清单右侧打勾 / 标红。 */
+  updateResults?: Record<string, "done" | "failed">;
+  updatePaused?: boolean;
+  onToggleUpdatePause?: (paused: boolean) => void;
+  onCancelUpdates?: () => void;
 }) {
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
   const [dir, setDir] = useState<string | null>(null);
@@ -112,6 +139,11 @@ export function DownloadsView({
   const [note, setNote] = useState<string | null>(null);
   // 速度估算：相邻两次轮询的字节差 / 时间差。
   const prevRef = useRef<Map<string, { received: number; at: number }>>(new Map());
+  // 批量更新不在下载队列里，但它同样占带宽：把它也算进「实时速度」，
+  // 否则更新跑满时折线仍是 0 B/s，用户会以为速度统计坏了。
+  const updateLiveRef = useRef<UpdateApplyProgress | null>(null);
+  const updateSpeedRef = useRef<{ received: number; at: number } | null>(null);
+  const [updatesExpanded, setUpdatesExpanded] = useState(true);
   const [speeds, setSpeeds] = useState<Map<string, number>>(new Map());
   // 速度折线的历史采样：每次轮询记一个总速率点（deepseek 任务·模块二）。
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
@@ -146,8 +178,23 @@ export function DownloadsView({
       }
       prevRef.current = new Map(list.map((task) => [task.id, { received: task.received, at: now }]));
       setSpeeds(next);
+      // 批量更新的字节单独算一份，和队列速率相加。
+      const live = updateLiveRef.current;
+      let updateSpeed = 0;
+      if (live) {
+        const prev = updateSpeedRef.current;
+        if (prev && now > prev.at) {
+          updateSpeed = Math.max(
+            0,
+            Math.round(((live.received ?? 0) - prev.received) * 1000 / (now - prev.at)),
+          );
+        }
+        updateSpeedRef.current = { received: live.received ?? 0, at: now };
+      } else {
+        updateSpeedRef.current = null;
+      }
       // 总速率采样进折线历史。
-      const total = [...next.values()].reduce((sum, value) => sum + value, 0);
+      const total = [...next.values()].reduce((sum, value) => sum + value, updateSpeed);
       setSpeedHistory((current) => [...current.slice(-(SPEED_WINDOW - 1)), total]);
       setPollError(null);
       return true;
@@ -158,6 +205,11 @@ export function DownloadsView({
       return false;
     }
   }, [dir, dirLoaded]);
+
+  // 让采样循环能读到当前更新进度（不进 refresh 的依赖，否则每次进度变化都重建定时器）。
+  useEffect(() => {
+    updateLiveRef.current = updateProgress;
+  }, [updateProgress]);
 
   useEffect(() => {
     void refresh();
@@ -335,16 +387,101 @@ export function DownloadsView({
               {updateProgress.name}
             </span>
             <code>{updatePercent(updateProgress)}%</code>
+            <div className="dl-update-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => onToggleUpdatePause?.(!updatePaused)}
+              >
+                {updatePaused ? <Play size={12} /> : <Pause size={12} />}
+                {updatePaused ? t("downloads.updateResume") : t("downloads.updatePause")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => onCancelUpdates?.()}
+                title={t("downloads.updateCancelHint")}
+              >
+                <X size={12} /> {t("downloads.updateCancel")}
+              </button>
+            </div>
           </div>
-          <div className="dl-bar" aria-hidden="true">
+          <div className={`dl-bar ${updatePaused ? "is-paused" : ""}`} aria-hidden="true">
             <span style={{ width: `${updatePercent(updateProgress)}%` }} />
           </div>
           <small className="dl-update-meta">
-            {t("downloads.updatingDetail", {
-              received: formatBytes(updateProgress.received ?? 0),
-              total: updateProgress.totalBytes ? formatBytes(updateProgress.totalBytes) : "?",
-            })}
+            {updatePaused
+              ? t("downloads.updatePausedDetail", {
+                  received: formatBytes(updateProgress.received ?? 0),
+                  total: updateProgress.totalBytes
+                    ? formatBytes(updateProgress.totalBytes)
+                    : "?",
+                })
+              : t("downloads.updatingDetail", {
+                  received: formatBytes(updateProgress.received ?? 0),
+                  total: updateProgress.totalBytes
+                    ? formatBytes(updateProgress.totalBytes)
+                    : "?",
+                })}
           </small>
+
+          {/* 12 个模组挤在一条进度条里等于没信息：展开成逐项列表，
+              完成的打勾、失败的标红、没轮到的显示排队。 */}
+          {updatePlan && updatePlan.items.length > 1 ? (
+            <div className="dl-update-list-wrap">
+              <button
+                type="button"
+                className="link-btn dl-update-toggle"
+                onClick={() => setUpdatesExpanded((value) => !value)}
+                aria-expanded={updatesExpanded}
+              >
+                {updatesExpanded
+                  ? t("downloads.updateListCollapse", { count: updatePlan.items.length })
+                  : t("downloads.updateListExpand", { count: updatePlan.items.length })}
+              </button>
+              {updatesExpanded ? (
+                <ul className="dl-update-list">
+                  {updatePlan.items.map((item, index) => {
+                    const result = updateResults[item.entryId];
+                    const state = result ?? (index + 1 < updateProgress.index
+                      ? "done"
+                      : index + 1 === updateProgress.index
+                        ? "active"
+                        : "queued");
+                    return (
+                      <li key={item.entryId} className={`dl-update-item is-${state}`}>
+                        <span className="dl-update-item-icon" aria-hidden="true">
+                          {state === "done" ? (
+                            <CheckCircle2 size={12} />
+                          ) : state === "failed" ? (
+                            <X size={12} />
+                          ) : state === "active" ? (
+                            <LoaderCircle size={12} className={updatePaused ? "" : "spin"} />
+                          ) : (
+                            <CircleDashed size={12} />
+                          )}
+                        </span>
+                        <span className="dl-update-item-name" title={item.name}>
+                          {item.name}
+                        </span>
+                        <span className="dl-update-item-state">
+                          {state === "done"
+                            ? t("downloads.updateItemDone")
+                            : state === "failed"
+                              ? t("downloads.updateItemFailed")
+                              : state === "active"
+                                ? updatePaused
+                                  ? t("downloads.updateItemPaused")
+                                  : t("downloads.updateItemRunning")
+                                : t("downloads.updateItemQueued")}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -17497,6 +17497,46 @@ body::before {
   cursor: progress;
 }
 
+/* 一行版本 = 切换按钮 + 删除按钮。按钮不能嵌套（HTML 不允许 button 套 button），
+   所以外层是 div，里层才是可点的切换按钮。 */
+.version-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.version-row .version-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.version-row:hover {
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.version-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.version-remove:hover:not(:disabled) {
+  background: rgba(255, 68, 68, 0.14);
+  color: var(--red);
+}
+
+.version-remove:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
 .version-item-version {
   min-width: 62px;
   font-family: var(--mono);
@@ -18083,6 +18123,112 @@ body::before {
   font-family: var(--mono);
   font-size: var(--fs-hint);
   color: var(--accent);
+}
+
+/* 卡片头：标题 / 模组名 / 百分比 / 操作按钮。窄窗口时按钮换行到第二行，
+   否则「取消」会被挤出卡片（1180 宽下实测过）。 */
+.dl-update-head {
+  flex-wrap: wrap;
+}
+
+.dl-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.dl-update-actions .btn {
+  min-height: 26px;
+}
+
+/* 暂停时进度条变灰：一眼能看出「停住了」而不是「卡住了」。 */
+.dl-bar.is-paused span {
+  background: var(--muted);
+}
+
+.dl-update-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.dl-update-toggle {
+  align-self: flex-start;
+  font-size: var(--fs-hint);
+  color: var(--accent);
+}
+
+.dl-update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dl-update-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--radius);
+  font-size: var(--fs-hint);
+}
+
+.dl-update-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dl-update-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-2);
+}
+
+.dl-update-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.dl-update-item-state {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted-2);
+}
+
+.dl-update-item.is-done .dl-update-item-icon,
+.dl-update-item.is-done .dl-update-item-state {
+  color: var(--green);
+}
+
+.dl-update-item.is-done .dl-update-item-name {
+  color: var(--text);
+}
+
+.dl-update-item.is-active .dl-update-item-icon,
+.dl-update-item.is-active .dl-update-item-state {
+  color: var(--accent);
+}
+
+.dl-update-item.is-active .dl-update-item-name {
+  color: var(--text);
+  font-weight: var(--fw-label);
+}
+
+.dl-update-item.is-failed .dl-update-item-icon,
+.dl-update-item.is-failed .dl-update-item-state {
+  color: var(--red);
 }
 
 .dl-update-meta {

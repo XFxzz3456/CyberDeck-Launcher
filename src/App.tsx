@@ -18,6 +18,7 @@ import type {
   ModEntry,
   NexusDownloadProgress,
   NxmLink,
+  UpdateApplyPlan,
   UpdateApplyProgress,
   NexusStatus,
   NexusUpdateItem,
@@ -381,6 +382,11 @@ function AppShell() {
   const [applyingUpdates, setApplyingUpdates] = useState(false);
   // 批量更新的逐项进度：null 表示没在跑或刚跑完。字节数由 nexus-download-progress 补。
   const [updateProgress, setUpdateProgress] = useState<UpdateApplyProgress | null>(null);
+  /** 本轮批量更新的完整清单（开跑时后端发一次），用来在下载中心画列表。 */
+  const [updatePlan, setUpdatePlan] = useState<UpdateApplyPlan | null>(null);
+  /** 逐项结果：清单里每个条目「已完成 / 失败」，列表右侧据此打勾或标红。 */
+  const [updateResults, setUpdateResults] = useState<Record<string, "done" | "failed">>({});
+  const [updatePaused, setUpdatePaused] = useState(false);
   const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
   const [appUpdating, setAppUpdating] = useState(false);
   // AI 汉化：接口是否可用 + 单条弹窗目标 + 批量是否在跑（进度走任务中心）。
@@ -576,7 +582,6 @@ function AppShell() {
     setActivities((current) => [...current.slice(-29), entry]);
   }, []);
 
-  const clearActivities = useCallback(() => setActivities([]), []);
 
   // 部署 / 撤销的「合并器」：单次开关完全静默（结果在卡片角标上看得见），
   // 2 秒内的连续开关合并成**一条**汇总 toast（走 deploy 类别，受设置页开关约束）。
@@ -926,6 +931,7 @@ function AppShell() {
     let unlistenLink: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
     let unlistenApply: (() => void) | undefined;
+    let unlistenPlan: (() => void) | undefined;
     void (async () => {
       if (!isTauri) return;
       try {
@@ -954,6 +960,11 @@ function AppShell() {
           "update-apply-progress",
           (event) => {
             const payload = event.payload;
+            // 结果先记下再清当前项：列表要能看到「哪些已经好了」。
+            if (payload.phase !== "start") {
+              const result: "done" | "failed" = payload.phase === "failed" ? "failed" : "done";
+              setUpdateResults((current) => ({ ...current, [payload.entryId]: result }));
+            }
             // done / failed 立刻清掉，下一项的 start 会重新填；中途停下也不会留残值。
             setUpdateProgress(
               payload.phase === "start"
@@ -962,6 +973,11 @@ function AppShell() {
             );
           },
         );
+        unlistenPlan = await listen<UpdateApplyPlan>("update-apply-plan", (event) => {
+          setUpdatePlan(event.payload);
+          setUpdateResults({});
+          setUpdatePaused(false);
+        });
       } catch {
         // 浏览器预览没有事件 API，靠 nxmPending 那条路就够。
       }
@@ -972,6 +988,7 @@ function AppShell() {
       unlistenLink?.();
       unlistenProgress?.();
       unlistenApply?.();
+      unlistenPlan?.();
     };
   }, [addNxmLink]);
 
@@ -2361,10 +2378,35 @@ function AppShell() {
       } finally {
         setApplyingUpdates(false);
         setUpdateProgress(null);
+        setUpdatePlan(null);
+        setUpdateResults({});
+        setUpdatePaused(false);
       }
     },
     [applyingUpdates, recordActivity, refresh, showError, toast],
   );
+
+  /** 暂停 / 继续批量更新：后端会把当前下载真的停住，恢复后从断点续传。 */
+  const handleToggleUpdatePause = useCallback(
+    async (paused: boolean) => {
+      try {
+        await api.nexusUpdatesPause(paused);
+        setUpdatePaused(paused);
+      } catch (error) {
+        showError(error, t("downloads.updatePauseFailed"));
+      }
+    },
+    [showError],
+  );
+
+  /** 取消批量更新：当前下载立即中断，剩余项不再开始（已下好的部分可续传）。 */
+  const handleCancelUpdates = useCallback(async () => {
+    try {
+      await api.nexusUpdatesCancel();
+    } catch (error) {
+      showError(error, t("downloads.updateCancelFailed"));
+    }
+  }, [showError]);
 
   /** P5-5B：回滚到更新前的版本（用最近一次留下的备份）。 */
   const handleRollbackUpdate = useCallback(
@@ -3168,6 +3210,11 @@ function AppShell() {
                 onOpenNexusSettings={() => handleNavigate("settings", "tools")}
                 dataDir={appData || null}
                 updateProgress={updateProgress}
+                updatePlan={updatePlan}
+                updateResults={updateResults}
+                updatePaused={updatePaused}
+                onToggleUpdatePause={(paused) => void handleToggleUpdatePause(paused)}
+                onCancelUpdates={() => void handleCancelUpdates()}
               />
             ) : null}
 
@@ -3525,9 +3572,7 @@ function AppShell() {
         />
         <TaskCenter
           tasks={tasks}
-          activities={activities}
           onClearFinished={clearFinishedTasks}
-          onClearActivities={clearActivities}
           onDismiss={dismissTask}
           onRetry={(paths) => void queueImports(paths)}
           onCancel={(id) => {

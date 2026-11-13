@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 /// 单个模组的更新结果。
@@ -351,6 +354,70 @@ pub fn apply_update(
     })
 }
 
+/// 批量更新的运行控制（暂停 / 取消）。
+///
+/// 只对「批量更新」这条链路生效：`active` 为真时下载循环才理会暂停/取消，
+/// 否则会误伤下载队列里用户手动排的任务。
+struct BatchControl {
+    active: AtomicBool,
+    paused: AtomicBool,
+    cancel: AtomicBool,
+}
+
+fn control() -> &'static BatchControl {
+    static CELL: OnceLock<BatchControl> = OnceLock::new();
+    CELL.get_or_init(|| BatchControl {
+        active: AtomicBool::new(false),
+        paused: AtomicBool::new(false),
+        cancel: AtomicBool::new(false),
+    })
+}
+
+pub fn set_batch_paused(paused: bool) {
+    control().paused.store(paused, Ordering::Relaxed);
+}
+
+pub fn request_batch_cancel() {
+    control().cancel.store(true, Ordering::Relaxed);
+    // 取消时顺手解除暂停，否则循环会卡在暂停等待里。
+    control().paused.store(false, Ordering::Relaxed);
+}
+
+/// 下载循环里调用：返回 true 表示应当立即中止（取消）；暂停则原地等。
+///
+/// 暂停是「真的停住」而不是「下完当前文件再说」——字节进度会停在同一处，
+/// 恢复后从断点续传继续，和用户按暂停的直觉一致。
+pub fn download_gate() -> bool {
+    if !control().active.load(Ordering::Relaxed) {
+        return false;
+    }
+    loop {
+        if control().cancel.load(Ordering::Relaxed) {
+            return true;
+        }
+        if !control().paused.load(Ordering::Relaxed) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(80));
+    }
+}
+
+/// 批量更新的完整清单：前端据此画出「12 个任务」的列表，而不是只有一条进度条。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateApplyPlan {
+    pub total: usize,
+    pub items: Vec<UpdateApplyPlanItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateApplyPlanItem {
+    pub entry_id: String,
+    pub name: String,
+    pub mod_id: Option<u64>,
+}
+
 /// 批量更新：逐个来，单个失败不影响后面的。
 /// 批量更新时逐个上报进度。
 ///
@@ -380,6 +447,10 @@ pub fn apply_updates(
 ) -> AppResult<UpdateApplyReport> {
     let mut items: Vec<UpdateApplyItem> = Vec::new();
     let total = entry_ids.len();
+    // 上一轮的残留状态（比如上次被取消）必须先清掉，否则新一轮一开跑就被打断。
+    control().cancel.store(false, Ordering::Relaxed);
+    control().paused.store(false, Ordering::Relaxed);
+    control().active.store(true, Ordering::Relaxed);
     // 名字与 modId 先拍一次快照：循环里每轮再读 state 会跟 apply_update 的写锁抢。
     let labels: Vec<(String, Option<u64>)> = {
         let data = store.snapshot_data();
@@ -400,7 +471,38 @@ pub fn apply_updates(
             .collect()
     };
 
+    // 清单先发一次：前端据此渲染完整列表（含「还没轮到的」），
+    // 只靠逐项 start 的话，用户永远看不到后面还有几个。
+    let _ = app.emit(
+        "update-apply-plan",
+        UpdateApplyPlan {
+            total,
+            items: entry_ids
+                .iter()
+                .zip(labels.iter())
+                .map(|(id, (name, mod_id))| UpdateApplyPlanItem {
+                    entry_id: id.clone(),
+                    name: name.clone(),
+                    mod_id: *mod_id,
+                })
+                .collect(),
+        },
+    );
+
+    let mut cancelled = false;
     for (offset, entry_id) in entry_ids.iter().enumerate() {
+        // 取消优先于暂停：用户点取消时不该再等暂停循环。
+        if control().cancel.load(Ordering::Relaxed) {
+            cancelled = true;
+            break;
+        }
+        while control().paused.load(Ordering::Relaxed) && !control().cancel.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(80));
+        }
+        if control().cancel.load(Ordering::Relaxed) {
+            cancelled = true;
+            break;
+        }
         let (name, mod_id) = &labels[offset];
         let _ = app.emit(
             "update-apply-progress",
@@ -439,9 +541,16 @@ pub fn apply_updates(
         );
         items.push(item);
     }
+    control().active.store(false, Ordering::Relaxed);
+    control().paused.store(false, Ordering::Relaxed);
     let applied = items.iter().filter(|item| item.ok).count();
     let failed = items.len() - applied;
-    let message = if failed == 0 {
+    let message = if cancelled {
+        format!(
+            "已取消：完成 {applied} 个，其余 {} 个没开始（已下好的部分会续传）。",
+            total.saturating_sub(items.len())
+        )
+    } else if failed == 0 {
         format!("{applied} 个模组已更新，旧版本都留了备份。")
     } else {
         format!("{applied} 个更新成功，{failed} 个失败（失败的没动过原文件）。")

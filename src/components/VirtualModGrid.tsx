@@ -37,6 +37,7 @@ export function VirtualModGrid({
   listHeader,
   versionGroups,
   onSwitchVersion,
+  onDeleteVersion,
   onToggleGroup,
   onToggle,
   onOpen,
@@ -79,6 +80,8 @@ export function VirtualModGrid({
   versionGroups?: Map<string, ModEntry[]>;
   /** 卡片版本下拉的点击回调：切换生效版本。 */
   onSwitchVersion?: (mod: ModEntry) => void;
+  /** 删除某个版本（Vortex 托管条目不给）。 */
+  onDeleteVersion?: (mod: ModEntry) => void;
   onToggleGroup?: (key: string) => void;
   onToggle: (mod: ModEntry, enabled: boolean) => void;
   onOpen: (mod: ModEntry) => void;
@@ -234,6 +237,7 @@ export function VirtualModGrid({
         grouped={Boolean(list)}
         versions={versionGroups?.get(mod.id)}
         onSwitchVersion={onSwitchVersion}
+        onDeleteVersion={onDeleteVersion}
         onToggle={(enabled) => onToggle(mod, enabled)}
         onOpen={() => onOpen(mod)}
         onContextMenu={
@@ -321,6 +325,7 @@ export function VirtualModGrid({
                     busy={isBusy(mod)}
                     versions={versionGroups?.get(mod.id)}
                     onSwitchVersion={onSwitchVersion}
+                    onDeleteVersion={onDeleteVersion}
                     onToggle={(enabled) => onToggle(mod, enabled)}
                     onOpen={() => onOpen(mod)}
                     onContextMenu={

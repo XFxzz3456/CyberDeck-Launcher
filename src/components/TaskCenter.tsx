@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { t } from "../i18n";
-import type { ActivityItem, TaskItem } from "../lib/tasks";
+import type { TaskItem } from "../lib/tasks";
 
 const STATUS_LABEL: Record<TaskItem["status"], string> = {
   queued: t("taskCenter.statusQueued"),
@@ -20,23 +20,16 @@ const STATUS_LABEL: Record<TaskItem["status"], string> = {
   error: t("taskCenter.statusError"),
 };
 
-function clockTime(at: number): string {
-  return new Date(at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
 
 export function TaskCenter({
   tasks,
-  activities = [],
   onClearFinished,
-  onClearActivities,
   onDismiss,
   onRetry,
   onCancel,
 }: {
   tasks: TaskItem[];
-  activities?: ActivityItem[];
   onClearFinished: () => void;
-  onClearActivities?: () => void;
   onDismiss: (id: number) => void;
   onRetry?: (paths: string[]) => void;
   /** 停止「可协作取消」的批量任务：后端单次调用不可中断，只保证后续批次不再开始。 */
@@ -46,14 +39,7 @@ export function TaskCenter({
   const active = tasks.filter((task) => task.status === "running" || task.status === "queued");
   const failed = tasks.filter((task) => task.status === "error").length;
   const done = tasks.filter((task) => task.status === "success").length;
-  // 任务队列空但活动流有内容时，面板降级为纯「最近活动」视图，保持常驻入口。
-  const activityOnly = tasks.length === 0 && activities.length > 0;
-
   useEffect(() => {
-    if (activityOnly) {
-      setCollapsed(false);
-      return;
-    }
     if (active.length > 0) {
       setCollapsed(false);
       return;
@@ -61,49 +47,38 @@ export function TaskCenter({
     if (failed > 0) return;
     const timer = window.setTimeout(() => setCollapsed(true), 4200);
     return () => window.clearTimeout(timer);
-  }, [active.length, failed, activityOnly]);
+  }, [active.length, failed]);
 
   const [showAll, setShowAll] = useState(false);
   const visible = useMemo(
     () => (showAll ? tasks : tasks.slice(-7)).slice().reverse(),
     [tasks, showAll],
   );
-  const feed = useMemo(() => activities.slice(-10).reverse(), [activities]);
-  if (tasks.length === 0 && activities.length === 0) return null;
+  // 活动流只保留一处（顶栏铃铛的通知中心）。这里曾经也渲染一份，
+  // 同一批记录在两个面板里各显示一次，用户会以为「活动」和「通知」是两套东西。
+  if (tasks.length === 0) return null;
 
   return (
     <section
       className={`task-center ${collapsed ? "is-collapsed" : ""}`}
-      aria-label={activityOnly ? t("taskCenter.recentActivityAria") : t("taskCenter.titleAria")}
+      aria-label={t("taskCenter.titleAria")}
       aria-live="polite"
     >
       <header className="task-center-head">
         <div className="task-center-title">
           <span className={`task-pulse ${active.length > 0 ? "is-live" : ""}`} />
           <div>
-            <strong>{activityOnly ? t("taskCenter.titleRecent") : t("taskCenter.titleQueue")}</strong>
+            <strong>{t("taskCenter.titleQueue")}</strong>
             <span>
-              {activityOnly
-                ? t("taskCenter.recentFeedCount", { count: feed.length })
-                : active.length > 0
-                  ? t("taskCenter.activeCount", { count: active.length })
-                  : failed > 0
-                    ? t("taskCenter.failedDone", { failed, done })
-                    : t("taskCenter.doneCount", { count: done })}
+              {active.length > 0
+                ? t("taskCenter.activeCount", { count: active.length })
+                : failed > 0
+                  ? t("taskCenter.failedDone", { failed, done })
+                  : t("taskCenter.doneCount", { count: done })}
             </span>
           </div>
         </div>
         <div className="task-center-actions">
-          {activityOnly && onClearActivities ? (
-            <button
-              className="mini-btn"
-              onClick={onClearActivities}
-              title={t("taskCenter.clearActivities")}
-              aria-label={t("taskCenter.clearActivities")}
-            >
-              <Trash2 size={12} />
-            </button>
-          ) : null}
           {tasks.length > 0 ? (
             <button
               className="mini-btn"
@@ -133,9 +108,7 @@ export function TaskCenter({
               ? t("taskCenter.shortRunning", { count: active.length })
               : done > 0
                 ? t("taskCenter.shortDone", { count: done })
-                : feed.length > 0
-                  ? t("taskCenter.shortLogged", { count: feed.length })
-                  : t("taskCenter.shortIdle")}
+                : t("taskCenter.shortIdle")}
           </span>
           {failed > 0 ? <b>{t("taskCenter.shortFailed", { count: failed })}</b> : null}
         </div>
@@ -229,20 +202,6 @@ export function TaskCenter({
             </>
           ) : null}
 
-          {feed.length > 0 ? (
-            <div className={`activity-feed ${tasks.length > 0 ? "has-tasks" : ""}`}>
-              {tasks.length > 0 ? <div className="activity-label">// RECENT ACTIVITY</div> : null}
-              {feed.map((item) => (
-                <div key={item.id} className="activity-row">
-                  <span className="activity-time">{clockTime(item.at)}</span>
-                  <span className="activity-copy">
-                    <strong title={item.title}>{item.title}</strong>
-                    {item.detail ? <span title={item.detail}>{item.detail}</span> : null}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
         </>
       )}
     </section>

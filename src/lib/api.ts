@@ -672,6 +672,18 @@ export const api = {
     return call<UpdateApplyReport>("nexus_apply_updates", { entryIds });
   },
 
+  /** 暂停 / 继续批量更新（只影响批量更新，不动下载队列）。 */
+  async nexusUpdatesPause(paused: boolean): Promise<void> {
+    if (!isTauri) return;
+    await call<void>("nexus_updates_pause", { paused });
+  },
+
+  /** 取消批量更新：立即中断当前下载，剩余项不再开始。 */
+  async nexusUpdatesCancel(): Promise<void> {
+    if (!isTauri) return;
+    await call<void>("nexus_updates_cancel", {});
+  },
+
   /** P5-5B：回滚到更新前的版本（用最近一次备份）。 */
   async nexusRollbackUpdate(entryId: string): Promise<UpdateApplyItem> {
     if (!isTauri) return mockApi.nexusRollbackUpdate(entryId);

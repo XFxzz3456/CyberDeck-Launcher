@@ -33,6 +33,7 @@ export function ModRow({
   updateVersion,
   versions,
   onSwitchVersion,
+  onDeleteVersion,
   grouped = false,
   busy,
   onToggle,
@@ -52,6 +53,8 @@ export function ModRow({
   /** 同一个 mod 的全部版本（新→旧）。长度 > 1 时版本列换成切换胶囊。 */
   versions?: ModEntry[];
   onSwitchVersion?: (mod: ModEntry) => void;
+  /** 删除某个版本（Vortex 托管条目不给）。 */
+  onDeleteVersion?: (mod: ModEntry) => void;
   /** 分组模式下分类已经写在组头上，行里再列一遍是重复信息。 */
   grouped?: boolean;
   busy: boolean;
@@ -220,6 +223,7 @@ export function ModRow({
             busy={busy}
             placement="row"
             onSwitch={(next) => onSwitchVersion?.(next)}
+            onDelete={onDeleteVersion ? (next) => onDeleteVersion(next) : undefined}
           />
         ) : mod.version ? (
           `v${mod.version}`

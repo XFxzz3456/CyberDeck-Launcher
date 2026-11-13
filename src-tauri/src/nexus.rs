@@ -1527,6 +1527,11 @@ pub(crate) fn download_file(
             let mut last_emit = std::time::Instant::now();
             let mut buffer = [0u8; 128 * 1024];
             loop {
+                // 批量更新的暂停/取消：暂停会阻塞在这里，取消直接返回。
+                // `.part` 保持原样，恢复后用 Range 续传接着下。
+                if crate::updates::download_gate() {
+                    return Err(CommandError::new("UPDATE_CANCELLED", "已取消更新"));
+                }
                 let read = response
                     .read(&mut buffer)
                     .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("下载中断：{e}")))?;

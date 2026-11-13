@@ -2842,6 +2842,12 @@ export const mockApi = {
   },
 
   /** P5-5B 演示：批量更新。 */
+  async nexusUpdatesPause(paused: boolean): Promise<void> {
+    void paused;
+  },
+
+  async nexusUpdatesCancel(): Promise<void> {},
+
   async nexusApplyUpdates(entryIds: string[]): Promise<UpdateApplyReport> {
     await sleep(1800);
     const items = entryIds.map((entryId) => ({

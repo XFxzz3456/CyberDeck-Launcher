@@ -903,6 +903,17 @@ export interface UpdateApplyProgress {
   totalBytes?: number | null;
 }
 
+/**
+ * 批量更新的完整清单（Rust `updates::UpdateApplyPlan`）。
+ *
+ * 逐项进度只在「某一项开始/结束」时发，前端光靠它只能显示「当前这一项」，
+ * 看不到后面还排着什么。清单在开跑时发一次，用来画完整列表。
+ */
+export interface UpdateApplyPlan {
+  total: number;
+  items: { entryId: string; name: string; modId: number | null }[];
+}
+
 /** 下载中心任务状态（r13，与 Rust download_queue::DownloadStatus 对应）。 */
 export type DownloadTaskStatus =
   | "queued"

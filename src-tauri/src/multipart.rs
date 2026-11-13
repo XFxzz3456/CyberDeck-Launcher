@@ -247,7 +247,11 @@ fn fetch_segment(
         .map_err(|e| CommandError::new("NEXUS_DOWNLOAD", format!("无法写入分段文件：{e}")))?;
     let mut buffer = [0u8; 128 * 1024];
     loop {
-        if cancelled.load(Ordering::SeqCst) || abort.load(Ordering::SeqCst) {
+        // 批量更新的暂停/取消也要能作用到分片下载：gate 在暂停时会阻塞在这里。
+        if cancelled.load(Ordering::SeqCst)
+            || abort.load(Ordering::SeqCst)
+            || crate::updates::download_gate()
+        {
             return Err(CommandError::new(CODE_CANCELLED, "下载已取消"));
         }
         let read = response
