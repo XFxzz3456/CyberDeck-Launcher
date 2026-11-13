@@ -3167,6 +3167,7 @@ function AppShell() {
                 onNavigateDiscover={() => setView("discover")}
                 onOpenNexusSettings={() => handleNavigate("settings", "tools")}
                 dataDir={appData || null}
+                updateProgress={updateProgress}
               />
             ) : null}
 

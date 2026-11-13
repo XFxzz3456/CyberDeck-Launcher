@@ -113,13 +113,25 @@ export function buildLibraryList(
   collapsed: Set<string>,
   grouped: boolean,
   groupBy: GroupBy = "category",
+  /**
+   * 「待更新」置顶分组。
+   *
+   * 有更新时，更新项散落在各自分类里，用户翻三层才找到要更新什么；这里把它们抽出来
+   * 单独成一组放在最上面（分组维度仍是用户选的那个，只是这批被提前）。传空集合等于不启用。
+   */
+  pending?: { label: string; ids: Set<string> },
 ): LibraryListItem[] {
   if (!grouped) {
     return mods.map((mod) => ({ type: "mod" as const, mod }));
   }
 
+  // 先取出 Set：闭包里用可选链会让 TS 丢掉收窄，也会在每次迭代时重复判空。
+  const pendingIds = pending && pending.ids.size > 0 ? pending.ids : undefined;
+  const pendingMods = pendingIds ? mods.filter((mod) => pendingIds.has(mod.id)) : [];
+  const restMods = pendingIds ? mods.filter((mod) => !pendingIds.has(mod.id)) : mods;
+
   const buckets = new Map<string, { label: string; order: number; mods: ModEntry[] }>();
-  for (const mod of mods) {
+  for (const mod of restMods) {
     const draft = groupOf(mod, groupBy);
     const bucket = buckets.get(draft.key);
     if (bucket) bucket.mods.push(mod);
@@ -129,6 +141,11 @@ export function buildLibraryList(
   const ordered = [...buckets.entries()].sort(
     ([, a], [, b]) => a.order - b.order || a.label.localeCompare(b.label, "zh-CN"),
   );
+  const pendingLabel = pending?.label;
+  if (pendingMods.length > 0 && pendingLabel) {
+    // order 用 -1：分组排序是「order 升序」，负数保证永远排第一。
+    ordered.unshift(["update:pending", { label: pendingLabel, order: -1, mods: pendingMods }]);
+  }
 
   const items: LibraryListItem[] = [];
   for (const [key, bucket] of ordered) {

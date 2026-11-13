@@ -140,6 +140,26 @@ if (groupCount > 0) {
   await page.waitForTimeout(200);
 }
 
+// 待更新置顶（2026-11-13）：点「检查更新」后，第一组必须是「待更新」，
+// 否则用户看到「检查更新 20 个」还得在分类里逐个翻。演示库至少有 1 条可更新。
+await page.locator(".grid-scroll").evaluate((node) => {
+  node.scrollTop = 0;
+});
+const updateBtn = page.getByRole("button", { name: /检查更新/ }).first();
+if (await updateBtn.count()) {
+  await updateBtn.click();
+  await page.waitForTimeout(2400);
+}
+const firstGroupName = (await page.locator(".mod-group-head .group-name").first().innerText()).trim();
+const firstGroupCount = Number(
+  (await page.locator(".mod-group-head .group-count").first().innerText()).trim() || "0",
+);
+check(
+  "待更新分组置顶",
+  firstGroupCount === 0 || firstGroupName.includes("待更新"),
+  `first=${firstGroupName} count=${firstGroupCount}`,
+);
+
 await page.screenshot({ path: "shots/audit/library-view-list.png" });
 
 // 滚到底：虚拟化应换掉渲染集合，且不能出现「渲染 0 条」的空白。

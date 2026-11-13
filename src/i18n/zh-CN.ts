@@ -1244,6 +1244,7 @@ export const zhCN = {
     versionMergedTitle:
       "同一 mod 的多个版本已合并成一张卡；点卡上的版本号可以切换生效版本（会撤下其它版本再部署选中的那个）。",
     groupModeFlat: "平铺",
+    groupUpdates: "待更新",
     groupModeGrouped: "分组",
     groupModeTitle: "按维度折叠成组；关掉就是一条条的平铺列表",
     groupToggleAria: "{name}，{count} 个模组，点击折叠或展开",

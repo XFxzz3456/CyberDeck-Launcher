@@ -317,6 +317,12 @@ export function LibraryView({
     return table;
   }, [mods, dependencyReport, frameworks, depIgnoresRev]);
 
+  // 有更新的条目集合：既给列表做角标，也用来把待更新项置顶，不能每帧重建。
+  const updateIds = useMemo(
+    () => (updateMap && updateMap.size > 0 ? new Set(updateMap.keys()) : undefined),
+    [updateMap],
+  );
+
   const filtered = useMemo(() => {
     const needle = deferredSearch.trim().toLowerCase();
     let result = mods.filter((mod) => {
@@ -349,8 +355,17 @@ export function LibraryView({
     // 排序全部交给 compareMods：方向、自然序版本号、并列回落名称都在那里，
     // 这里不再按字段写一串 if——否则每加一列就要在这里再补一遍方向逻辑。
     result = [...result].sort((a, b) => compareMods(a, b, sort, sortDir));
+    // 待更新优先：把有新版的那批整体提到前面，减少「检查更新 20 个，然后满列表找」。
+    // 用两次 filter 而不是改 compareMods：既保持用户选的排序作为组内次序，
+    // 也不会让「按名称 / 按大小」这类显式排序变成阳奉阴违。
+    if (updateIds && updateIds.size > 0) {
+      const pendingMods = result.filter((mod) => updateIds.has(mod.id));
+      if (pendingMods.length > 0 && pendingMods.length < result.length) {
+        result = [...pendingMods, ...result.filter((mod) => !updateIds.has(mod.id))];
+      }
+    }
     return result;
-  }, [mods, category, deferredSearch, sort, sortDir, statusFilter, missingDepsById]);
+  }, [mods, category, deferredSearch, sort, sortDir, statusFilter, missingDepsById, updateIds]);
 
   /**
    * 同一 mod 的多版本聚合成一张卡（Vortex 口径：一个 mod 只允许一个版本生效）。
@@ -394,9 +409,12 @@ export function LibraryView({
   const listItems = useMemo(
     () =>
       view === "list" && groupMode
-        ? buildLibraryList(versionGrouping.display, collapsedGroups, true, groupBy)
+        ? buildLibraryList(versionGrouping.display, collapsedGroups, true, groupBy, {
+            label: t("library.groupUpdates"),
+            ids: updateIds ?? new Set<string>(),
+          })
         : undefined,
-    [versionGrouping, collapsedGroups, groupMode, view, groupBy],
+    [versionGrouping, collapsedGroups, groupMode, view, groupBy, updateIds],
   );
 
   // 这两个集合以前每次渲染都重建：`new Set(...)` 引用不同，会让
@@ -405,11 +423,6 @@ export function LibraryView({
   const conflictTargets = useMemo(
     () => new Set(conflicts.map((conflict) => conflict.target.toLowerCase())).size,
     [conflicts],
-  );
-  // 有更新的条目集合：传给虚拟列表做角标，同样不能每帧重建。
-  const updateIds = useMemo(
-    () => (updateMap && updateMap.size > 0 ? new Set(updateMap.keys()) : undefined),
-    [updateMap],
   );
   const pendingConflicts = conflicts.filter((conflict) => conflict.pending).length;
 

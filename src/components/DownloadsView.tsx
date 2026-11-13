@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FolderOpen, FolderSearch, Gauge, Pause, Play, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
 import type {
   DownloadTask,
   DownloadTaskStatus,
-  NexusDownloadProgress,
   UpdateApplyProgress,
 } from "../types";
-import { api, isTauri, normalizeError } from "../lib/api";
+import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
 import { formatBytes } from "../lib/format";
 import { Badge } from "./ui";
@@ -92,12 +90,21 @@ export function DownloadsView({
   onNavigateDiscover,
   onOpenNexusSettings,
   dataDir,
+  updateProgress = null,
 }: {
   onNavigateDiscover?: () => void;
   /** Nexus 鉴权失败时的一键出口：跳到「设置 → 工具插件 → Nexus Mods」。 */
   onOpenNexusSettings?: () => void;
   /** 数据目录根路径（打开"默认下载目录"时拼 downloads 子目录用）。 */
   dataDir?: string | null;
+  /**
+   * 批量更新的实时进度，由 `App` 统一监听事件后传下来。
+   *
+   * 这里曾经自己 `listen`：但下载中心是切视图才挂载的，而进度事件只在「某个模组开始/结束」
+   * 时发一次——切过来时正在下第 2 个、要到它下完才有下一个事件，卡片就一直是空的。
+   * 状态放在常驻的 `App` 里，挂载瞬间就能拿到当前值。
+   */
+  updateProgress?: UpdateApplyProgress | null;
 }) {
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
   const [dir, setDir] = useState<string | null>(null);
@@ -114,39 +121,6 @@ export function DownloadsView({
    *  恢复后自动消失——1.2 秒一次的错误弹窗会把界面刷满。 */
   const [pollError, setPollError] = useState<string | null>(null);
 
-  // 批量更新走的是 `updates::apply_updates`，不在下载队列里。这里单独接它的
-  // 两个事件（逐项 + 字节），让「第几个 / 哪个 mod / 多少字节」在下载中心可见，
-  // 不用回模组库盯一个按钮转圈。
-  const [updateProgress, setUpdateProgress] = useState<UpdateApplyProgress | null>(null);
-  useEffect(() => {
-    if (!isTauri) return;
-    let offApply: (() => void) | undefined;
-    let offBytes: (() => void) | undefined;
-    void (async () => {
-      try {
-        offApply = await listen<UpdateApplyProgress>("update-apply-progress", (event) => {
-          const payload = event.payload;
-          setUpdateProgress(
-            payload.phase === "start" ? { ...payload, received: 0, totalBytes: null } : null,
-          );
-        });
-        offBytes = await listen<NexusDownloadProgress>("nexus-download-progress", (event) => {
-          const { modId, received, total } = event.payload;
-          setUpdateProgress((current) =>
-            current && current.modId === modId
-              ? { ...current, received, totalBytes: total }
-              : current,
-          );
-        });
-      } catch {
-        // 浏览器预览没有事件 API，卡片不出现即可。
-      }
-    })();
-    return () => {
-      offApply?.();
-      offBytes?.();
-    };
-  }, []);
 
   const refresh = useCallback(async () => {
     try {
