@@ -45,7 +45,7 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 ## 3. 当前状态快照（2026-11-14）
 
-> **1.8.4 已于 2026-11-14 21:24 出包**，exe 已替换 release；便携 ZIP 与 GitHub Release **仍停在 v1.8.3**，是否补发由用户单独决定。
+> **1.8.4 已完整发布（2026-11-14）**：exe 已替换 release，便携包已打并上传 GitHub Release `v1.8.4`。
 
 | 项 | 值 |
 |---|---|
@@ -54,9 +54,9 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 | 进度 | GitHub Issues **#1、#10、#11 已关闭**；**#2–#9 open**（长期功能轨道）；标签 `P0` / `P1` / `P2` / `migrated` |
 | 门禁基线 | 全量门禁 **39/39 全绿**（发版链路内再跑一次仍全绿）；`cargo test --lib` **399 passed / 2 ignored**；`tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2300）；`cargo check --lib` 0 warning |
 | release exe | **1.8.4**：11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6` / PE `FileVersion`·`ProductVersion` 均 1.8.4 / mtime 2026-11-14 21:24:02；上一版 1.8.3 已备份为 `CyberDeck Launcher.prev.exe` |
-| 便携版 ZIP | **仍是 1.8.3**：`发布产物/CyberDeck Launcher 1.8.3 便携版.zip`，5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`；GitHub Release 最新仍为 `v1.8.3` 资产 `CyberDeck.Launcher.1.8.3.zip`。**1.8.4 的 ZIP 未打** |
+| 便携版 ZIP | **1.8.4**：`发布产物/CyberDeck Launcher 1.8.4 便携版.zip`，5,719,270 B（5.45 MiB）/ md5 `970f7f24f0c8ef1bdf88e6e820621bf8` / sha256 `d1db81ee60674d46fef3fe8eda9c6a5a5c0974366f65033841378535bbf5b518`；GitHub Release [v1.8.4](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.4)（latest）资产 `CyberDeck.Launcher.1.8.4.zip`，资产端点回读**逐字节一致** |
 | 本版内容 | #10：铃铛角标/已读态、面板 portal+fixed 层级、带 `?query` 外链 explorer 转交；#11：存档风险报告级 `globalRisks` + 默认折叠、安装根锚点优先 + `apply_update` 核心 DLL 护栏（另含本机 ArchiveXL 数据修复）；设置页字号收敛为 `--sp-*` 五档 + 中文标签去 mono 字距 + 行式节奏统一。复盘：`docs/INCIDENT-2026-11-14-batch-fixes.md`、`docs/INCIDENT-2026-11-14-settings-typography.md` |
-| 当前关口 | exe 已出但**尚未做真机 GUI 冒烟**：#10③「去获取」浏览器拉起、存档风险折叠、依赖体检里 ArchiveXL 前置恢复仍需用户实际点一遍。便携 ZIP / Release 更新需单独确认 |
+| 当前关口 | 发布物齐全（exe + 便携 ZIP + GitHub Release），但**尚未做真机 GUI 冒烟**：#10③「去获取」浏览器拉起、存档风险折叠、依赖体检里 ArchiveXL 前置恢复仍需用户实际点一遍；发现问题即 reopen 对应 issue |
 | 未做 | #10③「去获取」真机确认浏览器拉起（不能只看日志 `result=ok`）；兜底 ShellExecute 在提权进程下的表现；内置 Nexus 窗口端到端真机（登录 → Mod Manager Download → 任务条）；第三方 OAuth 登录；UI/UX 顺延（首次向导 / 选择态上提 / 技术信息分层 / 样式全量令牌化）；#8 实机双端验收；全类型汉化真机样本；Vortex A1–A10 |
 
 ---

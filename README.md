@@ -25,12 +25,13 @@
 
 ![模组库](docs/screenshots/library.png)
 
-## 1.8.3 有什么变化
+## 1.8.4 有什么变化
 
-- **下载中心看得见更新**：批量更新摊开成逐项清单，可暂停 / 继续 / 取消；进度与实时速度一起显示，待更新模组自动置顶。
-- **少一点噪音、多一点控制**：任务中心活动流收进顶栏铃铛一处；多版本模组可按版本删除多余版本（「−」）。
-- **缺陷审查收口**：核销三份审查报告——nxm 链接解码 panic、前置命令二次确认、Archive 同名拒装、redMod 输出保序与 15 分钟超时、禁用 REDmod 位置等。
-- **该能复制的能复制**：正文、路径、报错详情、模组名可拖选复制；按钮 / 导航 / 标签仍不可选，误触 Ctrl/Cmd+A 不再整页框蓝。
+- **设置页排版统一**：卡片标题 / 设置项 / 说明 / 辅助小字收敛为五档（15 / 13 / 12 / 11 / 9.5px）；中文标签不再套等宽字体 + 字距（此前标签 9.5px 比它下面的说明 11px 还小），各行留白与分隔线统一。
+- **通知角标不再骗人**：铃铛角标只统计未读动态，点开即清零；面板内新旧动态可区分已读 / 未读，面板也不再被工具栏盖住。
+- **外链该开浏览器就开浏览器**：点「去获取」不再误弹文件资源管理器。
+- **存档快照不再刷屏**：环境级依赖缺口提为报告级只提示一次，默认折叠 3 条可展开。
+- **更新不再弄丢前置**：安装根判定改为「游戏根锚点优先」，并新增核心框架文件护栏 —— 新清单缺核心 DLL 时报错并保留旧版，修好此前更新把 ArchiveXL 的 DLL 排挤出部署清单、导致大量模组报缺前置的问题。
 
 完整变更见 [CHANGELOG](CHANGELOG.md)。
 
@@ -521,16 +522,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 -
 
 ## 下载安装
 
-1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.3**，资产名 `CyberDeck.Launcher.1.8.3.zip`。
+1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.4**，资产名 `CyberDeck.Launcher.1.8.4.zip`。
 2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`（`WebView2Loader.dll` 必须和它放在一起）。首次启动会引导你定位游戏目录。
 3. 数据保存在 exe 同级的 `cyberdeck-data`（便携模式，一旦存在就固定用它）；没有该目录时用 `%APPDATA%\com.arol.cyberdeck`。删掉这个目录即等于清空启动器数据，不动游戏文件。
 
-**校验**（1.8.3，可核对下载是否完整）：
+**校验**（1.8.4，可核对下载是否完整）：
 
 | 产物 | 大小 | md5 |
 | --- | --- | --- |
-| `CyberDeck Launcher.exe` | 11,176,960 B（10.66 MB） | `5906af219d4052e3193bc2e06266ed11` |
-| `CyberDeck.Launcher.1.8.3.zip` | 5,714,563 B（5.45 MiB） | `1a61d735ac45bdb111f7f34013187fbd` |
+| `CyberDeck Launcher.exe` | 11,187,200 B（10.67 MB） | `e0aeb1bad89d03e14016341afee027c6` |
+| `CyberDeck.Launcher.1.8.4.zip` | 5,719,270 B（5.45 MiB） | `970f7f24f0c8ef1bdf88e6e820621bf8` |
 
 从旧版（NightCity Loader / 0.x）升级：直接替换 exe，数据目录会自动识别与迁移。
 

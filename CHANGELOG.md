@@ -136,7 +136,13 @@
 - `release/CyberDeck Launcher.exe`：**11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6`**，
   mtime **2026-11-14 21:24:02**，PE `FileVersion` / `ProductVersion` 均为 **1.8.4**；
   上一版 1.8.3（11,176,960 B / md5 `5906af219d4052e3193bc2e06266ed11`）已自动备份为 `CyberDeck Launcher.prev.exe`。
-- 便携 ZIP 与 GitHub Release **本轮未动**（仍为 `v1.8.3` 的产物），需对外分发时单独确认后再打包。
+- 便携包（2026-11-14 21:29，用户「打包吧」确认后打包）：`发布产物/CyberDeck Launcher 1.8.4 便携版.zip`，
+  **5,719,270 B（5.45 MiB）/ md5 `970f7f24f0c8ef1bdf88e6e820621bf8` / sha256 `d1db81ee60674d46fef3fe8eda9c6a5a5c0974366f65033841378535bbf5b518`**；
+  4 条目（exe / `WebView2Loader.dll` / `使用说明.txt` / `cyberdeck-data/说明-数据目录.txt`）、UTF-8 文件名、CRC 通过，
+  包内 exe md5 与 release 目录一致（`e0aeb1bad89d03e14016341afee027c6`）。
+- GitHub Release **`v1.8.4`**（ID `445314902`，非 draft / 非预发布、设为 latest）已创建并上传资产
+  `CyberDeck.Launcher.1.8.4.zip`（ID `747575937`）；API `digest` 与本地 sha256 一致，
+  并经资产端点直连回读 **5,719,270 B 逐字节一致**。
 
 ### 验证
 
