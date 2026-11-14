@@ -3522,6 +3522,59 @@ fn is_process_elevated() -> bool {
     }
 }
 
+/// 把 URL 包成 explorer.exe 的命令行参数。
+///
+/// **必须整条加双引号**：explorer.exe 收到未加引号、带 `?query` 的 URL 时，
+/// 不会按协议转交浏览器，而是把它当本地路径处理 → 弹出资源管理器窗口
+/// （2026-11-14 #10③，用户点「去获取」遇到的就是这个）。
+/// 这是 explorer.exe 自身的命令行解析行为，与默认浏览器无关：
+/// 见 microsoft/WSL#3832、StackOverflow 14585709。
+///
+/// 引号要绕过 Rust `Command::arg` 的自动转义，因此调用方用 `raw_arg`。
+/// 含 `"` / 控制字符的地址一律拒绝，避免拼出可注入的命令行。
+#[cfg(windows)]
+fn explorer_url_arg(url: &str) -> AppResult<String> {
+    if url.is_empty() || url.contains('"') || url.chars().any(char::is_control) {
+        return Err(CommandError::new(
+            "INVALID_URL",
+            "外链包含不可转交的字符。",
+        ));
+    }
+    Ok(format!("\"{url}\""))
+}
+
+#[cfg(all(test, windows))]
+mod url_tests {
+    use super::explorer_url_arg;
+
+    #[test]
+    fn query_url_is_quoted_as_one_arg() {
+        // 用户点的「去获取」就是这条；不带引号时 explorer 弹的是资源管理器。
+        let url = "https://www.nexusmods.com/cyberpunk2077/search/?gsearch=ArchiveXL";
+        assert_eq!(explorer_url_arg(url).unwrap(), format!("\"{url}\""));
+    }
+
+    #[test]
+    fn plain_url_is_quoted_too() {
+        let url = "https://www.nexusmods.com/cyberpunk2077/mods/11077";
+        assert_eq!(explorer_url_arg(url).unwrap(), format!("\"{url}\""));
+    }
+
+    #[test]
+    fn multiple_query_params_survive() {
+        let url = "https://example.com/a?x=1&y=2#frag";
+        assert_eq!(explorer_url_arg(url).unwrap(), format!("\"{url}\""));
+    }
+
+    #[test]
+    fn rejects_injectable_characters() {
+        assert!(explorer_url_arg("").is_err());
+        assert!(explorer_url_arg("https://example.com/?q=\"&calc").is_err());
+        assert!(explorer_url_arg("https://example.com/?q=\n").is_err());
+        assert!(explorer_url_arg("https://example.com/?q=\u{0007}").is_err());
+    }
+}
+
 /// 经 explorer.exe 转交外链：explorer 恒定运行在普通权限（medium IL），
 /// 由它拉起浏览器可保证浏览器不被提权。
 ///
@@ -3535,9 +3588,16 @@ pub(crate) fn open_via_explorer(url: &str) -> AppResult<()> {
             .or_else(|_| std::env::var("windir"))
             .map(|root| PathBuf::from(root).join("explorer.exe"))
             .unwrap_or_else(|_| PathBuf::from("C:\\Windows\\explorer.exe"));
+        let quoted = explorer_url_arg(url)?;
         // 注意：不加 CREATE_NO_WINDOW —— explorer 是 GUI 子系统程序，
         // 某些环境下该标志会让它初始化失败（0xc0000142）。
-        let spawned = std::process::Command::new(&explorer).arg(url).spawn();
+        let mut command = std::process::Command::new(&explorer);
+        {
+            use std::os::windows::process::CommandExt;
+            // raw_arg：把带引号的 URL 原样塞进命令行，不让 Rust 再转义一次。
+            command.raw_arg(quoted);
+        }
+        let spawned = command.spawn();
         match &spawned {
             Ok(child) => {
                 // explorer 会把 URL 转交出去后自己退出，这里只记录 pid 便于排查。
@@ -3801,6 +3861,11 @@ fn open_url(store: State<'_, Store>, url: String) -> AppResult<()> {
     }
     if trimmed.chars().any(char::is_whitespace) {
         return Err(CommandError::new("INVALID_URL", "地址里不能有空白字符。"));
+    }
+    // 拼进 explorer 命令行之前挡掉引号与控制字符：raw_arg 不做转义，
+    // 放进去等于把用户输入拼成了命令行（2026-11-14 #10③）。
+    if trimmed.contains('"') || trimmed.chars().any(char::is_control) {
+        return Err(CommandError::new("INVALID_URL", "地址里不能有引号或控制字符。"));
     }
     // 一律交给 explorer 转交：浏览器由 shell 在中等权限下拉起，
     // 既不会继承本进程可能受限的令牌，也不会被提成管理员。

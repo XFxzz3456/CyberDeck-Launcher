@@ -1270,6 +1270,8 @@ export interface SaveScanReport {
   saves: SaveGameEntry[];
   riskyCount: number;
   notes: string[];
+  /** 与具体存档无关的环境级风险（当前启用集合的依赖缺口），只展示一次、默认折叠。 */
+  globalRisks: SaveRisk[];
 }
 
 /** 背景图压缩结果：后端把原图缩到最长边 1920 并转成 JPEG，前端只拿 data URL。 */

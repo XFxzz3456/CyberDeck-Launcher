@@ -34,6 +34,7 @@ import type {
   AiLocReport,
   EnvSnapshot,
   SaveScanReport,
+  SaveRisk,
   AppStateData,
   ConflictInfo,
   DeployReport,
@@ -3711,11 +3712,20 @@ export const mockApi = {
     const now = Date.now() / 1000;
     const db = loadDb();
     const disabled = db.state.mods.filter((m) => !m.enabled).slice(0, 2);
+    // 演示数据刻意给一打环境级缺口：门禁要能验证「默认折叠 / 展开后可见全部」。
+    // 真实场景里这就是一个前置框架缺失导致几十个模组一起报警的情形。
+    const globalRisks: SaveRisk[] = Array.from({ length: 12 }, (_, index) => ({
+      kind: "dependencyGap",
+      severity: "warning",
+      modIds: [`demo-mod-${index}`],
+      message: `当前启用的 演示模组 ${index + 1} 缺少前置：ArchiveXL，读档可能失败`,
+    }));
     return {
       scannedAt: new Date().toISOString(),
       root: "%USERPROFILE%\\Saved Games\\CD Projekt Red\\Cyberpunk 2077",
       riskyCount: disabled.length > 0 ? 1 : 0,
       notes: [],
+      globalRisks,
       saves: [
         {
           name: "AutoSave-24",

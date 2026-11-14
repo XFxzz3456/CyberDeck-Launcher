@@ -97,8 +97,39 @@ await page.getByRole("button", { name: "扫描存档状态", exact: true }).clic
 await page.waitForTimeout(1200);
 check("save cards rendered", (await page.locator(".save-card").count()) >= 1);
 check(
-  "risk highlighted when mods disabled",
-  (await page.locator(".save-card.is-risky").count()) >= 0, // 演示数据可能有也可能没有禁用项
+  "每张卡片的风险不超过 3 条（折叠生效）",
+  await page.evaluate(() =>
+    [...document.querySelectorAll(".save-card:not(.is-skeleton)")].every(
+      (card) => card.querySelectorAll(".save-risk").length <= 3,
+    ),
+  ),
+);
+
+// ── 4a. #11① 风险折叠：环境级风险只提示一次、默认只露 3 条 ──────────
+const globalBox = page.locator(".saves-global-risk");
+check("环境风险横幅只出现一次", (await globalBox.count()) === 1);
+const defaultGlobalRisks = await globalBox.locator(".save-risk").count();
+check("环境风险默认折叠到 3 条", defaultGlobalRisks === 3, `visible=${defaultGlobalRisks}`);
+const cardRiskCount = await page.locator(".save-card .save-risk").count();
+const cardCount = await page.locator(".save-card").count();
+check(
+  "存档卡片不再重复整批环境风险",
+  cardRiskCount <= cardCount,
+  `cardRisks=${cardRiskCount} cards=${cardCount}`,
+);
+await globalBox.locator(".save-risk-toggle").click();
+await page.waitForTimeout(150);
+const expandedGlobalRisks = await globalBox.locator(".save-risk").count();
+check("展开后可见全部 12 条", expandedGlobalRisks === 12, `visible=${expandedGlobalRisks}`);
+await globalBox.locator(".save-risk-toggle").click();
+await page.waitForTimeout(150);
+check(
+  "收起后恢复 3 条",
+  (await globalBox.locator(".save-risk").count()) === 3,
+);
+check(
+  "同行卡片不再被拉成等高",
+  await page.evaluate(() => getComputedStyle(document.querySelector(".save-grid")).alignItems === "start"),
 );
 check("no horizontal overflow", await page.evaluate(
   () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,

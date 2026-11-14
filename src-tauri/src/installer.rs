@@ -661,6 +661,8 @@ pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
     }
 
     let mut candidates: Vec<(i32, usize, PathBuf)> = Vec::new();
+    // 直接子目录里出现「游戏根」名字的目录（depth, path）。
+    let mut anchored: Vec<(usize, PathBuf)> = Vec::new();
     for entry in WalkDir::new(payload)
         .min_depth(0)
         .max_depth(6)
@@ -671,6 +673,7 @@ pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
             continue;
         }
         let mut score = 0i32;
+        let mut anchors = 0usize;
         if let Ok(children) = fs::read_dir(entry.path()) {
             for child in children.flatten() {
                 let name = child.file_name().to_string_lossy().to_ascii_lowercase();
@@ -690,14 +693,44 @@ pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
                     && RECOGNIZED_ROOTS.iter().any(|root| root.eq_ignore_ascii_case(&name))
                 {
                     score += 3;
+                    anchors += 1;
                 }
             }
+        }
+        if anchors > 0 {
+            anchored.push((entry.depth(), entry.path().to_path_buf()));
         }
         if score > 0 {
             candidates.push((score, entry.depth(), entry.path().to_path_buf()));
         }
     }
 
+    // 一级判据：包里只要存在「游戏根」形态的目录（直接子目录叫 archive/bin/r6/
+    // red4ext/engine/mods），最浅的那个就是 Mod 根，散文件再多也不许翻盘。
+    //
+    // 2026-11-14 #11②：ArchiveXL 1.28.8 的 `red4ext/plugins/ArchiveXL/Bundle/`
+    // 里有 21 个 .xl/.archive，旧打分 21 分压过真正包根（r6 + red4ext = 6 分），
+    // 于是 Bundle 被当成根 → ArchiveXL.dll 留在根之外、永远不进部署清单，
+    // 批量更新又先卸掉旧 DLL，前置框架就此从游戏目录消失。
+    // 这类「框架包 = DLL 在父目录 + 资源在 Bundle 子目录」的结构必须按锚点判，
+    // 不能按文件数量判。
+    if !anchored.is_empty() {
+        let min_depth = anchored.iter().map(|(depth, _)| *depth).min().unwrap_or(0);
+        let mut roots: Vec<PathBuf> = anchored
+            .into_iter()
+            .filter(|(depth, _)| *depth == min_depth)
+            .map(|(_, path)| path)
+            .collect();
+        roots.sort();
+        roots.dedup();
+        if roots.len() > 1 {
+            return Err(layout_ambiguous(payload, &roots));
+        }
+        return Ok(roots.remove(0));
+    }
+
+    // 二级判据：没有游戏根目录（纯散文件 / 单一 wrapper 目录）时，
+    // 才退回原来的「散文件打分」，保持既有包型的兼容。
     if candidates.is_empty() {
         return Ok(payload.to_path_buf());
     }
@@ -725,32 +758,38 @@ pub(crate) fn refine_payload_root(payload: &Path) -> AppResult<PathBuf> {
     }
 
     if best.len() > 1 {
-        let names: Vec<String> = best
-            .iter()
-            .take(3)
-            .map(|(_, path)| {
-                let shown = path
-                    .strip_prefix(payload)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                // 包根目录 strip 之后是空串，直接拼进提示会变成「（、bin/...）」。
-                if shown.is_empty() {
-                    "（包根目录）".to_string()
-                } else {
-                    shown
-                }
-            })
-            .collect();
-        return Err(CommandError::new(
-            "LAYOUT_AMBIGUOUS",
-            format!(
-                "压缩包里有多个可安装根目录（{}）。启动器不想替你猜、也不想漏掉文件；请分别打包后再导入。",
-                names.join("、")
-            ),
-        ));
+        let paths: Vec<PathBuf> = best.iter().map(|(_, path)| path.clone()).collect();
+        return Err(layout_ambiguous(payload, &paths));
     }
     Ok(best[0].1.clone())
+}
+
+/// 多个候选根目录时统一报错：别替玩家猜，也别静默漏掉一半文件。
+fn layout_ambiguous(payload: &Path, paths: &[PathBuf]) -> CommandError {
+    let names: Vec<String> = paths
+        .iter()
+        .take(3)
+        .map(|path| {
+            let shown = path
+                .strip_prefix(payload)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            // 包根目录 strip 之后是空串，直接拼进提示会变成「（、bin/...）」。
+            if shown.is_empty() {
+                "（包根目录）".to_string()
+            } else {
+                shown
+            }
+        })
+        .collect();
+    CommandError::new(
+        "LAYOUT_AMBIGUOUS",
+        format!(
+            "压缩包里有多个可安装根目录（{}）。启动器不想替你猜、也不想漏掉文件；请分别打包后再导入。",
+            names.join("、")
+        ),
+    )
 }
 
 fn materialize_staging(temp_parent: &Path, staging_parent: &Path) -> std::io::Result<()> {

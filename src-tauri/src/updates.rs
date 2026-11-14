@@ -8,6 +8,7 @@
 //! 3. **先装后卸**：新版本装失败时旧版本还在，不会出现「卸了旧的、新的没装上」
 //!    的空窗。代价是短暂多占一份暂存空间，值得。
 
+use crate::deps;
 use crate::installer;
 use crate::nexus;
 use crate::schema::{AppResult, CommandError, GameInfo, NexusRef};
@@ -255,6 +256,71 @@ fn reinstall_from_backup(
     Ok(())
 }
 
+/// 旧版部署过、新版清单里却没有的框架核心文件。
+/// 纯函数：把「完整性护栏」的判据单独拎出来跑单测，避免又要搭一整套安装夹具。
+fn lost_core_files(old_paths: &[String], new_paths: &[String]) -> Vec<String> {
+    // Windows 上同一条路径可能写成 `\` 也可能写成 `/`，大小写也不稳定；
+    // 先归一化再比，否则「只是写法变了」会被误判成文件丢失。
+    let normalize = |path: &str| path.replace('\\', "/").to_ascii_lowercase();
+    let fresh: Vec<String> = new_paths.iter().map(|path| normalize(path)).collect();
+    old_paths
+        .iter()
+        .filter(|path| deps::is_core_framework_file(path))
+        .filter(|path| !fresh.contains(&normalize(path)))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod update_guard_tests {
+    use super::lost_core_files;
+
+    fn strings(items: &[&str]) -> Vec<String> {
+        items.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn rejects_update_that_drops_the_framework_dll() {
+        let old = strings(&[
+            "red4ext/plugins/ArchiveXL/ArchiveXL.dll",
+            "archive/pc/mod/ArchiveXL.archive",
+        ]);
+        // 复现 #11②：安装根被判成 Bundle 后，新清单只剩拍平的 .xl。
+        let new = strings(&[
+            "archive/pc/mod/ArchiveXL.archive",
+            "archive/pc/mod/Migration.xl",
+        ]);
+        let lost = lost_core_files(&old, &new);
+        assert_eq!(lost, strings(&["red4ext/plugins/ArchiveXL/ArchiveXL.dll"]));
+    }
+
+    #[test]
+    fn accepts_update_that_keeps_the_framework_dll() {
+        let old = strings(&["red4ext/plugins/ArchiveXL/ArchiveXL.dll"]);
+        let new = strings(&[
+            "red4ext/plugins/ArchiveXL/ArchiveXL.dll",
+            "red4ext/plugins/ArchiveXL/Bundle/Migration.xl",
+            "r6/config/redsUserHints/ArchiveXL.toml",
+        ]);
+        assert!(lost_core_files(&old, &new).is_empty());
+    }
+
+    #[test]
+    fn ignores_ordinary_mod_files() {
+        let old = strings(&["archive/pc/mod/MyOutfit.archive", "archive/pc/mod/MyOutfit.archive.xl"]);
+        let new = strings(&["archive/pc/mod/MyOutfit.archive"]);
+        assert!(lost_core_files(&old, &new).is_empty());
+    }
+
+    #[test]
+    fn comparison_is_case_and_separator_insensitive() {
+        let old = strings(&["red4ext\\plugins\\ArchiveXL\\ARCHIVEXL.DLL"]);
+        let new = strings(&["red4ext/plugins/ArchiveXL/ArchiveXL.dll"]);
+        assert!(lost_core_files(&old, &new).is_empty());
+        assert_eq!(lost_core_files(&old, &[]).len(), 1);
+    }
+}
+
 /// 更新单个模组。
 pub fn apply_update(
     app: &AppHandle,
@@ -314,6 +380,33 @@ pub fn apply_update(
     };
     let mut fresh =
         installer::install_archive(store, &downloaded.path.to_string_lossy(), Some(new_nexus))?;
+
+    // 3.5) 完整性护栏：新版清单必须保住旧版部署过的框架核心文件。
+    //
+    // 2026-11-14 #11②：ArchiveXL 更新到 1.28.8 时，安装器把 Bundle/ 误判成
+    // 安装根，新清单里一条 ArchiveXL.dll 都没有；下一步 uninstall_mod 又会把
+    // 旧 DLL 从游戏目录撤掉，于是前置框架静默消失、几十个模组一起报缺前置。
+    // 这里在「卸旧」之前拦下这种不完整更新，并把刚建好的临时暂存目录清掉，
+    // 保证失败时旧版本原封不动。
+    let old_paths: Vec<String> = entry
+        .deployed_files
+        .iter()
+        .map(|file| file.relative_path.clone())
+        .collect();
+    let lost_core = lost_core_files(&old_paths, &fresh.planned_files);
+    if !lost_core.is_empty() {
+        // fresh 还没写进 state，只需删掉它自己的 staging 容器。
+        let _ = fs::remove_dir_all(store.staging_dir().join(&fresh.id));
+        return Err(CommandError::new(
+            "UPDATE_INCOMPLETE",
+            format!(
+                "新版 {} 缺少旧版本已有的框架核心文件（{}），已取消更新，旧版本保持原样。\
+                 请重新下载该模组的主文件，或改用手动导入。",
+                entry.name,
+                lost_core.join("、")
+            ),
+        ));
+    }
 
     // 4) 卸掉旧版本（会清理它部署出去的文件）。
     installer::uninstall_mod(store, &entry.id, game.map(|g| Path::new(&g.root)))?;

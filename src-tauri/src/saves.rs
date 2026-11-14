@@ -47,6 +47,11 @@ pub struct SaveScanReport {
     pub saves: Vec<SaveGameEntry>,
     pub risky_count: usize,
     pub notes: Vec<String>,
+    /// 与具体存档无关的环境级风险（当前启用集合的依赖缺口等）。
+    /// 以前被逐条塞进每个 `saves[].risks`，N 个存档 × M 条缺口 = 刷屏
+    /// （2026-11-14 #11①）。现在只算一次，由前端在列表顶部折叠展示。
+    #[serde(default)]
+    pub global_risks: Vec<SaveRisk>,
 }
 
 /// 存档根目录：`SHGetKnownFolderPath(FOLDERID_SavedGames)`，兼容「我的文档」重定向。
@@ -177,6 +182,7 @@ pub fn scan_saves(
             saves: vec![],
             risky_count: 0,
             notes: vec!["无法定位存档目录（SHGetKnownFolderPath 失败）。".to_string()],
+            global_risks: vec![],
         });
     };
     if !root.is_dir() {
@@ -186,6 +192,7 @@ pub fn scan_saves(
             saves: vec![],
             risky_count: 0,
             notes: vec!["存档目录不存在（可能还没玩过游戏）。".to_string()],
+            global_risks: vec![],
         });
     }
 
@@ -202,6 +209,32 @@ pub fn scan_saves(
         .map(|info| framework_statuses(Path::new(&info.root)))
         .unwrap_or_default();
     let dependency_report = build_dependency_report(&state.mods, &current_frameworks);
+
+    // ── 规则 B：依赖缺口（当前启用集合本身的硬伤，影响所有存档）──
+    // 2026-11-14 #11①：以前这段在 `for dir in save_dirs` 里面，等于把同一批
+    // 缺口逐条复制进每一个存档的 risks；N 个存档 × M 条缺口直接把页面刷爆。
+    // 它与「哪个存档」完全无关，只应算一次、放在报告级。
+    let global_risks: Vec<SaveRisk> = dependency_report
+        .mods
+        .iter()
+        .filter(|status| status.enabled && status.status == "missing")
+        .map(|status| SaveRisk {
+            kind: "dependencyGap".to_string(),
+            severity: "warning".to_string(),
+            mod_ids: vec![status.mod_id.clone()],
+            message: format!(
+                "当前启用的 {} 缺少前置：{}，读档可能失败",
+                status.mod_name,
+                status.missing.join("、")
+            ),
+        })
+        .collect();
+    if !global_risks.is_empty() {
+        notes.push(format!(
+            "当前启用集合有 {} 个模组缺少前置（影响所有存档），详见环境风险清单。",
+            global_risks.len()
+        ));
+    }
 
     let mut saves = Vec::new();
     let mut risky_count = 0usize;
@@ -292,22 +325,6 @@ pub fn scan_saves(
             }
         }
 
-        // ── 规则 B：依赖缺口（当前启用集合本身的硬伤，影响所有存档）──
-        for status in &dependency_report.mods {
-            if status.enabled && status.status == "missing" {
-                risks.push(SaveRisk {
-                    kind: "dependencyGap".to_string(),
-                    severity: "warning".to_string(),
-                    mod_ids: vec![status.mod_id.clone()],
-                    message: format!(
-                        "当前启用的 {} 缺少前置：{}，读档可能失败",
-                        status.mod_name,
-                        status.missing.join("、")
-                    ),
-                });
-            }
-        }
-
         if risks.iter().any(|r| r.severity != "info") {
             risky_count += 1;
         }
@@ -331,6 +348,7 @@ pub fn scan_saves(
         saves,
         risky_count,
         notes,
+        global_risks,
     })
 }
 

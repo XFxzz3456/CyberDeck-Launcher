@@ -166,7 +166,19 @@ const rows = await taskRows();
 check("任务中心没有任何任务行", rows === 0, `taskRows=${rows}`, "taskRows");
 
 // ── 4. 活动流：逐条记录，一条不少 ──────────────────────────────────
+// 2026-11-14 #10①：角标只表示未读活动，点开必须清零；待更新模组数只留在面板头。
+const badgeBeforeOpen = await page.locator(".bell-badge").count();
 const activities = await activityRows();
+const badgeAfterOpen = await page.locator(".bell-badge").count();
+check("打开铃铛前有未读角标", badgeBeforeOpen === 1, `badge=${badgeBeforeOpen}`, "bellBadgeBefore");
+check(
+  "点开铃铛后角标清零（已读态生效）",
+  badgeAfterOpen === 0,
+  `before=${badgeBeforeOpen} after=${badgeAfterOpen}`,
+  "bellBadgeClears",
+);
+const unreadRows = await page.locator(".bell-panel .activity-row.is-unread").count();
+check("面板内未读活动有可见标记", unreadRows >= 1, `unreadRows=${unreadRows}`, "bellUnreadRows");
 check("活动流记录 ≥ 5 条（逐条记，不合并）", activities >= 5, `activityRows=${activities}`, "activityLogged");
 console.log(
   `  活动流：${await page.evaluate(() =>
@@ -192,6 +204,36 @@ check(
   `${flipped}/${targets.length} ${unflipped.join("、")}`,
   "badgesOk",
 );
+
+// ── 6. 新增活动后角标再次出现 + 再次打开时新旧已读态可区分 ───────────
+await page.keyboard.press("Escape");
+await page.waitForTimeout(150);
+await clickToggle(targets[0].name, "fast");
+await settle();
+const badgeAgain = await page.locator(".bell-badge").count();
+check("新增活动后角标再次出现", badgeAgain === 1, `badge=${badgeAgain}`, "bellBadgeReturns");
+await page.locator(".btn-bell").click();
+await page.waitForTimeout(250);
+const readRows = await page.locator(".bell-panel .activity-row:not(.is-unread)").count();
+const unreadRows2 = await page.locator(".bell-panel .activity-row.is-unread").count();
+check(
+  "再次打开时旧活动已读、新活动未读",
+  readRows >= 1 && unreadRows2 >= 1,
+  `read=${readRows} unread=${unreadRows2}`,
+  "bellReadSplit",
+);
+
+// ── 7. #10② 面板层级：命中测试必须落在面板本身，不是下层工具栏 ─────────
+const hitOk = await page.evaluate(() => {
+  const panel = document.querySelector("[data-bell-panel='1']");
+  if (!panel) return "no-panel";
+  const rect = panel.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + Math.min(24, rect.height / 2);
+  const hit = document.elementFromPoint(x, y);
+  return hit && panel.contains(hit) ? "panel" : `other:${hit?.className ?? "null"}`;
+});
+check("铃铛面板遮住下层工具栏（命中测试）", hitOk === "panel", `hit=${hitOk}`, "bellPanelOnTop");
 
 await page.close();
 await browser.close();

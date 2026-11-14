@@ -482,6 +482,74 @@ fn multiple_wrapped_mod_roots_are_rejected_instead_of_dropping_files() {
     assert!(error.message.contains("ModB"));
 }
 
+/// 2026-11-14 #11②：ArchiveXL 这类「框架包」的安装根必须是完整游戏根。
+///
+/// `red4ext/plugins/ArchiveXL/Bundle/` 里有 21 个 .xl，按旧的「散文件逐个 +1」
+/// 打分能拿 21 分，压过包根的 6 分（r6 + red4ext），于是 Bundle 被当成 Mod 根，
+/// `ArchiveXL.dll` 留在根之外永远进不了部署清单 —— 批量更新后前置框架整个消失。
+/// 这条用例用真实包结构钉死：DLL 必须进 plan、必须落到游戏目录。
+#[test]
+fn framework_bundle_does_not_steal_payload_root() {
+    let fixture = Fixture::new();
+    let mut files: Vec<(String, Vec<u8>)> = vec![
+        (
+            "red4ext/plugins/ArchiveXL/ArchiveXL.dll".to_string(),
+            b"MZ fake plugin".to_vec(),
+        ),
+        (
+            "r6/config/redsUserHints/ArchiveXL.toml".to_string(),
+            b"hint".to_vec(),
+        ),
+        (
+            "red4ext/plugins/ArchiveXL/Scripts/ArchiveXL.reds".to_string(),
+            b"// script".to_vec(),
+        ),
+    ];
+    // 21 个 .xl：正好复现本机实算的 21 分 > 6 分。
+    for index in 0..21 {
+        files.push((
+            format!("red4ext/plugins/ArchiveXL/Bundle/File{index:02}.xl"),
+            b"xl".to_vec(),
+        ));
+    }
+    let entries: Vec<(&str, &[u8])> = files
+        .iter()
+        .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+        .collect();
+    let zip = fixture.zip("ArchiveXL-1.28.8.zip", &entries);
+    let entry = install(&fixture, &zip);
+
+    assert_eq!(entry.layout, InstallLayout::GameRoot);
+    assert!(
+        PathBuf::from(&entry.staging_path).ends_with("payload"),
+        "安装根被抢到子目录了：{}",
+        entry.staging_path
+    );
+    let plan = sorted_plan(&entry);
+    assert!(
+        plan.iter().any(|p| p == "red4ext/plugins/ArchiveXL/ArchiveXL.dll"),
+        "框架 DLL 必须进部署清单：{plan:?}"
+    );
+    assert!(
+        plan.iter().any(|p| p.starts_with("red4ext/plugins/ArchiveXL/Bundle/")),
+        "Bundle 里的 .xl 也不能丢：{plan:?}"
+    );
+    assert!(
+        plan.iter().any(|p| p.starts_with("r6/config/")),
+        "r6 配置不能丢：{plan:?}"
+    );
+
+    let game = validate_game_dir(&fixture.game).unwrap();
+    deploy_mod(&fixture.store, &entry.id, &game).unwrap();
+    assert!(
+        fixture
+            .game
+            .join("red4ext/plugins/ArchiveXL/ArchiveXL.dll")
+            .is_file(),
+        "DLL 必须真的落到游戏目录，否则框架探测仍会判未安装"
+    );
+}
+
 /// 同分候选互相嵌套时，外层才是真正的 Mod 根（2026-11-06 审计 P1-6）。
 ///
 /// 旧逻辑把「根目录」与「根目录下的 Extra/」当成两个并列的安装根直接报错，

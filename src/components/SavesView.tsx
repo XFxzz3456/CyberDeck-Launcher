@@ -23,7 +23,7 @@ import {
   Trash2,
   Wrench,
 } from "lucide-react";
-import type { EnvSnapshot, SaveGameEntry, SaveScanReport, Settings } from "../types";
+import type { EnvSnapshot, SaveGameEntry, SaveRisk, SaveScanReport, Settings } from "../types";
 import { api, normalizeError } from "../lib/api";
 import { t, type MessageKey } from "../i18n";
 import { ConfirmDialog, Spinner, SwitchRow } from "./ui";
@@ -57,6 +57,9 @@ function playedLabel(epochSeconds: number): string {
   if (!epochSeconds) return "—";
   return new Date(epochSeconds * 1000).toLocaleString("zh-CN", { hour12: false });
 }
+
+/** 风险清单默认只露这几条：一个前置缺失会让几十个模组同时报警，全铺开会淹掉整页。 */
+const RISK_PREVIEW = 3;
 
 const TRIGGER_KEYS: Record<EnvSnapshot["trigger"], MessageKey> = {
   manual: "saves.triggerManual",
@@ -307,6 +310,18 @@ export function SavesView({
         </div>
         <p className="saves-panel-hint">{t("saves.savesHint")}</p>
 
+        {/* 环境级风险只提示一次：以前逐条塞进每个存档，一个前置缺失就刷满整页。 */}
+        {scan && scan.globalRisks.length > 0 ? (
+          <div className="saves-global-risk" role="status">
+            <div className="saves-global-risk-head">
+              <AlertTriangle size={14} />
+              <strong>{t("saves.globalRiskTitle")}</strong>
+              <span>{t("saves.globalRiskHint")}</span>
+            </div>
+            <RiskList risks={scan.globalRisks} scope="global" />
+          </div>
+        ) : null}
+
         {scan === null && scanning ? (
           // 第一次进来还没数据：给骨架屏，不要一片空白让人以为页面挂了。
           <div className="save-grid saves-skeleton" aria-busy="true">
@@ -502,6 +517,36 @@ function SnapshotCard({
   );
 }
 
+/**
+ * 风险清单：默认只显示 RISK_PREVIEW 条，其余折进一个可展开的按钮。
+ * 每张卡片自己记展开状态——用户想细看某个存档时不应该把其它卡片一起撑开。
+ */
+function RiskList({ risks, scope }: { risks: SaveRisk[]; scope: "card" | "global" }) {
+  const [expanded, setExpanded] = useState(false);
+  if (risks.length === 0) return null;
+  const shown = expanded ? risks : risks.slice(0, RISK_PREVIEW);
+  const hidden = risks.length - shown.length;
+  return (
+    <div className="save-risk-list" data-risk-scope={scope}>
+      {shown.map((risk, index) => (
+        <p key={`${risk.kind}-${index}`} className={`save-risk risk-${risk.severity}`}>
+          {risk.message}
+        </p>
+      ))}
+      {risks.length > RISK_PREVIEW ? (
+        <button
+          type="button"
+          className="save-risk-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? t("saves.riskCollapse") : t("saves.riskMore", { count: hidden })}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function SaveCard({ save }: { save: SaveGameEntry }) {
   const risky = save.risks.some((r) => r.severity !== "info");
   return (
@@ -521,11 +566,7 @@ function SaveCard({ save }: { save: SaveGameEntry }) {
         </span>
         <span>{formatBytes(save.sizeBytes)}</span>
       </div>
-      {save.risks.map((risk, index) => (
-        <p key={index} className={`save-risk risk-${risk.severity}`}>
-          {risk.message}
-        </p>
-      ))}
+      <RiskList risks={save.risks} scope="card" />
     </div>
   );
 }

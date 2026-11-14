@@ -125,6 +125,17 @@ const CORE_FILES: &[(&str, &[&str])] = &[
     ("redscript", &["scc.exe", "redscript-cli.exe"]),
 ];
 
+/// 一条部署相对路径是否属于某个框架的核心文件。
+///
+/// 供更新链路做「完整性护栏」：新版本如果丢掉了旧版本部署过的 DLL/EXE，
+/// 就不能静默替换——那会让整个框架从游戏目录消失（2026-11-14 #11②）。
+pub fn is_core_framework_file(path: &str) -> bool {
+    let lowered = lower(path);
+    CORE_FILES
+        .iter()
+        .any(|(_, names)| names.iter().any(|name| lowered.ends_with(name)))
+}
+
 /// 名称 → 框架 id 的别名表。元数据里写成什么都见过：`ArchiveXL`、`archive xl`、
 /// `Cyber Engine Tweaks`、`CET`。规范化后统一映射，映射不上就当未知框架。
 const ALIASES: &[(&str, &str)] = &[

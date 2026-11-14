@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Package, Play, Search, Square, Upload, X } from "lucide-react";
 import type { GameInfo, ProfileList } from "../types";
 import type { ActivityItem } from "../lib/tasks";
@@ -6,6 +7,7 @@ import type { View } from "./Sidebar";
 import { ProfileMenu } from "./ProfileMenu";
 import { Kbd, Spinner } from "./ui";
 import { t } from "../i18n";
+import { currentUiZoom } from "../lib/uiScale";
 
 /**
  * 只有这几页才有「搜索模组 / 切播放集 / 导入压缩包」的语义。
@@ -23,6 +25,14 @@ function clockTime(at: number): string {
 
 /** 通知中心「已读到哪一刻」：存上次打开铃铛的时间戳，早于它的活动不再计入未读。 */
 const BELL_SEEN_KEY = "ncl.ui.bellSeenAt.v1";
+
+/** 铃铛面板尺寸：与 styles.css 的 .bell-panel 保持一致，用于视口夹取。 */
+const BELL_PANEL_WIDTH = 340;
+const BELL_PANEL_MAX_HEIGHT = 380;
+const BELL_PANEL_GAP = 8;
+const BELL_VIEWPORT_MARGIN = 10;
+
+type BellPanelPos = { top: number; left: number; width: number; maxHeight: number };
 
 function loadBellSeenAt(): number {
   try {
@@ -89,33 +99,85 @@ export function TopBar({
   const modTools = MOD_TOOL_VIEWS.includes(view);
   const [bellOpen, setBellOpen] = useState(false);
   const [bellSeenAt, setBellSeenAt] = useState<number>(() => loadBellSeenAt());
+  /** 本次打开面板「之前」的已读水位：用来给这次新到的活动标未读，打开后角标清零但视觉反馈还在。 */
+  const [bellEntrySeenAt, setBellEntrySeenAt] = useState<number>(() => loadBellSeenAt());
   const bellRef = useRef<HTMLDivElement>(null);
+  const bellButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<BellPanelPos | null>(null);
 
-  // 点击面板外关闭；Esc 也可关闭。
+  /**
+   * 面板必须挂到 body 并用 fixed 定位：.topbar 是 `position: relative; z-index: 10`，
+   * 会创建层叠上下文；面板留在里面的话，子元素的 z-index 再高也逃不出父级的 10，
+   * 而 .library-toolbar 是 30 → 整条工具栏画在面板之上（2026-11-14 #10②）。
+   * 坐标与 ProfileMenu 一致：先在视觉坐标（含 zoom）里夹取，最后除以 zoom 写回。
+   */
+  const placePanel = () => {
+    const anchor = bellButtonRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const zoom = currentUiZoom();
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+    const width = Math.min(BELL_PANEL_WIDTH, viewW - BELL_VIEWPORT_MARGIN * 2);
+    // 右缘对齐铃铛右缘；左右都夹在视口内。
+    const left = Math.min(
+      Math.max(BELL_VIEWPORT_MARGIN, Math.round(rect.right - width)),
+      Math.max(BELL_VIEWPORT_MARGIN, viewW - width - BELL_VIEWPORT_MARGIN),
+    );
+    const top = Math.max(BELL_VIEWPORT_MARGIN, Math.round(rect.bottom + BELL_PANEL_GAP));
+    const maxHeight = Math.max(
+      120,
+      Math.min(BELL_PANEL_MAX_HEIGHT, viewH - top - BELL_VIEWPORT_MARGIN),
+    );
+    setPanelPos({
+      top: top / zoom,
+      left: left / zoom,
+      width: width / zoom,
+      maxHeight: maxHeight / zoom,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (bellOpen) placePanel();
+  }, [bellOpen]);
+
+  // 点击面板外关闭；Esc 也可关闭。面板已 portal 到 body，命中判定要同时看两处。
   useEffect(() => {
     if (!bellOpen) return;
     const onDown = (event: MouseEvent) => {
-      if (!bellRef.current?.contains(event.target as Node)) setBellOpen(false);
+      const target = event.target as Node;
+      if (bellRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setBellOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setBellOpen(false);
     };
+    // 窗口尺寸变了浮层坐标会失效：直接收起，避免错位残影（同 ProfileMenu）。
+    const onViewportChange = () => setBellOpen(false);
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("blur", onViewportChange);
     return () => {
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("blur", onViewportChange);
     };
   }, [bellOpen]);
 
   const feed = activities.slice(-12).reverse();
-  // 未读 = 上次打开铃铛之后产生的活动；模组「有更新」是待办事项，独立计入不复位。
+  // 角标只表示「未读活动」。待更新模组数是待办、不是消息，点开铃铛不该被当成已读，
+  // 因此它只留在面板头（bellUpdates）与按钮 tooltip，绝不加进角标——
+  // 否则点开后角标纹丝不动，用户会以为「已读」功能坏了（2026-11-14 #10①）。
   const unreadCount = activities.filter((item) => item.at > bellSeenAt).length;
-  const badgeCount = unreadCount + updateCount;
+  const badgeCount = unreadCount;
 
   const toggleBell = () => {
     if (!bellOpen) {
       const now = Date.now();
+      setBellEntrySeenAt(bellSeenAt);
       setBellSeenAt(now);
       storeBellSeenAt(now);
     }
@@ -163,9 +225,16 @@ export function TopBar({
       <div className="topbar-actions" data-tauri-drag-region="false">
         <div className="bell-wrap" ref={bellRef}>
           <button
+            ref={bellButtonRef}
             className="btn btn-ghost btn-bell"
             onClick={toggleBell}
-            title={badgeCount > 0 ? t("topBar.bellUnread", { count: badgeCount }) : t("topBar.bellRecent")}
+            title={
+              badgeCount > 0
+                ? t("topBar.bellUnread", { count: badgeCount })
+                : updateCount > 0
+                  ? t("topBar.bellUpdates", { count: updateCount })
+                  : t("topBar.bellRecent")
+            }
             aria-label={t("topBar.bellAria")}
             aria-expanded={bellOpen}
           >
@@ -177,27 +246,46 @@ export function TopBar({
               {badgeCount > 9 ? "9+" : badgeCount}
             </i>
           ) : null}
-          {bellOpen ? (
-            <div className="bell-panel" role="dialog" aria-label={t("topBar.bellAria")}>
-              <div className="bell-head">
-                <span>{t("topBar.bellHead")}</span>
-                {updateCount > 0 ? <b>{t("topBar.bellUpdates", { count: updateCount })}</b> : null}
-              </div>
-              {feed.length === 0 ? (
-                <div className="bell-empty">{t("topBar.bellEmpty")}</div>
-              ) : (
-                feed.map((item) => (
-                  <div key={item.id} className="activity-row">
-                    <span className="activity-time">{clockTime(item.at)}</span>
-                    <span className="activity-copy">
-                      <strong title={item.title}>{item.title}</strong>
-                      {item.detail ? <span title={item.detail}>{item.detail}</span> : null}
-                    </span>
+          {bellOpen && panelPos
+            ? createPortal(
+                <div
+                  ref={panelRef}
+                  className="bell-panel"
+                  data-bell-panel="1"
+                  role="dialog"
+                  aria-label={t("topBar.bellAria")}
+                  style={{
+                    top: panelPos.top,
+                    left: panelPos.left,
+                    width: panelPos.width,
+                    maxHeight: panelPos.maxHeight,
+                  }}
+                >
+                  <div className="bell-head">
+                    <span>{t("topBar.bellHead")}</span>
+                    {updateCount > 0 ? <b>{t("topBar.bellUpdates", { count: updateCount })}</b> : null}
                   </div>
-                ))
-              )}
-            </div>
-          ) : null}
+                  {feed.length === 0 ? (
+                    <div className="bell-empty">{t("topBar.bellEmpty")}</div>
+                  ) : (
+                    feed.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`activity-row ${item.at > bellEntrySeenAt ? "is-unread" : ""}`}
+                        aria-label={item.at > bellEntrySeenAt ? t("topBar.bellUnreadRow") : undefined}
+                      >
+                        <span className="activity-time">{clockTime(item.at)}</span>
+                        <span className="activity-copy">
+                          <strong title={item.title}>{item.title}</strong>
+                          {item.detail ? <span title={item.detail}>{item.detail}</span> : null}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>,
+                document.body,
+              )
+            : null}
         </div>
         {modTools ? (
           <button className="btn btn-ghost btn-import" onClick={onImport}>
