@@ -112,9 +112,36 @@
 
 - `modsettings.rs` 测试模块的 `unused_imports`（`replace_line_value`），恢复「0 warning」基线。
 
+### 修复（本地化写回安全，既有缺陷）
+
+- `ailoc_full.rs` 的 `backup_and_write` 原用 `fs::write` **原地写**游戏目录的 Lua。CET 模组脚本是硬链接部署
+  （`installer_tests.rs` 有 `hard_links == 1` 断言），原地写会**同时改写 staging 母本**，违反「staging 母本永不修改」。
+- 新增 `replace_breaking_links()`：同目录写临时文件 → `fs::rename` 覆盖，目标换到新 inode、母本内容与 mtime 都不变。
+  刻意**不复用** `store::write_atomic` —— 它在 rename 失败时会 `fs::copy` 回目标，正好又踩回写穿。
+- 写成功后若原本是硬链接，调 `installer::downgrade_hardlink_to_copy` 把 `deployed_files` 里的记录同步降级为 Copy；
+  否则 rename 换掉 inode 后，禁用/卸载会因 `same_file_identity` 校验不过而**拒绝删文件**。
+- 新增测试 `write_back_breaks_hardlink_and_keeps_staging_untouched`：断言母本 hash 与 mtime 不变、目标已是译文、
+  链接已断开、备份仍是原文；平台不支持硬链接时跳过而非失败。
+
+### 新增（#6 只读盘点）
+
+- 新增 `src-tauri/src/menu_loc.rs`：`scan_menu_loc(game_dir)` **只读**扫描 CET `mods/*/init.lua` 与
+  `modules/languages/*.lua`，复用 `ailoc_full::display_strings(CarrierKind::Lua)` 统计可翻译条目，
+  输出 `available` / `mods[{modId, files, translatable, skippedReason}]` / `totalTranslatable`。
+  同一句在 init.lua 与语言表里只计一次；「0 条」分三种原因（无脚本 / 读不出 / 有脚本但无 label·tooltip 字面量，可能走 `Loc()`）。
+- **只读层，暂无调用方**：未加 `#[tauri::command]`、未接前端。它的作用是先回答「框架菜单到底有多少能翻」，
+  再决定是否投入写回层（写回需要 CET + ModSettings 真机校准）。
+
+### 变更（#4 文案去 AI 味）
+
+- 8 条设置项说明精简：`backgroundHint` 砍免责尾句；`backgroundFitHint` / `backgroundDimHint` / `motionSpeedHint` 压成单句；
+  `aboutNoInject` 去掉三条否定排比；`gameCheckTail` / `profileIntro` / `launchArgsNoteLead` 去掉否定式收尾与「绝不」；
+  `deployedWarning` 改动作导向。词表 2308 条、0 死条目。
+
 ### 验证
 
-- 全量门禁 **39/39 全绿**（383s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
+- 全量门禁 **39/39 全绿**（389s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
+- `cargo test --lib` → **418 passed / 0 failed / 2 ignored**；`cargo check --lib` 无代码级 warning。
 - `cargo test --lib migrate` → **8 passed / 0 failed**；`cargo check --lib` 通过。
 - `npx tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2308）。
 
@@ -124,8 +151,11 @@
   （`gate.mjs` 支持 `--skip-ui` 可作退路，但默认仍跑全量）。
 - **自动更新会把新版装进 `%LOCALAPPDATA%`**，不就地替换便携 exe；真正的「便携就地更新」需自研「下载 zip → 解压覆盖」，未做。
 - `styles.css` 仍有 **27 处** `:root[data-theme="mono"]` 死选择器（该主题已不存在，规则永不命中），本轮未清。
-- **#6 框架菜单汉化受阻**：真机预检显示 CET 与 ModSettings 均未安装，功能无法真机验收；先出勘察方案再定实现。
-- #4 的 8 条文案打磨、#7/#5 真机验收清单在推进中。
+- **#6 只落了只读层**：真机预检显示 CET 与 ModSettings 均未安装，写回层无法真机验收。已交付 `menu_loc.rs` 只读盘点；
+  写回（apply/revert）、`Loc()` 语言表适配、更新后自动重做仍在等环境。
+- **#6 的原始假设需修正**：issue 正文写的是「替换 user.ini 与 RED4ext TOML/JSON 菜单配置」，但 `user.ini` 只存
+  `key = value` 值、没有 label / tooltip 字段；菜单文案实际在 Lua（`mods/*/init.lua`、`modules/languages/*.lua`）。
+- #7 / #5 的真机验收清单待整理交付（部署落位 / 游戏内生效 / 卸载无残留 / 跨盘降级四项需用户实操）。
 - **未构建 exe / 未打 ZIP / 未发 Release**：按交付顺序等用户确认后再收尾。
 
 ## [1.8.4] - 2026-11-14（GitHub #10 + #11 五项缺陷 + 设置页排版统一）
