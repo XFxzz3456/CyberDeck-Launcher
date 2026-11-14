@@ -45,18 +45,18 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 ## 3. 当前状态快照（2026-11-14）
 
-> **两层要分清**：对外发布的产物仍是 **1.8.3**（2026-11-13 的 exe / ZIP / Release）；仓库 `main` 上另有 **1.8.3 之后未发版**的 #10 + #11 修复批次，三处 `version` 仍写着 1.8.3，**尚未升版、尚未重构建 exe**。
+> **1.8.4 已于 2026-11-14 21:24 出包**，exe 已替换 release；便携 ZIP 与 GitHub Release **仍停在 v1.8.3**，是否补发由用户单独决定。
 
 | 项 | 值 |
 |---|---|
 | 版本 | **1.8.4**（2026-11-14 正式发布；合并 GitHub #10/#11 五项缺陷修复与设置页字号排版统一） |
-| 远端 | `main` 含 1.8.3 合并提交 + 2026-11-14 修复批次；tag **`v1.8.3` 保持指向已发布产物对应的提交**（本轮未动 tag，待验收后升版再打新 tag）；`v1.8.4` 已删除 |
-| 进度 | GitHub Issues **#1 已关闭、#2–#9 open**（长期功能轨道）；**#10 / #11 为本轮 #10+#11 五项缺陷批次，已修复并回填关闭**（用户 2026-11-14 授权「一起修吧，还有 GitHub 上的 issue」）；标签 `P0` / `P1` / `P2` / `migrated` |
-| 门禁基线 | 全量门禁 **39/39 全绿**（2026-11-14，373s 工时）；`cargo test --lib` **399 passed / 2 ignored**；`tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2300）；`cargo check --lib` 0 warning |
-| release exe | **仍是 1.8.3 正式包**：11,176,960 B（10.66 MB）/ md5 `5906af219d4052e3193bc2e06266ed11` / PE 1.8.3 / mtime 2026-11-13 23:13:59；`.prev.exe` 为 1.8.4 临时包。本轮改动**未**进 exe |
-| 便携版 ZIP | **仍是 1.8.3**：`发布产物/CyberDeck Launcher 1.8.3 便携版.zip`，5,714,563 B（5.45 MiB） / md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`；GitHub Release [https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.3](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.8.3)（最新）资产 `CyberDeck.Launcher.1.8.3.zip` |
-| 本轮修复 | #10：铃铛角标/已读态、面板 portal+fixed 层级、带 `?query` 外链 explorer 转交；#11：存档风险报告级 `globalRisks` + 默认折叠、安装根锚点优先 + `apply_update` 核心 DLL 护栏；另含本机 ArchiveXL 运行时数据修复（不在仓库内）。复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md` |
-| 当前关口 | **先 localhost:1420 验收（用户实际点一遍）→ 用户明确确认「没问题」→ 才允许升版 / 构建 exe / 替换 release**；便携 ZIP 与 Release 需另外单独确认 |
+| 远端 | `main` 含 1.8.4 全部提交；tag 最新 **`v1.8.4`**（`v1.8.3` 保留为上一版） |
+| 进度 | GitHub Issues **#1、#10、#11 已关闭**；**#2–#9 open**（长期功能轨道）；标签 `P0` / `P1` / `P2` / `migrated` |
+| 门禁基线 | 全量门禁 **39/39 全绿**（发版链路内再跑一次仍全绿）；`cargo test --lib` **399 passed / 2 ignored**；`tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2300）；`cargo check --lib` 0 warning |
+| release exe | **1.8.4**：11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6` / PE `FileVersion`·`ProductVersion` 均 1.8.4 / mtime 2026-11-14 21:24:02；上一版 1.8.3 已备份为 `CyberDeck Launcher.prev.exe` |
+| 便携版 ZIP | **仍是 1.8.3**：`发布产物/CyberDeck Launcher 1.8.3 便携版.zip`，5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`；GitHub Release 最新仍为 `v1.8.3` 资产 `CyberDeck.Launcher.1.8.3.zip`。**1.8.4 的 ZIP 未打** |
+| 本版内容 | #10：铃铛角标/已读态、面板 portal+fixed 层级、带 `?query` 外链 explorer 转交；#11：存档风险报告级 `globalRisks` + 默认折叠、安装根锚点优先 + `apply_update` 核心 DLL 护栏（另含本机 ArchiveXL 数据修复）；设置页字号收敛为 `--sp-*` 五档 + 中文标签去 mono 字距 + 行式节奏统一。复盘：`docs/INCIDENT-2026-11-14-batch-fixes.md`、`docs/INCIDENT-2026-11-14-settings-typography.md` |
+| 当前关口 | exe 已出但**尚未做真机 GUI 冒烟**：#10③「去获取」浏览器拉起、存档风险折叠、依赖体检里 ArchiveXL 前置恢复仍需用户实际点一遍。便携 ZIP / Release 更新需单独确认 |
 | 未做 | #10③「去获取」真机确认浏览器拉起（不能只看日志 `result=ok`）；兜底 ShellExecute 在提权进程下的表现；内置 Nexus 窗口端到端真机（登录 → Mod Manager Download → 任务条）；第三方 OAuth 登录；UI/UX 顺延（首次向导 / 选择态上提 / 技术信息分层 / 样式全量令牌化）；#8 实机双端验收；全类型汉化真机样本；Vortex A1–A10 |
 
 ---

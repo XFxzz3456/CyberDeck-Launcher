@@ -130,12 +130,21 @@
 - 复核：`red4ext/plugins/ArchiveXL/ArchiveXL.dll` 1,963,008 B 存在；28/28 部署目标存在；`archive/pc/mod/` 里 21 个错位文件已移走（162 → 141 个条目）；
   框架探测路径命中、`plannedFiles` 含 `ArchiveXL.dll`，38 条「缺少前置：ArchiveXL」应随之归零。
 
+### 产物（2026-11-14 21:24）
+
+- `npm run release -- --skip-bump --allow-no-tag`：门禁全绿 → 构建 **207s** → 同步 release，链路总耗时 **389s**。
+- `release/CyberDeck Launcher.exe`：**11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6`**，
+  mtime **2026-11-14 21:24:02**，PE `FileVersion` / `ProductVersion` 均为 **1.8.4**；
+  上一版 1.8.3（11,176,960 B / md5 `5906af219d4052e3193bc2e06266ed11`）已自动备份为 `CyberDeck Launcher.prev.exe`。
+- 便携 ZIP 与 GitHub Release **本轮未动**（仍为 `v1.8.3` 的产物），需对外分发时单独确认后再打包。
+
 ### 验证
 
-- 全量门禁 **39/39 全绿**（373s 工时，含 `cargo test` core-tests 66.4s / `tsc --noEmit` / `vite build` / 存档管理与通知降噪新增断言）；
+- #10/#11 批次全量门禁 **39/39 全绿**（373s 工时，含 `cargo test` core-tests 66.4s）；
   `i18n:check` 0 处、`i18n:unused` 0 条（词表 2300 条）；`cargo check --lib` 0 warning。
-- 设置页排版批次复跑全量门禁 **39/39 全绿**（389s 工时）；`check-typography.mjs` 由 22 条扩到 29 条、全部 PASS。
-- 尚未真机启动正式 exe 做 GUI 冒烟（按交付顺序先 localhost 验收）；本轮复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md`。
+- 设置页排版批次复跑 **39/39 全绿**（389s 工时）；`check-typography.mjs` 由 22 条扩到 29 条、全部 PASS。
+- 贴边修复后复跑 **39/39 全绿**（397s 工时）；发版链路内再跑一次门禁全绿，产物见上「产物」段。
+- 复盘：`docs/INCIDENT-2026-11-14-batch-fixes.md`（#10/#11）与 `docs/INCIDENT-2026-11-14-settings-typography.md`（设置页排版）。
 
 ### 已知边界
 
