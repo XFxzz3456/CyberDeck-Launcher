@@ -2,7 +2,7 @@
 
 # CyberDeck Launcher
 
-**v1.8.3 · 最新正式版（STABLE）**
+**v1.8.4 · 最新正式版（STABLE）**
 
 <p>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-1f6feb">
