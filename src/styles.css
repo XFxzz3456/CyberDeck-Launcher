@@ -4349,7 +4349,6 @@ pre {
   color: #76939a;
 }
 
-
 /* ------------------------------------------------------------------ */
 /* 浮层层级契约（改层级只改这里，别再到处加魔法数字）                   */
 /* drawer 60 < 浮层栈 70 < toast 75 < modal 80 < command 95             */
@@ -4364,7 +4363,6 @@ pre {
   /* 与 .drawer 的 width 保持一致，供浮层让位计算 */
   --drawer-w: 470px;
 }
-
 
 /* 路径行 + 右侧操作按钮（暂存区「更改位置」） */
 .path-row-group {
@@ -7506,7 +7504,6 @@ button.conflict-mod:hover {
   color: var(--muted-2);
 }
 
-
 /* ------------------------------------------------------------------ */
 /* 0.4.0: Mod Settings / logs / pointer sorting                       */
 /* ------------------------------------------------------------------ */
@@ -8671,8 +8668,6 @@ body.is-reordering * {
   font-weight: 400;
 }
 
-
-
 /* 右下角浮层栈：toast + 任务面板垂直堆叠，永不重叠。 */
 .floating-stack {
   position: fixed;
@@ -9328,7 +9323,6 @@ body.is-reordering * {
   justify-content: center;
   gap: 10px;
 }
-
 
 /* Empty state */
 
@@ -10853,26 +10847,6 @@ summary,
   transform: translateY(1px) scale(0.985);
 }
 
-/* Mono is intentionally quiet: no grid, scanline or hover bloom. */
-:root[data-theme="mono"] .app-shell::after,
-:root[data-theme="mono"] .boot-grid {
-  display: none;
-}
-
-:root[data-theme="mono"] body::after {
-  display: none;
-}
-
-:root[data-theme="mono"] .mod-card:hover,
-:root[data-theme="mono"] .theme-option:hover {
-  transform: none;
-  box-shadow: none;
-}
-
-:root[data-theme="mono"] .logo-mark {
-  clip-path: none;
-}
-
 @media (max-width: 1150px) {
   .appearance-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -10888,7 +10862,6 @@ summary,
 /* 0.7.0 / hardware interface                                          */
 /* ------------------------------------------------------------------ */
 
-
 /* A faint grain over the whole shell. It keeps the near-black surfaces from
    looking like a flat browser background; the mono palette disables it. */
 body::before {
@@ -10902,10 +10875,6 @@ body::before {
   background-image: url("/noise.svg");
   background-size: 180px 180px;
   mix-blend-mode: soft-light;
-}
-
-:root[data-theme="mono"] body::before {
-  display: none;
 }
 
 /* Two grids: a fine white one for the hardware chassis, plus a 4x coarser
@@ -11558,37 +11527,6 @@ body::before {
     color-mix(in srgb, var(--panel-2) 78%, transparent);
 }
 
-/* Mono becomes a terminal, not just a recolour. */
-:root[data-theme="mono"] .panel,
-:root[data-theme="mono"] .mod-card,
-:root[data-theme="mono"] .theme-option,
-:root[data-theme="mono"] .accent-row,
-:root[data-theme="mono"] .appearance-preview,
-:root[data-theme="mono"] .game-dir-box.is-linked {
-  background: #000;
-  border-color: #333;
-}
-
-:root[data-theme="mono"] .panel,
-:root[data-theme="mono"] .mod-card,
-:root[data-theme="mono"] .theme-option.selected {
-  filter: none;
-}
-
-:root[data-theme="mono"] .page-head h1,
-:root[data-theme="mono"] .panel-head h2,
-:root[data-theme="mono"] .eyebrow,
-:root[data-theme="mono"] .panel-eyebrow,
-:root[data-theme="mono"] .nav-label,
-:root[data-theme="mono"] .theme-copy strong {
-  font-family: var(--mono);
-  letter-spacing: 0.5px;
-}
-
-:root[data-theme="mono"] .theme-option.selected {
-  box-shadow: inset 2px 0 0 #f2f2f2;
-}
-
 @media (max-width: 880px) {
   .setup-banner {
     grid-template-columns: 38px minmax(0, 1fr);
@@ -11620,14 +11558,11 @@ body::before {
   }
 }
 
-
-
 /* ============================================================
    Phase 3 — 五套主题的形态层
    配色之外，每套主题在按钮轮廓、导航标记、标题装饰、面板装饰线
    上各有自己的语言。全部通过 data-theme 覆盖实现，不修改基础块。
    ============================================================ */
-
 
 /* 按钮轮廓跟随主题切角 */
 .btn {
@@ -11673,15 +11608,9 @@ body::before {
   background: linear-gradient(90deg, var(--accent), transparent);
 }
 
-:root[data-theme="mono"] .page-head h1 .h1-accent {
-  color: var(--text);
-  text-shadow: none;
-}
-
 :root[data-theme="militech"] .page-head h1 .h1-accent {
   text-shadow: none;
 }
-
 
 /* Phase 5 — 键盘焦点兜底：主按钮与导航项此前没有 focus-visible，
    补一个跟随主题的焦点环，保证键盘可达。 */
@@ -11690,7 +11619,6 @@ body::before {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-
 
 /* ============================================================
    DAYLIGHT 亮色模式修正
@@ -11715,7 +11643,6 @@ body::before {
 :root[data-theme="daylight"] body::before {
   opacity: 0.015;
 }
-
 
 /* ============================================================
    诊断页折叠：面板标题右侧的收起按钮
@@ -11807,7 +11734,6 @@ body::before {
 :root[data-theme="daylight"] .category-item:hover {
   background: rgba(0, 0, 0, 0.035);
 }
-
 
 /* 整合包来源徽标：与 NEXUS 同一行，但用强调色区分「本地拆包」和「网上下载」。 */
 .cover-pack {
@@ -13474,14 +13400,6 @@ body::before {
   box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.55);
 }
 
-/* MONO 主题去掉发光，只保留白灰层级 */
-:root[data-theme="mono"] .settings-tab.active {
-  text-shadow: none;
-}
-:root[data-theme="mono"] .settings-tab.active::after {
-  box-shadow: none;
-}
-
 /* Modern 主题（data-style="modern"）：扁平灰色背景高亮 */
 [data-style="modern"] .settings-tab {
   border-radius: 4px 4px 0 0;
@@ -15144,10 +15062,6 @@ body::before {
   box-shadow: none;
 }
 
-:root[data-theme="mono"] .settings-tab-underline {
-  box-shadow: none;
-}
-
 :root[data-motion="on"] .settings-tab.active::after {
   display: none;
 }
@@ -15182,7 +15096,6 @@ body::before {
   transition-duration: 0s !important;
   animation-duration: 0s !important;
 }
-
 
 /* ------------------------------------------------------------------ */
 /* 分类选择器（模组卡右键 → 修改分类）                                  */
