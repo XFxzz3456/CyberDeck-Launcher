@@ -13,8 +13,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -479,16 +481,67 @@ fn write_manifest(store: &Store, manifest: &BackupManifest) -> AppResult<()> {
     Ok(())
 }
 
+/// 把译文写进游戏目录，**绝不写穿硬链接**。
+///
+/// CET / redscript 模组的脚本是硬链接部署的：游戏目录那份与暂存母本共享同一个
+/// inode（`installer_tests` 里 `editing_mod_settings_keeps_hardlink_identity`
+/// 就有 `hard_links == 1` 的断言）。以前这里用 `fs::write(target, …)`，
+/// 那是**原地截断写**——中文会顺着硬链接一起写进 staging 母本，直接踩到本模块
+/// 头部第 6 条红线「staging 母本永不修改」，而且 Mod 更新时新旧内容会混在一起。
+///
+/// 改成「同目录写临时文件 → rename 覆盖」：rename 之后目标路径指向新 inode，
+/// 暂存副本的内容与 mtime 一个字都不动，语义正好是「只改游戏内副本」。
+///
+/// 刻意**不复用** `store::write_atomic`：它在 rename 失败时会退回
+/// `fs::copy(temp, path)`（store.rs:394-406），而 copy 是往已存在的文件里写，
+/// 又踩回写穿硬链接。这里宁可失败——原文件已经备份好了，失败只记 warning。
+fn replace_breaking_links(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let stem = target
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| "target".to_string());
+    // 临时名必须唯一：同一目录可能同时有多个载体在写。
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let temp = parent.join(format!(
+        "{stem}.cyberdeck-loc-{}-{seq}.tmp",
+        std::process::id()
+    ));
+    let written = (|| -> std::io::Result<()> {
+        let mut file = fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.flush()?;
+        file.sync_all()?;
+        Ok(())
+    })();
+    if let Err(err) = written {
+        let _ = fs::remove_file(&temp);
+        return Err(err);
+    }
+    if let Err(err) = fs::rename(&temp, target) {
+        let _ = fs::remove_file(&temp);
+        return Err(err);
+    }
+    Ok(())
+}
+
 /// 先备份、再覆盖。备份失败即返回错误，绝不写半截译文。
+///
+/// `game_root` 只用于一个目的：写完之后把部署清单里指向这个目标的 `HardLink`
+/// 记录降成 `Copy`（见下方注释）。
 fn backup_and_write(
     store: &Store,
     manifest: &mut BackupManifest,
+    game_root: &Path,
     target: &Path,
     relative: &str,
     staging_rel: &str,
     content: &str,
 ) -> Result<DeployedFile, String> {
     let original = fs::read(target).map_err(|err| format!("读取原文件失败：{err}"))?;
+    // 写之前判定：这个目标是不是我们硬链接部署进来的。
+    let was_hardlink = crate::installer::hardlink_source_for(store, game_root, target).is_some();
     let dir = backup_dir(store, &manifest.mod_id);
     fs::create_dir_all(&dir).map_err(|err| format!("建备份目录失败：{err}"))?;
     let stamp = now_iso()
@@ -503,10 +556,15 @@ fn backup_and_write(
     let backup = dir.join(format!("{file_name}.{stamp}.bak"));
     fs::write(&backup, &original).map_err(|err| format!("备份失败，已中止覆盖：{err}"))?;
 
-    fs::write(target, content).map_err(|err| {
+    replace_breaking_links(target, content.as_bytes()).map_err(|err| {
         let _ = fs::remove_file(&backup);
         format!("写译文失败，已保留原文件：{err}")
     })?;
+    if was_hardlink {
+        // rename 换了 inode，部署清单里那条 HardLink 已经和现实不符。不降级的话
+        // 禁用 / 卸载会因身份校验不过而拒绝删文件（installer.rs:3002-3005）。
+        crate::installer::downgrade_hardlink_to_copy(store, game_root, target);
+    }
     let (size, modified_time) = file_stamp(target);
     let record = BackupRecord {
         target: target.to_string_lossy().to_string(),
@@ -856,6 +914,7 @@ pub fn emit_overlays(
         match backup_and_write(
             store,
             &mut manifest,
+            game_root,
             &target,
             &deployed.relative_path,
             &carrier.rel,
@@ -953,6 +1012,7 @@ mod tests {
         let file = backup_and_write(
             &store,
             &mut ok_manifest,
+            &root,
             &ok_target,
             "mods/ok/init.lua",
             "init.lua",
@@ -978,6 +1038,7 @@ mod tests {
         backup_and_write(
             &store,
             &mut changed_manifest,
+            &root,
             &changed_target,
             "mods/changed/init.lua",
             "init.lua",
@@ -990,6 +1051,88 @@ mod tests {
         assert!(restored.is_empty());
         assert!(warnings.iter().any(|item| item.contains("拒绝自动恢复")));
         assert!(PathBuf::from(&changed_manifest.records[0].backup).is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// R1 回归：写回必须断开硬链接，不能顺着链接把 staging 母本一起改掉。
+    ///
+    /// 旧实现是 `fs::write(target, …)`（原地截断写），CET 模组的脚本又是硬链接
+    /// 部署的（游戏目录副本与暂存母本同一个 inode），于是「汉化一个 Mod」=
+    /// 「把中文写进它的暂存目录」。表现是：撤销后内容回得去，但 Mod 一更新、
+    /// 或清单丢了，母本里就永久留着中文。
+    #[test]
+    fn write_back_breaks_hardlink_and_keeps_staging_untouched() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".test-tmp")
+            .join(format!("ailoc-r1-{}", uuid::Uuid::new_v4().simple()));
+        let _ = fs::create_dir_all(&root);
+
+        // 母本（= staging 里的副本）与目标（= 游戏目录里那份）建成硬链接。
+        let staging_copy = root.join("staging-init.lua");
+        let original = "label = \"Enable feature\"\ntooltip = \"Turns it on\"\n";
+        fs::write(&staging_copy, original).unwrap();
+        let target = root.join("game-init.lua");
+        if fs::hard_link(&staging_copy, &target).is_err() {
+            // FAT32 / 权限受限的环境造不出硬链接：跳过，不要误报失败。
+            println!("skip: 当前文件系统不支持硬链接，跳过 R1 回归");
+            let _ = fs::remove_dir_all(&root);
+            return;
+        }
+        #[cfg(windows)]
+        assert!(
+            crate::installer::same_file_identity(&staging_copy, &target),
+            "夹具前提：两份必须是同一个文件对象"
+        );
+
+        let store = Store::load(root.join("data")).unwrap();
+        let mut manifest = BackupManifest {
+            version: MANIFEST_VERSION,
+            mod_id: "r1".to_string(),
+            created_at: now_iso(),
+            records: Vec::new(),
+        };
+        let translated = "label = \"启用功能\"\ntooltip = \"打开它\"\n";
+        // 用母本该有的内容算一份指纹，写完之后必须一模一样。
+        let before_hash = fingerprint(original);
+        let before_stamp = file_stamp(&staging_copy);
+
+        let file = backup_and_write(
+            &store,
+            &mut manifest,
+            &root,
+            &target,
+            "bin/x64/plugins/cyber_engine_tweaks/mods/TestMod/init.lua",
+            "init.lua",
+            translated,
+        )
+        .unwrap();
+
+        // 1) 目标（游戏目录副本）已换成译文
+        assert_eq!(fs::read_to_string(&target).unwrap(), translated);
+        // 2) 母本内容指纹不变——这条是本用例的核心断言
+        let after_source = fs::read_to_string(&staging_copy).unwrap();
+        assert_eq!(
+            fingerprint(&after_source),
+            before_hash,
+            "写回把 staging 母本改了：{after_source:?}"
+        );
+        assert_eq!(after_source, original);
+        // 3) 母本 mtime 也不该被动过：写的是新 inode，原文没人碰
+        assert_eq!(file_stamp(&staging_copy), before_stamp, "母本 mtime 被改动了");
+        // 4) 硬链接确实断了，登记类型如实降为 Copy
+        #[cfg(windows)]
+        assert!(
+            !crate::installer::same_file_identity(&staging_copy, &target),
+            "写回之后链接应已断开"
+        );
+        assert!(matches!(file.link_type, LinkType::Copy));
+        // 5) 备份仍是原文，回滚有据可依
+        assert_eq!(manifest.records.len(), 1);
+        assert_eq!(
+            fs::read_to_string(&manifest.records[0].backup).unwrap(),
+            original
+        );
+
         let _ = fs::remove_dir_all(&root);
     }
 }
