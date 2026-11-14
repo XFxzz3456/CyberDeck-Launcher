@@ -95,6 +95,27 @@
   `apply_update` 在「卸旧」前用 `deps::is_core_framework_file` 比对新旧清单，缺核心 DLL 就报 `UPDATE_INCOMPLETE` 并清理临时暂存，旧版原封不动。
   新增真实 ArchiveXL 包结构回归单测（断言 DLL 进 `plannedFiles` 且落到游戏目录）与 4 条护栏单测。
 
+### 变更（设置页排版统一）
+
+> 用户反馈：「设置里的字体还有排版感觉有些混乱，字体大小没有个标准」。
+
+- **字号收敛为五档**：`styles.css` 的 `:root` 新增 `--sp-title / --sp-item / --sp-body / --sp-hint / --sp-micro`
+  = **15 / 13 / 12 / 11 / 9.5px**。设置页原先混用 9 / 9.5 / 10.5 / 11 / 11.5 / 12 / 12.5 / 15 共八档，
+  其中 8.5–10.5 五档几乎不可分辨却并存。新档只作用于 `.settings-page` 作用域，`--fs-*` 继续服务其他页面，
+  不做全站连带改版。
+- **中文标签不再用等宽字 + 字距**：`.settings-field > span` / `.ai-field > span` / `.platform-label` 原为
+  `9.5px mono + 1.2px letter-spacing` —— 中文方块字被字距拉散，而且**比它下面的说明（11px）还小**，层级倒挂。
+  现统一为 `13px / 500 / sans / 字距 0 / --text-2`。
+- **说明层级归位**：`.switch-desc` / `.panel-copy` / `.settings-field small` / `.path-note` 统一 12px 正文；
+  `.settings-hint` / `.panel-note` / `.downloads-note` 统一 11px 辅助。原先 hint(11) 比 label(9.5) 大的倒挂消失。
+- **行式节奏统一**：`.settings-field` / `.ai-field` 改为「上下 9px + 5% 极细分隔线」，与 `.switch-row` 同节奏；
+  同时去掉相邻 `switch-row` 历史上「各自 border-bottom + 再叠 border-top」造成的 2px 双线。
+- **组件级样式并入同一阶梯**：`VortexTakeoverCard.css`（正文 11.5→12、折叠头 12→13、`vortex-mono` 11→12）、
+  `CoverCacheCard.css`（统计标签 9→11、缓存路径 10→11、开关标题与说明改引用 `--sp-*`）。
+- **门禁同步并加锁**：`check-typography.mjs` 把契约从「设置项 12px / 说明 11px」更新为 13/12，并新增 6 条设置页断言
+  （卡片标题 15、label 13/500/无字距/非等宽字体、hint 11、hint 必须小于 label），防止以后又散回多档。
+- 复盘见 `docs/INCIDENT-2026-11-14-settings-typography.md`。
+
 ### 本机数据修复（不属于源码）
 
 - 备份 `release/cyberdeck-data/launcher-state.json.before-20261114-archivexl-fix` 与 21 个错位文件到
@@ -107,6 +128,7 @@
 
 - 全量门禁 **39/39 全绿**（373s 工时，含 `cargo test` core-tests 66.4s / `tsc --noEmit` / `vite build` / 存档管理与通知降噪新增断言）；
   `i18n:check` 0 处、`i18n:unused` 0 条（词表 2300 条）；`cargo check --lib` 0 warning。
+- 设置页排版批次复跑全量门禁 **39/39 全绿**（389s 工时）；`check-typography.mjs` 由 22 条扩到 29 条、全部 PASS。
 - 尚未真机启动正式 exe 做 GUI 冒烟（按交付顺序先 localhost 验收）；本轮复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md`。
 
 ### 已知边界

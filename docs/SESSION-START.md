@@ -49,7 +49,7 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 | 项 | 值 |
 |---|---|
-| 版本 | 对外发布 **1.8.3**；源码 HEAD 为「1.8.3 之后未发版」批次（三处 `version` 仍 `1.8.3`，`CHANGELOG.md` 用 `[未发版 · 1.8.3 之后]` 单独记） |
+| 版本 | **1.8.3**（对外发布产物）；源码 HEAD 为「1.8.3 之后未发版」批次（三处 `version` 仍 `1.8.3`，`CHANGELOG.md` 用 `[未发版 · 1.8.3 之后]` 单独记） |
 | 远端 | `main` 含 1.8.3 合并提交 + 2026-11-14 修复批次；tag **`v1.8.3` 保持指向已发布产物对应的提交**（本轮未动 tag，待验收后升版再打新 tag）；`v1.8.4` 已删除 |
 | 进度 | GitHub Issues **#1 已关闭、#2–#9 open**（长期功能轨道）；**#10 / #11 为本轮 #10+#11 五项缺陷批次，已修复并回填关闭**（用户 2026-11-14 授权「一起修吧，还有 GitHub 上的 issue」）；标签 `P0` / `P1` / `P2` / `migrated` |
 | 门禁基线 | 全量门禁 **39/39 全绿**（2026-11-14，373s 工时）；`cargo test --lib` **399 passed / 2 ignored**；`tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2300）；`cargo check --lib` 0 warning |
