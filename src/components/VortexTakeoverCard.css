@@ -8,7 +8,7 @@
 
 .vortex-takeover-subtitle {
   margin: 4px 0 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -49,7 +49,7 @@
 
 .vortex-field-grid dd {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text);
   overflow-wrap: anywhere;
@@ -57,12 +57,12 @@
 
 .vortex-mono {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .vortex-inline-note {
   margin: 8px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
   color: var(--ok);
 }
@@ -78,7 +78,9 @@
   gap: 10px;
   cursor: pointer;
   list-style: none;
-  font-size: 12px;
+  /* 折叠头按「设置项标题」档（--sp-item 13px）：原来 12px 与列表正文同号，
+     展开/收起的分组标题反而看不出是标题。 */
+  font-size: 13px;
   color: var(--text);
 }
 
@@ -108,7 +110,7 @@
 .vortex-subblock p,
 .vortex-list li {
   margin: 4px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -143,7 +145,7 @@
 
 .vortex-takeover-blocked code {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -162,7 +164,7 @@
   padding: 10px 12px;
   border: 1px solid rgba(var(--danger-rgb), 0.3);
   border-radius: var(--radius-md, 8px);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--danger);
 }
@@ -193,7 +195,7 @@
 
 .vortex-p3-note {
   margin: 8px 0 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
   color: var(--muted);
   overflow-wrap: anywhere;
@@ -215,7 +217,7 @@
 }
 
 .vortex-coverage-list li {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--muted);
   overflow-wrap: anywhere;

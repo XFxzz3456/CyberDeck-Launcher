@@ -25,8 +25,10 @@
 }
 
 .cover-cache-label {
-  font-size: 9px;
-  letter-spacing: 0.6px;
+  /* 2026-11-14：并入设置页五档阶梯。原 9px + 0.6px 字距 —— 中文统计标签
+     （「可显示封面」「缓存文件」）在 9px 下几乎糊成方块，且比同屏说明还小。 */
+  font-size: var(--sp-hint, 11px);
+  letter-spacing: 0;
   color: var(--muted-2);
   text-transform: uppercase;
 }
@@ -54,7 +56,7 @@
   flex: 1;
   min-width: 0;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--sp-hint, 11px);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -73,7 +75,7 @@
 
 .cover-cache-auto strong {
   display: block;
-  font-size: var(--fs-title);
+  font-size: var(--sp-item, 13px);
   font-weight: var(--fw-title);
   color: var(--text-2);
 }
@@ -81,7 +83,7 @@
 .cover-cache-auto small {
   display: block;
   margin-top: 2px;
-  font-size: var(--fs-body);
+  font-size: var(--sp-body, 12px);
   line-height: 1.5;
   color: var(--muted-2);
 }
@@ -91,7 +93,7 @@
   align-items: center;
   gap: 5px;
   margin-top: 8px;
-  font-size: 10px;
+  font-size: var(--sp-hint, 11px);
   color: var(--accent-text);
 }
 

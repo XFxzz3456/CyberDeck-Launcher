@@ -9,9 +9,11 @@
 //   1) 静态：styles.css 里不许再出现字面数字字重（除刻意保留的 12 处 400），
 //      一律引用 --fw-* 令牌；也不许出现 600/650/800/900 这些本机无字面的档位；
 //   2) 运行期：页面上任何元素的计算字重只允许 400 / 500 / 700 三档；
-//   3) 语义：页面大标题 700、区块标题 500、设置项标题 12px/500/主文字色、
-//      说明 11px/400、辅助小字 10.5px/400/次级灰、等宽样张 400/次级文字色，
-//      开关为无边框药丸型。
+//   3) 语义：页面大标题 700、卡片标题 500/15px、设置项标题 13px/500/主文字色、
+//      说明 12px/400、辅助小字 11px/400/次级灰、等宽样张 400/次级文字色，
+//      开关为无边框药丸型。设置页字号一律走 --sp-* 五档（2026-11-14 收敛：
+//      原设置页混用 9/9.5/10.5/11/11.5/12/12.5/15 八档，且表单 label 与它下面的
+//      说明同为 9.5px mono —— label 比说明还小、中文还被 letter-spacing 拉散）。
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,6 +181,8 @@ try {
         radius: cs.borderTopLeftRadius,
         borderWidth: cs.borderTopWidth,
         bg: cs.backgroundColor,
+        letterSpacing: cs.letterSpacing,
+        fontFamily: cs.fontFamily,
       };
     };
 
@@ -233,10 +237,10 @@ try {
     eq(".page-head h1 字重", probe.h1.weight, 700);
     eq(".panel-head h2 字重", probe.panelHead?.weight, 500);
     eq(".switch-title 字重", probe.switchTitle?.weight, 500);
-    eq(".switch-title 字号", probe.switchTitle?.size, 12);
+    eq(".switch-title 字号", probe.switchTitle?.size, 13);
     eq(".switch-title 用主文字色", probe.switchTitle?.color, probe.vars.text);
     eq(".switch-desc 字重", probe.switchDesc?.weight, 400);
-    eq(".switch-desc 字号", probe.switchDesc?.size, 11);
+    eq(".switch-desc 字号", probe.switchDesc?.size, 12);
     eq(".bg-hint 字重", probe.bgHint?.weight, 400);
     eq(".bg-hint 字号", probe.bgHint?.size, 10.5);
     eq(".bg-hint 用次级灰", probe.bgHint?.color, probe.vars.muted2);
@@ -251,6 +255,55 @@ try {
       `on=${probe.onBg} off=${probe.offBg} 开关数=${JSON.stringify(probe.toggleStats ?? null)}`,
       "toggleStateColor",
     );
+
+    // ── 设置页字号阶梯（2026-11-14）────────────────────────────────
+    // 外观 tab 没有 .settings-field，切到下载 tab 测完整的一组。
+    // 断言的是「层级关系」而不只是数值：label 必须比说明大、中文 label 必须
+    // 走 sans 且无字距。原来的病就是 label(9.5) < 说明(11) + mono 字距拉散。
+    const dlTab = page.locator("#settings-tab-downloads");
+    if (await dlTab.count()) {
+      await dlTab.click();
+      await page
+        .waitForSelector(".settings-field > span", { state: "visible", timeout: 15000 })
+        .catch(() => {});
+      const ladder = await page.evaluate(() => {
+        const read = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          return {
+            size: Math.round(parseFloat(cs.fontSize) * 100) / 100,
+            weight: cs.fontWeight,
+            letterSpacing: cs.letterSpacing,
+            fontFamily: cs.fontFamily,
+          };
+        };
+        return {
+          label: read(".settings-field > span"),
+          hint: read(".settings-hint"),
+          cardTitle: read(".panel-head h2"),
+        };
+      });
+      eq(".panel-head h2 字号（设置页）", ladder.cardTitle?.size, 15);
+      eq(".settings-field > span 字号", ladder.label?.size, 13);
+      eq(".settings-field > span 字重", ladder.label?.weight, 500);
+      eq(".settings-field > span 无字距", ladder.label?.letterSpacing, "normal");
+      check(
+        "设置项 label 用正文字体（非等宽）",
+        Boolean(ladder.label?.fontFamily) &&
+          ladder.label.fontFamily.includes("sans-serif") &&
+          !ladder.label.fontFamily.includes("monospace"),
+        `font=${ladder.label?.fontFamily ?? "null"}`,
+        "settingsLabelSans",
+      );
+      eq(".settings-hint 字号", ladder.hint?.size, 11);
+      check(
+        "说明字号小于设置项 label",
+        Number(ladder.hint?.size) < Number(ladder.label?.size),
+        `hint=${ladder.hint?.size} label=${ladder.label?.size}`,
+        "hintBelowLabel",
+      );
+    }
   }
 
   const errors = await page.evaluate(() => window.__pageErrors || 0);

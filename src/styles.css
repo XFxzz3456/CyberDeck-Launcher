@@ -31,6 +31,22 @@
   --fs-hint: 10.5px; /* 辅助说明 */
   --fs-micro: 8.5px; /* 极小徽标 */
 
+  /* 设置页排版阶梯（2026-11-14，用户反馈「字体大小没有个标准」）。
+     设置页原先混用 9 / 9.5 / 10.5 / 11 / 11.5 / 12 / 12.5 / 15 共八档，且
+     表单 label 与它下面的说明**同为 9.5px mono**，label 甚至比说明还小 ——
+     层级写反，只剩颜色能区分。收敛为五档，设置页内一律引用，不再写裸 px：
+       --sp-title 15px  卡片 / 区块标题
+       --sp-item  13px  设置项标题、表单 label、dt、折叠头、Tab
+       --sp-body  12px  要逐字读的说明正文
+       --sp-hint  11px  辅助说明、脚注、note
+       --sp-micro 9.5px 装饰 eyebrow / meta
+     与 --fs-* 并存：--fs-* 仍服务设置页之外的页面，避免全站连带改版。 */
+  --sp-title: 15px;
+  --sp-item: 13px;
+  --sp-body: 12px;
+  --sp-hint: 11px;
+  --sp-micro: 9.5px;
+
   /* 禁止浏览器合成粗体。需要 700 的地方软雅黑自带 Bold 字面，不会退化；
      若某处标题突然变细，说明那个选择器写了一个没有字面对应的字重 —— 正好
      当成排查信号，而不是让浏览器糊一层假粗体盖过去。 */
@@ -18514,4 +18530,138 @@ body::before {
 .settings-search-reset {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+/* ==================================================================== */
+/* 设置页排版规范（2026-11-14）                                          */
+/* -------------------------------------------------------------------- */
+/* 用户反馈：「设置里的字体还有排版感觉有些混乱，字体大小没有个标准」。   */
+/* 三条落地：                                                            */
+/*   1) 字号收敛到 --sp-* 五档（见 :root），设置页内不再写裸 px；         */
+/*   2) 中文标签 / 说明回 sans（--font）并清掉 letter-spacing ——         */
+/*      mono + 大字距会把中文方块字拉成「散架」的观感，这是「乱」的主因； */
+/*   3) .settings-field / .switch-row 统一成同一套行式节奏               */
+/*      （上下 9px + 5% 极细分隔线），不再一行有一行没有。                */
+/* 只在 .settings-page 作用域内生效：模组库、下载中心等页面不受影响。     */
+/* 放在文件末尾是刻意的——设置页样式历史上被 9547 / 11458 / 14829 等多处   */
+/* 覆盖过，只有后写才能稳定压过它们；新增设置项样式请继续引用 --sp-*。    */
+/* ==================================================================== */
+
+/* —— 顶部 Tab —— */
+.settings-page .settings-tab {
+  font-size: var(--sp-item);
+}
+
+/* —— 卡片标题 / 装饰小标 —— */
+.settings-page .panel-head h2 {
+  font-size: var(--sp-title);
+  line-height: 1.35;
+}
+
+.settings-page .panel-eyebrow,
+.settings-page .panel-meta {
+  font-size: var(--sp-micro);
+}
+
+.settings-page .panel-eyebrow {
+  letter-spacing: 1.4px;
+}
+
+/* —— 设置项标题 / 表单 label / dt：中文走 sans，不加字距 —— */
+.settings-page .settings-field > span,
+.settings-page .ai-field > span,
+.settings-page .platform-label,
+.settings-page .setting-item-label {
+  font-family: var(--font);
+  font-size: var(--sp-item);
+  font-weight: var(--fw-label);
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.settings-page .switch-title {
+  font-size: var(--sp-item);
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* —— 说明正文：需要逐字读的那一层（:not 把 small.settings-hint 让给下面的 11px 档）—— */
+.settings-page .switch-desc,
+.settings-page .panel-copy,
+.settings-page .settings-field small:not(.settings-hint),
+.settings-page .ai-field small,
+.settings-page .setting-item-note,
+.settings-page .path-note,
+.settings-page .downloads-poll-error {
+  font-family: var(--font);
+  font-size: var(--sp-body);
+  font-weight: var(--fw-body);
+  line-height: 1.6;
+}
+
+/* —— 辅助说明 / 脚注 —— */
+.settings-page .settings-hint,
+.settings-page .panel-note,
+.settings-page .downloads-note {
+  font-size: var(--sp-hint);
+  line-height: 1.55;
+}
+
+/* —— 输入框 / 下拉：字号跟 body 档；路径类仍由各自规则保留 mono —— */
+.settings-page .settings-field input,
+.settings-page .settings-field select,
+.settings-page .ai-field input,
+.settings-page .ai-field select,
+.settings-page .ai-model-select {
+  font-size: var(--sp-body);
+}
+
+/* —— 行式节奏：所有设置行共用同一套上下留白与分隔线 —— */
+.settings-page .settings-field,
+.settings-page .ai-field {
+  margin-top: 0;
+  padding: 9px 0;
+  gap: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.settings-page .settings-field:last-child,
+.settings-page .ai-field:last-child {
+  border-bottom: 0;
+}
+
+.settings-page .switch-row {
+  padding: 9px 0;
+}
+
+/* 相邻 switch-row 历史上是「各自 border-bottom + 后一条再加 border-top」，
+   实际叠出 2px 双线；这里只留各行的 bottom，视觉统一为一条。 */
+.settings-page .settings-tab-panel .switch-row + .switch-row {
+  border-top: 0;
+}
+
+/* —— label → 控件 → hint 的横向节奏 —— */
+.settings-page .settings-field-row {
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-page .settings-field-row .settings-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* —— AI 配置卡内的档案条：并进同一套档位 —— */
+.settings-page .ai-profile-head strong {
+  font-size: var(--sp-item);
+}
+
+.settings-page .ai-profile-card code {
+  font-size: var(--sp-hint);
+}
+
+.settings-page .ai-profile-add,
+.settings-page .ai-test-note {
+  font-size: var(--sp-body);
 }
