@@ -65,6 +65,69 @@
 
 ---
 
+## [未发版 · 1.8.4 之后] - 2026-11-14（GitHub #9 / #3 / #2 收口）
+
+> **状态**：未升版本号（三处 `version` 仍 1.8.4），未构建 exe、未打便携 ZIP、未发 Release。
+> 用户「全部都去做吧」= 授权把 #9 / #6 / #7 / #5 / #3 / #2 / #4 一起推进；本批先落地能独立完成的部分。
+
+### 新增（#9 自动更新链路）
+
+- **`scripts/make-latest-json.mjs`**：按 Tauri v2 updater 规范生成 `latest.json`（`version` / `notes` / `pub_date` /
+  `platforms["windows-x86_64"].{signature,url}`）。签名走 `node scripts/tauri-cli.cjs signer sign <artifact>`，
+  私钥只经 `TAURI_SIGNING_PRIVATE_KEY*` 环境变量注入，脚本从不打印密钥内容；支持命令行与 `LATEST_*` 环境变量，
+  缺参、非 https、产物不存在、签名失败都输出中文报错并非 0 退出。
+- **`.github/workflows/release.yml`**：`tag v*` 触发的完整发版链 —— pnpm 12.8.1 / Node 20 → Rust stable + 缓存 →
+  `pnpm install --frozen-lockfile` → **版本守门**（tag 必须等于 `package.json` 且三处同值）→ **全量门禁** →
+  `tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'` → 组装便携包（4 条目结构）→
+  解压实测校验 → 生成 `latest.json` → 校验资产名与 url → `softprops/action-gh-release@v2`（`make_latest: true`）。
+- **前端检查更新改造**（`App.tsx` + `zh-CN.ts`）：主路径改为**「打开发布页」**，自动安装降为次要按钮（文案带「仍要」），
+  弹窗正文用 `.confirm-danger` 明确写出三条后果 —— 调用系统 NSIS 安装器装进 `%LOCALAPPDATA%`、
+  **不会替换当前便携目录里的 exe**、装完系统里同时存在两份。`check()` 失败时降级为常驻 warn + 「打开发布页」动作按钮。
+- **`docs/RELEASE-AUTOUPDATE.md`**：写清两条 GitHub Secrets（`TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD`）、
+  tag 发版流程、`latest.json` 字段、资产名不能改的原因、**更换密钥会让旧客户端全部验签失败**的警告。
+
+> **技术纠偏（重要）**：原先设想「签名便携 zip 当更新源」是**错的**。`tauri-plugin-updater` 的 `extract_zip()`
+> 解压后只非递归读第一层、只认 `.exe` / `.msi`；便携包第一层是 `CyberDeck Launcher <ver>/` 文件夹，必然
+> `BinaryNotFoundInArchive`。所以 Windows 上唯一可用的更新源是 **NSIS 更新包**，`latest.json` 指向它。
+
+### 修复（#3 老用户数据迁移，P0）
+
+- `lib.rs` 的 `migrate_other_data()` 原先只认「exe 同级 `cyberdeck-data`」与 `%APPDATA%\com.arol.cyberdeck`，
+  但 `README.md` 对外承诺「从旧版（NightCity Loader / 0.x）升级会自动识别与迁移」—— **代码里没有任何 nightcity 分支**，
+  老用户升级会静默丢状态。
+- 现新增 `NIGHT_CITY_DATA_DIR = "nightcity-data"` 与 `NIGHT_CITY_IDENTIFIER = "com.nightcity.loader"` 两个来源，
+  语义与既有分支一致：**只补齐缺失项（`launcher-state.json` + `secrets/`），绝不覆盖已有文件**。
+- 新增 5 条单测：`migrates_state_and_secrets_from_legacy_dir` / `never_overwrites_existing_target_files` /
+  `missing_legacy_dir_is_not_an_error` / `earlier_source_wins_over_later_one` / `skips_source_equal_to_target`。
+
+### 清理（#2 / #3 残留）
+
+- `scripts/check-legacy-state.mjs`：`C:\Users\<name>\.cyberdeck.loader\staging` 改由 `os.homedir()` 拼接，不再写死用户名。
+- `scripts/check-elevation.ps1`：去掉写死的 `D:\用户\工作区\release\CyberDeck Launcher.exe`，改为从脚本位置推 `../../release/`。
+- `scripts/make-theme-thumbs.ps1`：主题数组删掉 `mono`（该主题 r20 已并入 `modern`）；删除孤儿资源 `public/theme-thumbs/mono.png`。
+- `scripts/audit-shots.mjs` / `scripts/verify-settings-tabs.mjs`：去掉 `mono` / `daylight` 断言，
+  改为逐个断言 5 个真实主题（`ncpd` / `netrunner` / `arasaka` / `militech` / `modern`）的激活态发光与下划线。
+
+### 修复（顺带）
+
+- `modsettings.rs` 测试模块的 `unused_imports`（`replace_line_value`），恢复「0 warning」基线。
+
+### 验证
+
+- 全量门禁 **39/39 全绿**（383s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
+- `cargo test --lib migrate` → **8 passed / 0 failed**；`cargo check --lib` 通过。
+- `npx tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2308）。
+
+### 已知边界 / 未完成
+
+- **workflow 一次都没实跑**：首次打 tag 才知道 CI 端到端是否成立；UI 类断言依赖 Edge 路径与像素，CI 上可能翻车
+  （`gate.mjs` 支持 `--skip-ui` 可作退路，但默认仍跑全量）。
+- **自动更新会把新版装进 `%LOCALAPPDATA%`**，不就地替换便携 exe；真正的「便携就地更新」需自研「下载 zip → 解压覆盖」，未做。
+- `styles.css` 仍有 **27 处** `:root[data-theme="mono"]` 死选择器（该主题已不存在，规则永不命中），本轮未清。
+- **#6 框架菜单汉化受阻**：真机预检显示 CET 与 ModSettings 均未安装，功能无法真机验收；先出勘察方案再定实现。
+- #4 的 8 条文案打磨、#7/#5 真机验收清单在推进中。
+- **未构建 exe / 未打 ZIP / 未发 Release**：按交付顺序等用户确认后再收尾。
+
 ## [1.8.4] - 2026-11-14（GitHub #10 + #11 五项缺陷 + 设置页排版统一）
 
 > **发布口径**：本版合并 2026-11-14 的两批改动 —— GitHub #10 / #11 五项缺陷修复、设置页字号与排版统一。
