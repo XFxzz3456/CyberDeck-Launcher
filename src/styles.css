@@ -18631,9 +18631,12 @@ body::before {
   border-bottom: 0;
 }
 
-.settings-page .switch-row {
-  padding: 9px 0;
-}
+/* ⚠️ 这里刻意**不**统一 .switch-row 的 padding。
+   设置页有两种开关行：无边框行（padding: 8px 0）与 `.setting-list` 里的
+   「独立圆角小卡」（padding: 11px 13px + 边框 + 圆角）。若在这里写
+   `padding: 9px 0`，同特异度 + 后写会把小卡的左右 13px 清零 ——
+   2026-11-14 就是这么把「界面动效」「启动动画」的标题顶到卡片边框上的。
+   两种行的垂直节奏差 1px 无所谓，水平内边距必须各归各的。 */
 
 /* 相邻 switch-row 历史上是「各自 border-bottom + 后一条再加 border-top」，
    实际叠出 2px 双线；这里只留各行的 bottom，视觉统一为一条。 */

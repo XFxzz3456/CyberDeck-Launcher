@@ -114,6 +114,10 @@
   `CoverCacheCard.css`（统计标签 9→11、缓存路径 10→11、开关标题与说明改引用 `--sp-*`）。
 - **门禁同步并加锁**：`check-typography.mjs` 把契约从「设置项 12px / 说明 11px」更新为 13/12，并新增 6 条设置页断言
   （卡片标题 15、label 13/500/无字距/非等宽字体、hint 11、hint 必须小于 label），防止以后又散回多档。
+- **修复本批自引入的回归**：统一节奏时误用 `.settings-page .switch-row { padding: 9px 0 }`，
+  同特异度 + 后写把 `.setting-list` 内「独立圆角小卡」的左右 13px 内边距清零，导致
+  「界面动效」「启动动画」的标题顶到小卡边框上（用户当场截图「字怎么贴着框」）。
+  改为不覆盖该行 padding，并在样式表原处留下警示注释。
 - 复盘见 `docs/INCIDENT-2026-11-14-settings-typography.md`。
 
 ### 本机数据修复（不属于源码）
