@@ -30,6 +30,7 @@ mod installer;
 mod loadorder;
 mod loadsort;
 mod logs;
+mod menu_loc;
 mod environment;
 mod profiles;
 mod redmod;
