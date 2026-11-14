@@ -138,6 +138,30 @@
   `aboutNoInject` 去掉三条否定排比；`gameCheckTail` / `profileIntro` / `launchArgsNoteLead` 去掉否定式收尾与「绝不」；
   `deployedWarning` 改动作导向。词表 2308 条、0 死条目。
 
+### 修复（真机预检脚本三处误报）
+
+用户反馈「CET 和 ModSettings 应该都装了」，核查后确认**脚本错了、用户是对的**：
+
+1. **CET 检出路径过时**：脚本只找 `bin/x64/plugins/cyber_engine_tweaks/cyber_engine_tweaks.dll`，
+   而新版 CET 以 `.asi` 插件加载（`bin/x64/plugins/cyber_engine_tweaks.asi`）。改为 `.asi` / `.dll` 任一命中即 PASS。
+2. **菜单框架改名未跟进**：脚本只找 `mods/ModSettings`，实际现代版本叫 `mods/nativeSettings`（值存 `db.sqlite3` 而非 `user.ini`）。
+   改为两个名字都认，存储文件双路探测。
+3. **状态文件双错**：只读 `%APPDATA%\com.arol.cyberdeck`（便携版实际在 `release/cyberdeck-data`）；
+   且 `Get-Content -Raw` 按 ANSI 解码 UTF-8 中文 → 解析失败后还把整段 **134 KB** JSON 打进报告。
+   改为双路径探测 + `-Encoding UTF8` + 错误正文截断到 160 字符。
+4. 脚本另存为 **UTF-8 with BOM**：PowerShell 5.1 对无 BOM 脚本按 ANSI 解码，中文注释会把解析器带崩。
+
+修复后实测：`CET core` / `menu framework` / `menu settings store` 全部 PASS，
+`launcher state` 输出 `78 mods / 78 deployed`（此前是 `not found` 或 134 KB dump）。
+
+> **结论修正**：#6 的环境并非缺失 —— CET 以 `.asi` 安装、菜单框架以 `nativeSettings` 安装，两者都在。
+> 此前判定「写回层无法真机验收」的依据有误，写回层具备验收条件。
+
+### 清理（CSS）
+
+- 删除 `styles.css` 里 27 处 `:root[data-theme="mono"]` 死选择器（13 个规则块，净删 87 行）。
+  `mono` 主题在 r20 已并入 `modern`，这些规则永不命中。
+
 ### 验证
 
 - 全量门禁 **39/39 全绿**（389s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
