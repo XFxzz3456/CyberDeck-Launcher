@@ -64,6 +64,60 @@
 
 ---
 
+## [未发版 · 1.8.3 之后] - 2026-11-14（GitHub #10 + #11 五项缺陷批次）
+
+> **版本口径**：本轮只修代码、未升版本号（三处 `version` 仍 1.8.3），未重构建 exe、未打便携 ZIP、未发 Release。
+> 按交付顺序规则先 localhost 验收，用户确认「没问题」后才走收尾（升版 / 构建 / 替换 release）。
+
+### 修复（#10 三项）
+
+- **铃铛角标点开不消失 / 无已读态**（`TopBar.tsx` + `styles.css` + `check-notify-noise.mjs`）：
+  `badgeCount` 只取未读活动数；待更新模组数保留在面板头 `bellUpdates` 与按钮 tooltip，不再计入角标。
+  打开时记录 `bellEntrySeenAt`（打开前水位），面板内新到活动标 `is-unread`（左侧强调线 + 字重），旧活动呈已读灰。
+  门禁补 5 条断言：打开前有角标 → 点开清零 → 未读行可见 → 新增活动后角标再现 → 再次打开新旧已读态可区分。
+- **铃铛面板被工具栏盖住**（`TopBar.tsx` + `styles.css`）：面板改 `createPortal` 挂到 `document.body` + `position: fixed` + `z-index: 70`，
+  按 `getBoundingClientRect()` 与 `currentUiZoom()` 算坐标并做视口夹取；点击外部判定同时看按钮与面板，`resize` / `blur` 收起。
+  门禁补 `document.elementFromPoint` 命中测试。
+- **「去获取」打开文件资源管理器**（`src-tauri/src/lib.rs`）：`explorer.exe <带 ?query 的 URL>` 是 explorer 自身的解析行为，
+  会当本地路径处理。新增 `explorer_url_arg()` 把整条 URL 用双引号包住，通过 `raw_arg` 原样写入命令行；
+  `open_url` 拒绝引号 / 控制字符防注入。修复落在 `open_via_explorer` 一处，覆盖模组详情、诊断页与内置 Nexus 窗口全部入口。
+  保留 explorer 中等权限转交约束（`MEMORY-CANON.md:75`），未改回裸 ShellExecute。新增 4 条命令行构造单测。
+
+### 修复（#11 两项）
+
+- **存档风险提示全展开刷屏**（`saves.rs` + `SavesView.tsx` + `types.ts` + `mock.ts` + `styles.css` + `check-saves.mjs`）：
+  报告新增 `globalRisks`，把「当前启用集合的依赖缺口」从每个存档的 `risks` 里移出、只算一次并汇总进 `notes`；
+  前端新增 `RiskList`（默认 3 条 + 「还有 N 条 · 展开」/「收起」，每张卡片独立记状态）与一条环境风险横幅；
+  `.save-grid` 改 `align-items: start`（一张卡片不再拉高整行）。`check-saves.mjs` 把恒真的 `>= 0` 换成 6 条真实断言（含展开/收起 12 条）。
+- **批量更新把 ArchiveXL 前置弄丢**（`installer.rs` + `updates.rs` + `deps.rs` + `installer_tests.rs` + 本机数据修复）：
+  `refine_payload_root` 改为两级判据——只要包里存在游戏根锚点目录（`archive/bin/r6/red4ext/engine/mods`），最浅的那个就是安装根，
+  散文件数量不再能翻盘（ArchiveXL 的 `Bundle/` 21 个 `.xl` 曾拿 21 分压过包根 6 分）；无锚点时才退回原散文件打分。
+  `apply_update` 在「卸旧」前用 `deps::is_core_framework_file` 比对新旧清单，缺核心 DLL 就报 `UPDATE_INCOMPLETE` 并清理临时暂存，旧版原封不动。
+  新增真实 ArchiveXL 包结构回归单测（断言 DLL 进 `plannedFiles` 且落到游戏目录）与 4 条护栏单测。
+
+### 本机数据修复（不属于源码）
+
+- 备份 `release/cyberdeck-data/launcher-state.json.before-20261114-archivexl-fix` 与 21 个错位文件到
+  `backups/incidents/archivexl-misplaced-20261114-archivexl-fix/`；把暂存区里完好的 28 个文件按完整游戏根重新硬链接部署，
+  条目 `stagingPath` / `layout` / `plannedFiles` / `deployedFiles` 全部重建。
+- 复核：`red4ext/plugins/ArchiveXL/ArchiveXL.dll` 1,963,008 B 存在；28/28 部署目标存在；`archive/pc/mod/` 里 21 个错位文件已移走（162 → 141 个条目）；
+  框架探测路径命中、`plannedFiles` 含 `ArchiveXL.dll`，38 条「缺少前置：ArchiveXL」应随之归零。
+
+### 验证
+
+- 全量门禁 **39/39 全绿**（373s 工时，含 `cargo test` core-tests 66.4s / `tsc --noEmit` / `vite build` / 存档管理与通知降噪新增断言）；
+  `i18n:check` 0 处、`i18n:unused` 0 条（词表 2300 条）；`cargo check --lib` 0 warning。
+- 尚未真机启动正式 exe 做 GUI 冒烟（按交付顺序先 localhost 验收）；本轮复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md`。
+
+### 已知边界
+
+- #10③ 的浏览器拉起需真机点「去获取」确认，不能用 `startup.log` 的 `result=ok` 当验收（那只代表 explorer 进程 spawn 成功）。
+- `open_via_explorer` 的兜底 `open::that_detached` 仍走 ShellExecute，仅在 explorer spawn 失败时触发；提权进程下该分支的表现未单独验证。
+- 更新护栏对「框架 DLL 改名」会误拦（报 `UPDATE_INCOMPLETE` 并要求手动导入），属刻意保守。
+- #2–#9 长期功能轨道本轮未动；#10 / #11 已关闭并回填（`state=closed / completed`，评论 `6877279706` / `6877280241`），真机验收若发现问题将 reopen。
+
+---
+
 ## [1.8.3] - 2026-11-13（下载中心体验收口 · 三份审查报告核销）
 
 > **版本口径（2026-11-13 22:10 用户决定）**：当晚的下载中心修复、通知去重/版本删除/更新可暂停取消、以及本轮审查核销**统一算 1.8.3**；曾短时打出的 `v1.8.4` tag 已删除，1.8.4 不再作为发布号存在。

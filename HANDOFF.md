@@ -8,6 +8,15 @@
 
 **本仓库的实际版本是 `1.8.3`（2026-11-13，统一口径）。** 三处 `version` + `Cargo.lock` 一致；当晚曾短时以 1.8.4 发布，按用户决定把 1.8.4 与后续审查修复**全部并入 1.8.3**，`v1.8.4` tag 已删除、`v1.8.3` tag 移到最新提交。`release/CyberDeck Launcher.exe` 已于 2026-11-13 23:13 按 1.8.3 重构建并替换（11,176,960 B / md5 `5906af219d4052e3193bc2e06266ed11`，PE `FileVersion` / `ProductVersion` 均为 1.8.3），用户 localhost 验收已确认；旧 1.8.4 临时包（11,169,280 B / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4）备份为 `.prev.exe`。便携版已按 1.8.3 重打（`发布产物/CyberDeck Launcher 1.8.3 便携版.zip`，5,714,563 B / md5 `1a61d735ac45bdb111f7f34013187fbd`），并创建 GitHub Release `v1.8.3`（资产 `CyberDeck.Launcher.1.8.3.zip`）。
 
+- **2026-11-14 20:00– GitHub #10 + #11 五项缺陷批次（未发版、未升版本号）**：用户「一起修吧，还有 GitHub 上的 issue」= 授权只修 #10/#11，#2–#9 长期轨道不动。
+  ① 铃铛角标只算未读活动、活动行补已读态；② 铃铛面板改 portal 到 body + fixed/70 并做视口夹取；
+  ③ `explorer.exe` 转交带 `?query` 的 URL 改为整条加双引号（`raw_arg`），修好「去获取」弹资源管理器；
+  ④ 存档风险改报告级 `globalRisks` + 前端默认折叠 3 条、`.save-grid` 不等高；
+  ⑤ `refine_payload_root` 加「游戏根锚点优先」两级判据 + `apply_update` 核心 DLL 护栏，并修复本机 ArchiveXL 部署数据。
+  全量门禁 **39/39 全绿**（373s）、`i18n:check`/`i18n:unused` 均 0、`cargo check` 0 warning。
+  **三处 `version` 仍为 1.8.3，未构建 exe / 未替换 release / 未打 ZIP**；按交付顺序先 localhost 验收，用户确认后才收尾。
+  复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md`。GitHub **#10 / #11 已 `state=closed / completed` 并回填修复结论**（评论 `6877279706` / `6877280241`）；
+  真机交互项（尤其 #10③ 浏览器拉起、#11② 依赖体检里 ArchiveXL 前置恢复）仍在 localhost 验收窗口待用户确认，若发现问题会 reopen。
 - **2026-11-13 23:24 便携版补发 1.8.3**（用户「需要」= 确认打 ZIP + 发 Release）：
   按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.3 便携版.zip`（5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`），
   4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.3` Release（ID `444391436`，非 draft / 非预发布、设为 latest）并上传资产 `CyberDeck.Launcher.1.8.3.zip`（ID `744131201`），
