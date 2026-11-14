@@ -3680,16 +3680,47 @@ fn resolve_data_dir() -> PathBuf {
     exe_sibling_data_dir().unwrap_or_else(|| PathBuf::from("cyberdeck-data"))
 }
 
-/// 把候选位置里缺失的状态/密钥补进目标目录，绝不覆盖已有文件。
-/// 这样无论本次选了哪个目录，之前填过的 API Key 和模组清单都能跟过来。
-fn migrate_other_data(target: &Path) {
+/// 0.7.0 及更早版本用过的名字：便携数据目录与 %APPDATA% 下的 identifier。
+/// 只在这里出现，仅用于迁移识别旧数据，不参与任何新写入。
+const NIGHT_CITY_DATA_DIR: &str = "nightcity-data";
+const NIGHT_CITY_IDENTIFIER: &str = "com.nightcity.loader";
+
+/// 所有可能藏着旧数据的目录，按「越新越靠前」排。
+///
+/// 迁移是「只补缺失、不覆盖」，所以同一个文件名第一个命中的来源生效，
+/// 顺序就等于优先级：当前便携目录 > 旧便携目录 > 当前 AppData > 旧 AppData。
+fn legacy_data_dirs() -> Vec<PathBuf> {
     let mut sources: Vec<PathBuf> = Vec::new();
     if let Some(sibling) = exe_sibling_data_dir() {
         sources.push(sibling);
     }
+    // 0.7.0 及更早（旧品牌 NightCity Loader）的便携目录名。
+    // README 承诺「从 0.x 升级：直接替换 exe，数据目录会自动识别与迁移」，
+    // 老用户把新 exe 丢进旧目录时，状态就在这个 nightcity-data 里。
+    if let Some(sibling) = exe_sibling_dir(NIGHT_CITY_DATA_DIR) {
+        sources.push(sibling);
+    }
     if let Some(roaming) = roaming_app_data_dir() {
         sources.push(roaming.join("com.arol.cyberdeck"));
+        // 0.7.0 及更早的 identifier：老用户的状态与 DPAPI 密钥都在这里。
+        sources.push(roaming.join(NIGHT_CITY_IDENTIFIER));
     }
+    sources
+}
+
+/// 把候选位置里缺失的状态/密钥补进目标目录，绝不覆盖已有文件。
+/// 这样无论本次选了哪个目录，之前填过的 API Key 和模组清单都能跟过来。
+fn migrate_other_data(target: &Path) {
+    migrate_from_sources(&legacy_data_dirs(), target);
+}
+
+/// `migrate_other_data` 的可测试内核：来源目录由调用方给出，
+/// 不碰 `current_exe` / `%APPDATA%`，单元测试才好造数据。
+///
+/// 两条硬规则：
+///   1. **只补缺失**：目标已存在的文件一律跳过（新目录里的才是用户当前状态）；
+///   2. 来源不存在、或来源就是目标本身 → 静默跳过，不算错误。
+fn migrate_from_sources(sources: &[PathBuf], target: &Path) {
     for source in sources {
         if source == target || !source.is_dir() {
             continue;
@@ -3723,17 +3754,133 @@ fn migrate_other_data(target: &Path) {
     }
 }
 
-fn exe_sibling_data_dir() -> Option<PathBuf> {
+fn exe_sibling_dir(name: &str) -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf))
-        .map(|dir| dir.join("cyberdeck-data"))
+        .map(|dir| dir.join(name))
+}
+
+fn exe_sibling_data_dir() -> Option<PathBuf> {
+    exe_sibling_dir("cyberdeck-data")
 }
 
 /// 一次性迁移历史回退目录（exe 同级 cyberdeck-data）里的数据。
 /// 只在目标缺失时补齐，绝不覆盖新目录里已有的文件。
 fn migrate_legacy_data(target: &Path) {
     migrate_other_data(target);
+}
+
+/// 旧数据迁移的单元测试。
+///
+/// 全部走 `migrate_from_sources`（显式传来源目录），因此不读 `current_exe`、
+/// 不读 `%APPDATA%`，也不会碰到本机真实数据；临时目录按仓库既有惯例建在
+/// `std::env::temp_dir()` 下、以进程号区分，用完即删。
+#[cfg(test)]
+mod migrate_tests {
+    use super::*;
+    use std::fs;
+
+    fn fixture(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("cdl-migrate-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn write(path: &Path, body: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, body.as_bytes()).unwrap();
+    }
+
+    fn read(path: &Path) -> String {
+        fs::read_to_string(path).unwrap()
+    }
+
+    /// 只有旧目录（nightcity-data）时，状态与密钥都要跟过来。
+    #[test]
+    fn migrates_state_and_secrets_from_legacy_dir() {
+        let root = fixture("legacy");
+        let legacy = root.join(NIGHT_CITY_DATA_DIR);
+        let target = root.join("cyberdeck-data");
+        fs::create_dir_all(&target).unwrap();
+        write(&legacy.join("launcher-state.json"), r#"{"mods":["old"]}"#);
+        write(&legacy.join("secrets").join("nexus-api.key"), "dpapi-old");
+
+        migrate_from_sources(&[legacy.clone()], &target);
+
+        assert_eq!(read(&target.join("launcher-state.json")), r#"{"mods":["old"]}"#);
+        assert_eq!(read(&target.join("secrets").join("nexus-api.key")), "dpapi-old");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 新目录里已有文件时，旧数据一个都不能覆盖（用户当前状态优先）。
+    #[test]
+    fn never_overwrites_existing_target_files() {
+        let root = fixture("no-overwrite");
+        let legacy = root.join(NIGHT_CITY_DATA_DIR);
+        let target = root.join("cyberdeck-data");
+        write(&target.join("launcher-state.json"), r#"{"mods":["new"]}"#);
+        write(&target.join("secrets").join("nexus-api.key"), "dpapi-new");
+        // 旧目录另有一个新目录没有的密钥，它应该被补进来
+        write(&legacy.join("launcher-state.json"), r#"{"mods":["old"]}"#);
+        write(&legacy.join("secrets").join("nexus-api.key"), "dpapi-old");
+        write(&legacy.join("secrets").join("ai-api.key"), "dpapi-only-old");
+
+        migrate_from_sources(&[legacy.clone()], &target);
+
+        assert_eq!(read(&target.join("launcher-state.json")), r#"{"mods":["new"]}"#);
+        assert_eq!(read(&target.join("secrets").join("nexus-api.key")), "dpapi-new");
+        // 缺失项仍然补齐：这是「只补不盖」的另一半语义
+        assert_eq!(read(&target.join("secrets").join("ai-api.key")), "dpapi-only-old");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 旧目录不存在 → 静默跳过，不 panic、不创建任何文件。
+    #[test]
+    fn missing_legacy_dir_is_not_an_error() {
+        let root = fixture("missing");
+        let target = root.join("cyberdeck-data");
+        fs::create_dir_all(&target).unwrap();
+
+        migrate_from_sources(&[root.join("nightcity-data-not-here")], &target);
+
+        assert!(!target.join("launcher-state.json").exists());
+        assert!(!target.join("secrets").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 来源就是目标本身时跳过（否则等于自己复制自己，多跑一遍没意义）。
+    #[test]
+    fn skips_source_equal_to_target() {
+        let root = fixture("self");
+        let target = root.join("cyberdeck-data");
+        write(&target.join("launcher-state.json"), r#"{"mods":["same"]}"#);
+
+        migrate_from_sources(&[target.clone()], &target);
+
+        assert_eq!(read(&target.join("launcher-state.json")), r#"{"mods":["same"]}"#);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// 多来源时按给定顺序「先到先得」：新便携目录的状态赢了旧 AppData。
+    #[test]
+    fn earlier_source_wins_over_later_one() {
+        let root = fixture("order");
+        let portable = root.join("cyberdeck-data-old-sibling");
+        let appdata = root.join(NIGHT_CITY_IDENTIFIER);
+        let target = root.join("target");
+        write(&portable.join("launcher-state.json"), r#"{"mods":["portable"]}"#);
+        write(&appdata.join("launcher-state.json"), r#"{"mods":["appdata"]}"#);
+        fs::create_dir_all(&target).unwrap();
+
+        migrate_from_sources(&[portable, appdata], &target);
+
+        assert_eq!(read(&target.join("launcher-state.json")), r#"{"mods":["portable"]}"#);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 /// 令牌体检：完整性级别 / AppContainer / 受限 SID 数量。

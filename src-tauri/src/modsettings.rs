@@ -516,7 +516,7 @@ pub(crate) fn replace_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{get, infer_kind, replace_line_value, restore_backup, save, settings_path, update_ini_text};
+    use super::{get, infer_kind, restore_backup, save, settings_path, update_ini_text};
     use crate::store::Store;
     use std::fs;
     use std::path::PathBuf;
