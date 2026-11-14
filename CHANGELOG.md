@@ -162,6 +162,16 @@
 - 删除 `styles.css` 里 27 处 `:root[data-theme="mono"]` 死选择器（13 个规则块，净删 87 行）。
   `mono` 主题在 r20 已并入 `modern`，这些规则永不命中。
 
+### 变更（签名密钥轮换）
+
+- 旧 `updater.key` 的密码遗失，重新生成密钥对（`signer generate --force`，新密码由用户重设）。
+  新公钥已写入 `tauri.conf.json` 的 `plugins.updater.pubkey`；旧私钥备份为 `.tauri/updater.key.bak`，
+  `.tauri/` 一直在 gitignore 内，私钥与备份均不入库。
+- **影响**：已发布的 1.8.4 exe 编译的是旧公钥，其自动更新将无法验证新签名包；但 `latest.json` 从未发布过，
+  **不存在依赖旧公钥的客户端**，本次轮换零实际损失。下次构建 exe / 发版后新公钥生效。
+- 用户需在 GitHub 重新配置两条 Secrets：`TAURI_SIGNING_PRIVATE_KEY`（新私钥全文）、
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（新密码）。
+
 ### 验证
 
 - 全量门禁 **39/39 全绿**（389s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
