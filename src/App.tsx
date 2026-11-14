@@ -91,7 +91,7 @@ import { BackgroundCropDialog } from "./components/BackgroundCropDialog";
 import { DangerConfirmModal } from "./components/DangerConfirmModal";
 import { TaskCenter } from "./components/TaskCenter";
 import { DownloadsView } from "./components/DownloadsView";
-import { ConfirmDialog, Modal, ToastHost, type ToastItem } from "./components/ui";
+import { ConfirmDialog, Modal, Spinner, ToastHost, type ToastItem } from "./components/ui";
 import { BootSkeletonGrid } from "./components/ModCardSkeleton";
 import {
   canNotify,
@@ -119,6 +119,26 @@ const EULA_FADE_MS = 260;
 
 /** 部署 / 撤销反馈的静默合并窗口（ms）：连串开关攒够一批才给一条汇总。 */
 const TOGGLE_COALESCE_MS = 2000;
+
+/**
+ * 发布页地址：自动更新不可用时的兜底出口。
+ * 走 /releases/latest 而不是具体 tag，保证永远指向「当前最新那一版」。
+ */
+const APP_RELEASES_URL = "https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest";
+
+/**
+ * 待处理的启动器更新。
+ *
+ * 只留展示需要的两个版本号 + 安装句柄：`Update` 对象来自动态 import 的
+ * @tauri-apps/plugin-updater，把它整个摊进组件状态既没必要，也会让类型
+ * 跟着那个模块走。安装动作包成无参函数，弹窗只管调用。
+ */
+interface PendingAppUpdate {
+  version: string;
+  currentVersion: string;
+  /** 走 NSIS 安装器自动安装（次要路径，见 handleInstallAppUpdate）。 */
+  install: () => Promise<void>;
+}
 
 interface ConfirmState {
   title: string;
@@ -389,6 +409,8 @@ function AppShell() {
   const [updatePaused, setUpdatePaused] = useState(false);
   const [updateBackups, setUpdateBackups] = useState<UpdateBackup[]>([]);
   const [appUpdating, setAppUpdating] = useState(false);
+  // 发现新版本后先停在这里让用户选：主路径是打开发布页，自动安装是次要路径。
+  const [appUpdatePrompt, setAppUpdatePrompt] = useState<PendingAppUpdate | null>(null);
   // AI 汉化：接口是否可用 + 单条弹窗目标 + 批量是否在跑（进度走任务中心）。
   const [aiReady, setAiReady] = useState(false);
   const [aiLocMod, setAiLocMod] = useState<ModEntry | null>(null);
@@ -2456,6 +2478,11 @@ function AppShell() {
     [applyingUpdates, recordActivity, refresh, showError, toast],
   );
 
+  /** 打开发布页：便携版升级的主路径，也是自动更新不通时的唯一出口。 */
+  const openAppReleases = useCallback(() => {
+    void api.openUrl(APP_RELEASES_URL).catch((error) => showError(error, t("err.openRelease")));
+  }, [showError]);
+
   /** P5-5C：检查启动器自身更新（走 tauri-plugin-updater + GitHub Releases 的 latest.json）。 */
   const handleCheckAppUpdate = useCallback(async () => {
     if (!isTauri) {
@@ -2471,18 +2498,84 @@ function AppShell() {
         toast("ok", t("settings.upToDateTitle"), t("settings.upToDateDetail"), "update");
         return;
       }
-      const go = window.confirm(
-        t("settings.updateConfirm", { version: update.version, current: update.currentVersion }),
-      );
-      if (!go) return;
-      await update.downloadAndInstall();
-      toast("ok", t("settings.updateInstalledTitle"), t("settings.updateInstalledDetail"), "update");
+      // 主分发形态是便携目录（不含 NSIS 安装包），而 Tauri v2 的 Windows 自更新
+      // 只能跑 NSIS 安装器、装进 %LOCALAPPDATA%，不会替换便携目录里的 exe。
+      // 所以这里不再 confirm 完直接装：把选择权交出去，主按钮是「打开发布页」，
+      // 自动安装降为次要路径并在弹窗里写明它会产生两份启动器。
+      setAppUpdatePrompt({
+        version: update.version,
+        currentVersion: update.currentVersion,
+        install: async () => {
+          await update.downloadAndInstall();
+        },
+      });
     } catch (error) {
-      showError(error, t("err.checkAppUpdate"));
+      // 自动更新链路任何一环不通都会落到这里：离线、代理拦截、发布页还没有
+      // latest.json、清单里的签名与 pubkey 验不过。只弹一句「检查更新失败」
+      // 等于把人堵死在原地，所以降级为：说明自动更新暂不可用 + 给一个直接
+      // 打开发布页的按钮，用户仍能手动下载新版覆盖。
+      // 错误正文照旧带上，签名/pubkey 不匹配这类问题得靠它才能定位。
+      const reason = normalizeError(error).message;
+      toast(
+        "warn",
+        t("settings.updateUnavailableTitle"),
+        t("settings.updateUnavailableDetail", { reason }),
+        "system",
+        {
+          // 常驻：这条带动作按钮，自动消失等于按钮也跟着消失
+          sticky: true,
+          action: {
+            label: t("settings.updateUnavailableAction"),
+            onClick: () => {
+              void api
+                .openUrl(APP_RELEASES_URL)
+                .catch((openError) => showError(openError, t("err.openRelease")));
+            },
+          },
+        },
+      );
     } finally {
       setAppUpdating(false);
     }
   }, [appUpdating, showError, toast]);
+
+  /**
+   * 次要路径：走 Tauri 自更新（Windows 上就是 NSIS 安装器）自动安装。
+   *
+   * 装到 %LOCALAPPDATA% 的同时不会动当前便携目录里的 exe，之后系统里会有两份
+   * 启动器——这层后果由弹窗文案负责讲清楚，这里只做「用户明确选了才执行」。
+   */
+  const handleInstallAppUpdate = useCallback(async () => {
+    const pending = appUpdatePrompt;
+    if (!pending || appUpdating) return;
+    // 弹窗先留着：下载可能要几十秒，关掉对话框等于把进度和入口一起抽走。
+    // 按钮在 appUpdating 期间全部禁用（见弹窗 footer），装完/失败再收。
+    setAppUpdating(true);
+    try {
+      await pending.install();
+      setAppUpdatePrompt(null);
+      toast("ok", t("settings.updateInstalledTitle"), t("settings.updateInstalledDetail"), "update");
+    } catch (error) {
+      // 安装失败同样别把人堵死：说清原因，并给一条打开发布页的手动出口。
+      setAppUpdatePrompt(null);
+      const reason = normalizeError(error).message;
+      toast(
+        "warn",
+        t("settings.updateInstallFailedTitle"),
+        t("settings.updateInstallFailedDetail", { reason }),
+        "system",
+        {
+          sticky: true,
+          action: {
+            label: t("settings.updateUnavailableAction"),
+            onClick: openAppReleases,
+          },
+        },
+      );
+    } finally {
+      setAppUpdating(false);
+    }
+  }, [appUpdatePrompt, appUpdating, openAppReleases, toast]);
 
   /** 补全收编模组的 Nexus 元数据：文件名里的 ModId → 官方名称/作者/版本/封面。 */
   const runEnrichMetadata = useCallback(async () => {
@@ -3446,6 +3539,57 @@ function AppShell() {
         onSaveCategories={saveImportCategories}
         onEnableImported={(ids) => void handleEnableImported(ids)}
       />
+
+      {/* 发现新版本：主路径是打开发布页（便携版覆盖升级），自动安装作为次要
+          选项并在正文里写明它会装到系统目录、不替换便携目录的 exe。 */}
+      <Modal
+        open={appUpdatePrompt !== null}
+        title={t("settings.updateAvailableTitle", { version: appUpdatePrompt?.version ?? "" })}
+        eyebrow="APP UPDATE"
+        onClose={() => {
+          // 安装进行中不许关：否则用户既看不到进度，也没法再确认结果。
+          if (!appUpdating) setAppUpdatePrompt(null);
+        }}
+        footer={
+          <>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setAppUpdatePrompt(null)}
+              disabled={appUpdating}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => void handleInstallAppUpdate()}
+              disabled={appUpdating}
+            >
+              {appUpdating ? <Spinner size={14} /> : null}
+              {t("settings.updateInstallAction")}
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setAppUpdatePrompt(null);
+                openAppReleases();
+              }}
+              disabled={appUpdating}
+            >
+              {t("settings.updateOpenReleaseAction")}
+            </button>
+          </>
+        }
+      >
+        <div className="confirm-stack">
+          <p>
+            {t("settings.updateAvailableBody", {
+              current: appUpdatePrompt?.currentVersion ?? "",
+              version: appUpdatePrompt?.version ?? "",
+            })}
+          </p>
+          <p className="confirm-danger">{t("settings.updateInstallWarning")}</p>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(confirm)}

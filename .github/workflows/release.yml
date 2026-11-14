@@ -1,0 +1,381 @@
+# 发版流水线：打 `v*` tag 自动出「便携包 + 安装包 + 自动更新包 + latest.json」并建 Release。
+#
+# 为什么单独一个 workflow 而不是塞进 ci.yml：
+#   ci.yml 是「合入前必须绿」的检查，tag 构建是「已经在发版」的动作，两者失败的
+#   含义完全不同（前者拦住代码，后者拦住发布）。混在一个文件里，一次 tag 红叉会
+#   连带把分支状态弄脏，也不好单独重跑。
+#
+# 三个刻意的设计决定，改之前先看：
+#
+# 1) 更新源用的是 Tauri 自己产出的 NSIS 更新包（*-setup.nsis.zip），**不是**便携包。
+#    tauri-plugin-updater 的 extract_zip 只读 zip 的第一层、且只认 .exe/.msi；
+#    便携包是「CyberDeck Launcher <版本>/」套一层目录，喂进去必然报
+#    BinaryNotFoundInArchive（签名能过，装不上）。便携包照样上传，供人手动下载。
+#    CI 里用 --config 临时打开 bundle.createUpdaterArtifacts，不改仓库里的配置。
+#
+# 2) latest.json 的资产名必须**精确**是这个，一个字都不能改：它被写死在
+#    tauri.conf.json 的 plugins.updater.endpoints 里
+#    （.../releases/latest/download/latest.json）。改名 = 所有旧客户端立刻断更。
+#
+# 3) 私钥只走环境变量（TAURI_SIGNING_PRIVATE_KEY / ..._PASSWORD），由 secrets 注入。
+#    绝不写进仓库、不进命令行参数、不被 echo。换密钥会让旧客户端全部验签失败，
+#    见 docs/RELEASE-AUTOUPDATE.md。
+#
+# 失败排查：每一步都有带序号的中文 name，看红叉挂在哪一步即可；产物定位、签名、
+# 上传是彼此独立的步骤，不会互相掩盖。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # 手动跑一次：改完 workflow 需要验证时用（必须选一个 v* tag，第 6 步会拦）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 发版不能被打断，也不排队取消：tag 是一次性事实，宁可等。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  release:
+    name: 构建并发布（Windows）
+    runs-on: windows-latest
+    # 冷启动：门禁里的 cargo test + release 构建 + NSIS 打包，实测 20 分钟量级
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: 1. 检出源码
+        uses: actions/checkout@v4
+        with:
+          # 需要完整 tag 历史：版本守门要拿 tag 与 package.json 对账
+          fetch-depth: 0
+
+      - name: 2. 准备 pnpm / Node 20
+        uses: pnpm/action-setup@v4
+        with:
+          # 与 ci.yml、本机一致（lockfileVersion 9.0）
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 3. 准备 Rust stable（Windows MSVC）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: 4. 缓存 cargo 产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+          # 发版场景不留失败缓存：混进坏状态比重新编译更贵
+          cache-on-failure: false
+
+      - name: 5. 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 版本号三处不一致、或 tag 与 package.json 不一致时立刻停：等最后一步才发现，
+      # 就是「tag v1.8.5、latest.json 写 1.8.4」这种回不去的事故。
+      - name: 6. 版本守门（tag 必须等于 package.json 版本）
+        id: ver
+        run: |
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $tag = "$env:GITHUB_REF_NAME" -replace '^v', ''
+          Write-Host "package.json=$pkg  tauri.conf.json=$conf  Cargo.toml=$cargo  ref=$env:GITHUB_REF_NAME"
+          if ($pkg -ne $conf -or $pkg -ne $cargo) {
+            Write-Error "版本号三处不一致：package.json=$pkg / tauri.conf.json=$conf / Cargo.toml=$cargo（先对齐再发版）"
+            exit 1
+          }
+          if ($tag -ne $pkg) {
+            Write-Error "tag 与版本号不一致：tag=${tag} / package.json=${pkg}。发版必须打 v${pkg} 的 tag。"
+            exit 1
+          }
+          "version=$pkg" >> $env:GITHUB_ENV
+          "version=$pkg" >> $env:GITHUB_OUTPUT
+
+      # 全量门禁：cargo test + tsc + vite build + 38 个 UI 验收脚本。
+      # 发版不用 --fast —— 正是「日常都过了、发版翻车」最容易漏掉的那一档。
+      # 先单独 vite build 一次：src-tauri/build.rs 的 tauri_build 会校验
+      # frontendDist（../dist）存在，仓库不跟踪 dist，CI 里必须先造出来。
+      - name: 7. 全量门禁（npm run gate）
+        timeout-minutes: 60
+        env:
+          # UI 检查各自起一个 headless Edge，2 路并发够用，再高会和 cargo 抢 CPU
+          GATE_JOBS: "2"
+        run: |
+          pnpm exec vite build
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          pnpm run gate
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # 一次构建同时产出 exe（便携包用）、NSIS 安装器与更新包（自更新用）。
+      # createUpdaterArtifacts 只在 CI 里通过 --config 打开，仓库里的 tauri.conf.json
+      # 保持原样（本机 `tauri build --no-bundle` 的链路不受影响）。打开之后 bundler
+      # 会顺手给更新包签一份 .sig；latest.json 由 make-latest-json.mjs 重新签，
+      # 两条路互不依赖（签名里有时间戳，重签出来的串不同，但都验得过）。
+      - name: 8. 构建 exe + NSIS 更新包
+        timeout-minutes: 40
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pnpm exec tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "构建失败（若报缺少签名私钥，检查 TAURI_SIGNING_PRIVATE_KEY 这两个 secrets）"
+            exit 1
+          }
+
+      # 产物定位 + 换名单独成一步，两个目的：
+      #   a) 找不到就在这一步停住，而不是让签名步骤报一句「文件不存在」；
+      #   b) NSIS 产物名带空格（productName 是 "CyberDeck Launcher"），带空格的
+      #      路径在 glob 上传里很容易出岔子，统一换成无空格的稳定名字。
+      - name: 9. 定位构建产物并改成稳定文件名
+        id: artifacts
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $bundleDir = "src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $bundleDir)) {
+            Write-Error "NSIS 产物目录不存在：$bundleDir（第 8 步没有真正打包？）"
+            exit 1
+          }
+          Get-ChildItem $bundleDir | ForEach-Object { Write-Host "  原始产物: $($_.Name)  $($_.Length) B" }
+
+          $updater = Get-ChildItem $bundleDir -Filter "*.zip" -File | Where-Object { $_.Name -like "*setup*" } | Select-Object -First 1
+          if (-not $updater) {
+            Write-Error "在 $bundleDir 下找不到 *-setup*.zip 更新包（createUpdaterArtifacts 没生效？）"
+            exit 1
+          }
+          $installer = Get-ChildItem $bundleDir -Filter "*-setup.exe" -File | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "在 $bundleDir 下找不到 *-setup.exe 安装器"
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path "dist-release" | Out-Null
+          $updaterOut = "dist-release/CyberDeck.Launcher.$ver.x64-setup.nsis.zip"
+          $installerOut = "dist-release/CyberDeck.Launcher.$ver.x64-setup.exe"
+          Copy-Item $updater.FullName $updaterOut -Force
+          Copy-Item $installer.FullName $installerOut -Force
+          Write-Host "  更新包 -> $updaterOut"
+          Write-Host "  安装包 -> $installerOut"
+          "updater=$updaterOut" >> $env:GITHUB_OUTPUT
+          "installer=$installerOut" >> $env:GITHUB_OUTPUT
+
+      # 便携包结构固定四条（本项目对外的形态，别改）：
+      #   CyberDeck Launcher <版本>/
+      #     ├ CyberDeck Launcher.exe
+      #     ├ WebView2Loader.dll
+      #     ├ 使用说明.txt
+      #     └ cyberdeck-data/说明-数据目录.txt
+      # 必须自带 cyberdeck-data：全新解压时目录若不存在，首跑会把数据落进 %APPDATA%
+      # （数据目录解析是「exe 同级已存在才优先」）。
+      - name: 10. 组装便携包
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $root = "CyberDeck Launcher $ver"
+          # 暂存目录用 .portable-build（.gitignore 已忽略），别在工作区留下脏目录
+          $stage = Join-Path ".portable-build" $root
+          Remove-Item ".portable-build" -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path (Join-Path $stage "cyberdeck-data") | Out-Null
+
+          $exe = "src-tauri/target/release/CyberDeck Launcher.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "找不到构建产物：$exe"
+            exit 1
+          }
+          Copy-Item $exe (Join-Path $stage "CyberDeck Launcher.exe")
+
+          # WebView2Loader.dll 是运行时依赖，缺了应用直接起不来。正常构建会产在
+          # exe 旁边；万一哪天换成静态链接，这里降级为警告而不是硬失败。
+          $dll = "src-tauri/target/release/WebView2Loader.dll"
+          if (Test-Path $dll) {
+            Copy-Item $dll (Join-Path $stage "WebView2Loader.dll")
+          } else {
+            Write-Host "::warning file=$dll::没找到 WebView2Loader.dll，便携包内将不含该 DLL"
+          }
+
+          $readme = @"
+          CyberDeck Launcher v$ver · 便携版
+          ================================
+
+          1. 解压整个文件夹后双击「CyberDeck Launcher.exe」即可运行，无需安装。
+             别只把 exe 单独拖出来：同目录的 WebView2Loader.dll 和 cyberdeck-data
+             文件夹都要跟着走，否则会丢配置或者起不来。
+
+          2. 数据都在 cyberdeck-data 里。想备份就整个文件夹压缩；想恢复出厂状态
+             就删掉它，下次启动会重新生成。
+
+          3. 运行环境：Windows 10/11 x64 + Microsoft Edge WebView2 运行时。
+             系统一般已自带；没有的话装一次微软官方的 WebView2 Runtime。
+
+          4. 自动更新：设置页「检查启动器更新」会从 GitHub Releases 取更新。
+             取不到时会给出「打开发布页」按钮，可手动下载新版本覆盖。
+
+          5. 遇到问题：设置 -> 诊断 可以导出报告；日志在 cyberdeck-data 里。
+
+          项目主页：github.com/XFxzz3456/CyberDeck-Launcher（MIT 开源）
+          "@
+          Set-Content -Path (Join-Path $stage "使用说明.txt") -Value $readme -Encoding utf8
+
+          $dataNote = @"
+          这个目录保存启动器自己的数据，删掉等于恢复出厂设置。
+
+            launcher-state.json   设置、模组清单、存档关联
+            staging/              导入但还没部署的模组暂存区
+            ai-labels/            AI 补全过的模组名称标签
+            日志文件              运行与部署记录，反馈问题时可一并附上
+
+          换电脑时把整个 cyberdeck-data 目录拷走即可。
+          "@
+          Set-Content -Path (Join-Path $stage "cyberdeck-data/说明-数据目录.txt") -Value $dataNote -Encoding utf8
+
+          $zip = "dist-release/CyberDeck.Launcher.$ver.zip"
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "dist-release" | Out-Null
+          # pwsh 7 自带 System.IO.Compression；这里留个兜底，Windows PowerShell 5.1 下也能跑
+          if (-not ("System.IO.Compression.ZipFile" -as [type])) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+          }
+          # includeBaseDirectory = $true：zip 根目录保留 "CyberDeck Launcher <版本>/"，
+          # 与既有便携包的解压形态一致。用 .NET 而不是 Compress-Archive，是为了让
+          # 中文文件名（使用说明.txt / 说明-数据目录.txt）稳定带 UTF-8 标记。
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            (Resolve-Path $stage).Path,
+            (Join-Path (Resolve-Path "dist-release").Path "CyberDeck.Launcher.$ver.zip"),
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $true
+          )
+          Write-Host "  便携包 -> $zip  $((Get-Item $zip).Length) B"
+
+      # 结构自检：真的解压一遍再检查，等价于用户拿到包之后看到的东西。
+      # 踩过的坑是「zip 里多套/少套一层目录」——解压出来是个裸 exe 或双层文件夹，
+      # 看起来像可疑压缩包，也让人不知道怎么用。
+      - name: 11. 校验便携包结构（解压实测）
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $zip = "dist-release/CyberDeck.Launcher.$ver.zip"
+          $check = ".portable-build/unzip-check"
+          Remove-Item $check -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip -DestinationPath $check -Force
+          Get-ChildItem $check -Recurse | ForEach-Object {
+            Write-Host ("  " + $_.FullName.Substring((Resolve-Path $check).Path.Length))
+          }
+
+          $root = "CyberDeck Launcher $ver"
+          $topLevel = @(Get-ChildItem $check)
+          if ($topLevel.Count -ne 1 -or $topLevel[0].Name -ne $root) {
+            Write-Error "zip 根目录应只有「$root/」一个文件夹，实际：$(($topLevel | ForEach-Object { $_.Name }) -join ' / ')"
+            exit 1
+          }
+          $base = Join-Path $check $root
+          $required = @(
+            "CyberDeck Launcher.exe",
+            "使用说明.txt",
+            "cyberdeck-data/说明-数据目录.txt"
+          )
+          $missing = @($required | Where-Object { -not (Test-Path (Join-Path $base $_)) })
+          if ($missing.Count -gt 0) {
+            Write-Error "便携包结构不对，缺少：$($missing -join ' / ')"
+            exit 1
+          }
+          if (-not (Test-Path (Join-Path $base "WebView2Loader.dll"))) {
+            Write-Host "::warning::便携包内没有 WebView2Loader.dll"
+          }
+          Write-Host "便携包结构 OK：$((Get-Item $zip).Length) B"
+
+      - name: 12. 生成更新说明
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $notes = @"
+          ### CyberDeck Launcher v$ver
+
+          - 便携包 CyberDeck.Launcher.$ver.zip：解压即用，数据在自带的 cyberdeck-data 里
+          - 安装包 CyberDeck.Launcher.$ver.x64-setup.exe：装到当前用户，之后可走「设置 -> 检查启动器更新」自动升级
+          - 自动更新走本页的 latest.json，客户端不需要手动做什么
+
+          完整变更见仓库 CHANGELOG.md。
+          "@
+          New-Item -ItemType Directory -Force -Path "dist-release" | Out-Null
+          Set-Content -Path "dist-release/notes.md" -Value $notes -Encoding utf8
+          Get-Content "dist-release/notes.md" | Write-Host
+
+      # 私钥在这里第二次出现（第一次是第 8 步 bundler 自己签名）。两步都只用
+      # secrets，都不 echo：GitHub 会把 secret 从日志里打码，但别依赖它。
+      - name: 13. 生成 latest.json（签名更新包）
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/make-latest-json.mjs `
+            --version "${{ steps.ver.outputs.version }}" `
+            --artifact "${{ steps.artifacts.outputs.updater }}" `
+            --notes-file "dist-release/notes.md" `
+            --out "dist-release/latest.json" `
+            --repo "${{ github.repository }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "latest.json 生成失败（签名没通过？检查两个 secrets 的值与密码）"
+            exit 1
+          }
+          Get-Content "dist-release/latest.json" | Write-Host
+
+      # 资产名精确性兜底：latest.json 必须叫这个名字，且 version 与 tag 一致。
+      - name: 14. 校验 latest.json
+        run: |
+          $path = "dist-release/latest.json"
+          if (-not (Test-Path $path)) {
+            Write-Error "缺少 $path"
+            exit 1
+          }
+          $manifest = Get-Content $path -Raw | ConvertFrom-Json
+          $platform = $manifest.platforms.'windows-x86_64'
+          if (-not $platform) {
+            Write-Error "latest.json 缺少 platforms.windows-x86_64"
+            exit 1
+          }
+          if (-not $platform.signature -or -not $platform.url) {
+            Write-Error "latest.json 的 signature / url 为空"
+            exit 1
+          }
+          if ($manifest.version -ne "${{ steps.ver.outputs.version }}") {
+            Write-Error "latest.json 版本 $($manifest.version) 与 tag 版本 ${{ steps.ver.outputs.version }} 不一致"
+            exit 1
+          }
+          if ($platform.url -notmatch [regex]::Escape("CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.nsis.zip")) {
+            Write-Error "latest.json 的 url 没指向本次的更新包：$($platform.url)"
+            exit 1
+          }
+          Write-Host "latest.json OK：v$($manifest.version) -> $($platform.url)"
+
+      # 资产名就是契约：latest.json 必须与 endpoints 里的名字逐字一致，
+      # 且这次发布必须成为 latest（endpoints 走 /releases/latest/download/）。
+      - name: 15. 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: CyberDeck Launcher v${{ steps.ver.outputs.version }}
+          body_path: dist-release/notes.md
+          files: |
+            dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.zip
+            dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.exe
+            dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.nsis.zip
+            dist-release/latest.json
+          fail_on_unmatched_files: true
+          make_latest: true
+          draft: false
+          prerelease: false
