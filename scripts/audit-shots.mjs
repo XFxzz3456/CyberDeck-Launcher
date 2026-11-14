@@ -1,4 +1,5 @@
-// 视觉审计截图：遍历五套主题 × 主要页面，输出到 shots/audit/
+// 视觉审计截图：遍历赛博四套主题 × 主要页面，输出到 shots/audit/
+// modern（含明暗两模）的取景见 scripts/make-modern-thumb.mjs 与 make-readme-shots.mjs。
 import { chromium } from "playwright-core";
 import path from "node:path";
 import fs from "node:fs";
@@ -8,13 +9,12 @@ const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(root, "shots", "audit");
 fs.mkdirSync(out, { recursive: true });
 
+// 真实主题只有四套赛博风格 + modern；mono 已在 r20 并入 modern，daylight 更早并入其 light。
 const THEMES = [
   { id: "ncpd", accent: "#fcee0a" },
   { id: "netrunner", accent: "#31e6ff" },
   { id: "arasaka", accent: "#ff4058" },
   { id: "militech", accent: "#b7f04b" },
-  { id: "mono", accent: "#f2f2f2" },
-  { id: "daylight", accent: "#b23a0e" },
 ];
 
 const VIEWS = [

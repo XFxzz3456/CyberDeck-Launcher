@@ -10,6 +10,9 @@
 #       只跑普通权限那一趟（安全、无弹窗）。
 #   ... -Elevated
 #       额外用 Start-Process -Verb RunAs 起一次提权实例；会弹 UAC，需要点「是」。
+#   ... -Exe "D:\某处\CyberDeck Launcher.exe"
+#       指定启动器 exe。不传时依次尝试：项目根上一级的 release\（便携打包产物）、
+#       src-tauri\target\release\、src-tauri\target\debug\。
 #
 # 注意：这个脚本只读状态、不启动游戏、不改任何设置。唯一的写操作是往
 # shots/gate 里写两份 JSON。
@@ -34,7 +37,9 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 if (-not $Exe) {
     $candidates = @(
-        "D:\用户\工作区\release\CyberDeck Launcher.exe",
+        # 便携版发布目录不跟着仓库走，各人机器位置不同，所以从脚本位置推：
+        # scripts/ 的上一级是项目根，再上一级（..\..）下的 release\ 就是打包产物。
+        (Join-Path (Split-Path -Parent $root) "release\CyberDeck Launcher.exe"),
         (Join-Path $root "src-tauri\target\release\cyberdeck-launcher.exe"),
         (Join-Path $root "src-tauri\target\debug\cyberdeck-launcher.exe")
     )

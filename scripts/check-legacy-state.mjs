@@ -1,5 +1,11 @@
 // 复现「老 localStorage 无 profiles」场景，确认不再白屏
 import { chromium } from "playwright-core";
+import os from "node:os";
+import path from "node:path";
+
+// 暂存区路径按运行机器推导，不写死用户名：脚本要能在任何人的机器上直接跑。
+// addInitScript 的回调在页面里执行，拿不到 Node 的 os，所以路径靠参数传进去。
+const stagingRoot = path.join(os.homedir(), ".cyberdeck.loader", "staging");
 
 const edge = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const browser = await chromium.launch({
@@ -13,13 +19,13 @@ const errors = [];
 page.on("pageerror", (err) => errors.push(String(err)));
 
 // 先写一份「旧结构」状态：有 mods/settings，但没有 profiles / activeProfileId
-await page.addInitScript(() => {
+await page.addInitScript((stagingDir) => {
   // 跳过 EULA 门：未同意时整页 inert，点不动播放集开关（r42 起要真点开浮层才能数条目）。
   localStorage.setItem("ncl.ui.eulaAccepted.v1", "true");
   const oldState = {
     schemaVersion: 1,
     gameDir: "D:\\Games\\Cyberpunk 2077",
-    stagingDir: "C:\\Users\\mc236\\.cyberdeck.loader\\staging",
+    stagingDir,
     mods: [
       {
         id: "old-mod-1",
@@ -36,7 +42,7 @@ await page.addInitScript(() => {
         plannedFiles: [],
         coverPath: null,
         nexus: null,
-        stagingPath: "C:\\Users\\mc236\\.cyberdeck.loader\\staging\\old-mod-1",
+        stagingPath: `${stagingDir}\\old-mod-1`,
         fileCount: 1,
         bytes: 1024,
         conflicts: [],
@@ -65,7 +71,7 @@ await page.addInitScript(() => {
     "cyberdeck-launcher-demo-state-v1",
     JSON.stringify({ state: oldState, gameDir: "D:\\Games\\Cyberpunk 2077" }),
   );
-});
+}, stagingRoot);
 
 await page.goto(`http://localhost:${process.env.GATE_PORT || 1420}`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);

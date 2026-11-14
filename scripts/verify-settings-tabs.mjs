@@ -7,7 +7,7 @@ import fs from "node:fs";
  *
  * 覆盖：分区数量/标签、面板互斥显示、内容区内部滚动、页面本身不滚、
  * 切分区不重挂载（保留未保存输入）、滚动位置归零、每个分区的内容归属、
- * 三套主题（赛博 / Modern / Mono）的激活态样式、键盘导航与 ARIA 关联。
+ * 五套真实主题（赛博四套 + Modern）的激活态样式、键盘导航与 ARIA 关联。
  *
  * 用法：先起 dev server（默认 1420），再 node scripts/verify-settings-tabs.mjs
  */
@@ -202,7 +202,7 @@ check('aria-controls points at live panel', aria.controls === aria.panelId);
 check('panel aria-labelledby points back at tab', aria.labelledBy === 'settings-tab-appearance');
 check('tablist role present', aria.tablist === 'tablist');
 
-// ── 8. 主题适配：Modern 扁平灰 / Mono 去发光 ──────────────────
+// ── 8. 主题适配：Modern 扁平灰 / 赛博四套保留发光 ─────────────
 const readActiveTab = () =>
   page.evaluate(() => {
     const el = document.querySelector('.settings-tab.active');
@@ -229,13 +229,29 @@ check('modern: underline neutral (not accent yellow)', modern.afterBackground !=
 await page.screenshot({ path: path.join(shots, 'settings-tab-modern.png') });
 await page.evaluate(() => document.documentElement.removeAttribute('data-style'));
 
-await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'mono'));
-await page.waitForTimeout(250);
-const mono = await readActiveTab();
-console.log('mono active tab:', JSON.stringify(mono));
-check('mono: no glow text-shadow', mono.textShadow === 'none');
-check('mono: underline has no glow', mono.afterBoxShadow === 'none');
-await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'ncpd'));
+// mono 已在 r20 并入 modern（老配置自动迁到 modern），daylight 更早并到 modern light，
+// 两套都不再是真实主题，所以这里不再有「mono 去发光」的断言。真实主题共五套：
+// ncpd / netrunner / arasaka / militech / modern，明暗两模由 colorMode 区分（仅 modern 支持）。
+// 赛博四套共用同一条激活态规则（强调色文字 + 2px 下划线 + 发光），逐个切过去确认没人
+// 再用一条残留的旧主题选择器把它们压平成 mono 那样——四处都还在发光才说明四套真的生效。
+for (const theme of ['ncpd', 'netrunner', 'arasaka', 'militech']) {
+  await page.evaluate((id) => {
+    // theme.ts 切风格时 data-style 与 data-theme 同值写入，这里保持同样的写法。
+    document.documentElement.setAttribute('data-style', id);
+    document.documentElement.setAttribute('data-theme', id);
+  }, theme);
+  await page.waitForTimeout(200);
+  const tab = await readActiveTab();
+  console.log(`${theme} active tab:`, JSON.stringify(tab));
+  check(`${theme}: active tab keeps glow`, tab.textShadow !== 'none');
+  check(`${theme}: accent underline present`, parseFloat(tab.afterHeight) > 0);
+  check(`${theme}: underline keeps glow`, tab.afterBoxShadow !== 'none');
+}
+// 收尾恢复默认赛博外观：后面的截图按 ncpd 拍。
+await page.evaluate(() => {
+  document.documentElement.removeAttribute('data-style');
+  document.documentElement.setAttribute('data-theme', 'ncpd');
+});
 await page.waitForTimeout(250);
 
 // ── 9. 截图 ────────────────────────────────────────────────────

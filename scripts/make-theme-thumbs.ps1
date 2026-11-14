@@ -16,7 +16,7 @@ $srcDir = Join-Path $root 'shots/audit'
 $outDir = Join-Path $root 'public/theme-thumbs'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$themes = @('ncpd', 'netrunner', 'arasaka', 'militech', 'mono')   # modern 见 make-modern-thumb.mjs
+$themes = @('ncpd', 'netrunner', 'arasaka', 'militech')   # modern 见 make-modern-thumb.mjs；mono 已在 r20 并入 modern
 $cropX = 248; $cropY = 96; $cropW = 1000; $cropH = 590   # 模组库首屏内容区
 $outW = 176; $outH = 104
 
