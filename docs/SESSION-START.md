@@ -47,6 +47,11 @@ https://raw.githubusercontent.com/XFxzz3456/CyberDeck-Launcher/main/AGENTS.md
 
 > **1.8.4 已完整发布（2026-11-14）**：exe 已替换 release，便携包已打并上传 GitHub Release `v1.8.4`。
 
+> **⚠️ 待办提醒（2026-11-16 登记 · 新会话请主动汇报，用户明确要求）**
+> 1. **#12**（新增独立待办，关联 #6）：借鉴社区工具 `Cyberpunk-Mod-Translator` 的三项 AI 汉化改进 —— **P0 判断键一致性**（`src-tauri/src/ailoc_full.rs:317,326-328`，`:327` 白名单含 `category` → `category = "Background"` 被翻而 `if category == "Background"` 不翻，菜单会错乱）、**P1 占位符保护**（`:330-348` 现直接跳过 `{int_0}` / `%d` 文本）、**P2 按英文原文复用译文**（补 P3 更新重做）。来源 Nexus 36745（MIT，**不引入只借鉴**）。
+> 2. **#9** 待首次 `v*` tag 实跑 CI（1.8.4 已用该 tag，需先升 ≥ 1.8.5）；新签名公钥需下次构建才编译进 exe。
+> 3. issue 现状：#2/#3/#4 已关闭，**#6 / #9 / #12 open**，#5/#7 待真机四项。
+
 | 项 | 值 |
 |---|---|
 | 版本 | **1.8.4**（2026-11-14 正式发布；合并 GitHub #10/#11 五项缺陷修复与设置页字号排版统一） |
