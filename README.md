@@ -526,12 +526,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 -
 2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`（`WebView2Loader.dll` 必须和它放在一起）。首次启动会引导你定位游戏目录。
 3. 数据保存在 exe 同级的 `cyberdeck-data`（便携模式，一旦存在就固定用它）；没有该目录时用 `%APPDATA%\com.arol.cyberdeck`。删掉这个目录即等于清空启动器数据，不动游戏文件。
 
-**校验**（1.8.4，可核对下载是否完整）：
+**校验**（1.9.0，可核对下载是否完整）：
 
 | 产物 | 大小 | md5 |
 | --- | --- | --- |
-| `CyberDeck Launcher.exe` | 11,187,200 B（10.67 MB） | `e0aeb1bad89d03e14016341afee027c6` |
-| `CyberDeck.Launcher.1.8.4.zip` | 5,719,270 B（5.45 MiB） | `970f7f24f0c8ef1bdf88e6e820621bf8` |
+| `CyberDeck Launcher.exe` | 11,181,056 B（10.66 MB） | `7db69e5442c7395d2bfb4cde3ffa94af` |
+| `CyberDeck.Launcher.1.9.0.zip` | 由 `v1.9.0` tag 发版流水线产出 | 见 Release 页 assets |
 
 从旧版（NightCity Loader / 0.x）升级：直接替换 exe，数据目录会自动识别与迁移。
 
