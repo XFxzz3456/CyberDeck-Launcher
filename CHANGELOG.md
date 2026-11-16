@@ -48,6 +48,7 @@
 | `1.8.2` | 2026-11-13 | 批量更新进度与断点续传、下载链路可选（系统/直连/代理）、大文件分片并发、Nexus 多镜像择优、设置页分区重划 + 搜索 + 每页恢复默认 |
 | `1.8.3` | 2026-11-13 | 下载中心接进度 + 待更新置顶；通知去重 / 多版本可删 / 批量更新可暂停取消并列成清单；三份审查报告核销（当晚 1.8.4 批次按用户决定并入本版） |
 | `1.8.4` | 2026-11-14 | GitHub #10/#11 五项缺陷（铃铛已读态与层级、带 query 外链转交、存档风险折叠、安装根与更新护栏）+ 设置页字号与排版统一 |
+| `1.9.0` | 2026-11-16 | #9 自动更新链路（tag 发版 + `latest.json` + 检查更新降级）、#12 汉化三项（判断键一致性 / 占位符保护 / 按原文复用）、#6 只读盘点、#3 老数据迁移、#2/#4 清理与文案 |
 
 > 表内版本列现在只写 SemVer。`rN`／「批次 N」是历史构建序号，已移到时间列括注。
 > **`1.0.0` 之前（0.7 / 0.8 / 0.9）是作者单人测试阶段，从未对外发布**：当时用 `rN` / 「批次 N」区分同一天的多次构建，版本号因此不单调（`0.7.0` 甚至出现在 `0.7.1` 之后）。为可读性，这部分按时间顺序**重编为单调递增的 SemVer**（`0.7.2` / `0.8.1` / `0.9.1` …），括号内保留原始构建序号以便对照 git 历史。
@@ -65,10 +66,11 @@
 
 ---
 
-## [未发版 · 1.8.4 之后] - 2026-11-14（GitHub #9 / #3 / #2 收口）
+## [1.9.0] - 2026-11-16（#9 自动更新链路 + #12 汉化三项 + #3/#2/#4 收口）
 
-> **状态**：未升版本号（三处 `version` 仍 1.8.4），未构建 exe、未打便携 ZIP、未发 Release。
-> 用户「全部都去做吧」= 授权把 #9 / #6 / #7 / #5 / #3 / #2 / #4 一起推进；本批先落地能独立完成的部分。
+> **状态**：版本号已升 **1.9.0**（`package.json` / `Cargo.toml` / `tauri.conf.json` 三处一致）。
+> 本版把 1.8.4 之后累积的 #9 / #12 / #6（只读层）/ #3 / #2 / #4 一并发布；exe 与便携 ZIP
+> 由 tag `v1.9.0` 触发的 `.github/workflows/release.yml` 产出（首次实跑）。
 
 ### 新增（#9 自动更新链路）
 
@@ -172,25 +174,48 @@
 - 用户需在 GitHub 重新配置两条 Secrets：`TAURI_SIGNING_PRIVATE_KEY`（新私钥全文）、
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（新密码）。
 
+### 新增（#12 借鉴社区工具的汉化三项）
+
+来源：Nexus Mods `cyberpunk2077/mods/36745` **Cyberpunk-Mod-Translator**（MIT，2026-11-13）。
+**只借鉴，不引入** —— 它要 .NET 8 + ASP.NET Core 8 两个运行时 + 独立 exe + 浏览器窗口，
+且与项目 P1 覆盖包（`<modId>-ai-loc-full.archive`）定位重叠；其自身也不支持 `.inkwidget`。
+
+- **P0 判断键一致性**（`ailoc_full.rs`）：新增 `COMPARE_RE` 与 `comparison_literals()`，识别同一文件内
+  `==` / `~=` / `!=` / `Equals(` / `case` / `StrCmp(` 后面的字面量；`display_strings` 把「既是显示文本
+  又是比较键」的条目**整条跳过**。修的是真实缺陷：`INI_DISPLAY_RE` 白名单含 `category`，模组写
+  `category = "Background"` 时会被翻译，而 `if category == "Background"` 不翻 → 菜单空白或错乱。
+  新增 `skipped_comparison_texts()` 供界面解释「为什么没翻」。
+  **刻意不做跨文件的「比较处同步翻译」**：中文值当判断键会牵扯持久化与存档，项目自己的对策是
+  `docs/I18N.md` 的 id / 显示分离。
+- **P1 占位符保护**（`ailoc_full.rs`）：`usable_text` 不再因为含 `{` / `%` 整条丢弃，改用
+  `placeholder_tokens()` 识别 `{int_0}` / `%d` / `%1$s`；含 `%` 或 `{` 但识别不出占位符的
+  （`%APPDATA%`、孤立 `{`）仍然跳过。`emit_overlays` 在翻译后逐条比对占位符多重集（含重复次数），
+  不一致的译文直接丢弃并写 warning —— 宁可不翻，也不写坏文件。
+- **P2 按英文原文复用译文**：核实后**无需新增缓存层**。`glossary` 的主键是 `mod_id + 原文哈希`，
+  与行号无关：作者在上方插入新行不影响命中，原文改写则自动失配。补端到端单测
+  `mod_update_reuses_unchanged_texts_by_source` 把该语义钉住。
+
 ### 验证
 
-- 全量门禁 **39/39 全绿**（389s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
-- `cargo test --lib` → **418 passed / 0 failed / 2 ignored**；`cargo check --lib` 无代码级 warning。
+- 全量门禁 **39/39 全绿**（414s 工时），含新改的 `verify-settings-tabs.mjs` 实测通过。
+- `cargo test --lib` → **424 passed / 0 failed / 2 ignored**；`cargo check --lib` 无代码级 warning。
 - `cargo test --lib migrate` → **8 passed / 0 failed**；`cargo check --lib` 通过。
 - `npx tsc --noEmit` 0 错误；`i18n:check` 0 处、`i18n:unused` 0 条（词表 2308）。
 
 ### 已知边界 / 未完成
 
-- **workflow 一次都没实跑**：首次打 tag 才知道 CI 端到端是否成立；UI 类断言依赖 Edge 路径与像素，CI 上可能翻车
-  （`gate.mjs` 支持 `--skip-ui` 可作退路，但默认仍跑全量）。
+- **workflow 本版首次实跑**：`v1.9.0` 是 `.github/workflows/release.yml` 的第一次真实触发；UI 类断言依赖
+  Edge 路径与像素，CI 上若翻车，退路是 `gate.mjs --skip-ui`。
 - **自动更新会把新版装进 `%LOCALAPPDATA%`**，不就地替换便携 exe；真正的「便携就地更新」需自研「下载 zip → 解压覆盖」，未做。
-- `styles.css` 仍有 **27 处** `:root[data-theme="mono"]` 死选择器（该主题已不存在，规则永不命中），本轮未清。
-- **#6 只落了只读层**：真机预检显示 CET 与 ModSettings 均未安装，写回层无法真机验收。已交付 `menu_loc.rs` 只读盘点；
-  写回（apply/revert）、`Loc()` 语言表适配、更新后自动重做仍在等环境。
+- **#6 只落了只读层**：`menu_loc.rs` 已交付（`#[allow(dead_code)]`、无命令、无前端入口）。环境阻塞已解除
+  （CET 以 `.asi` 安装、菜单框架为 `nativeSettings`），但写回（apply / revert）、`Loc()` 语言表适配、
+  Mod 更新后自动重做仍未做 —— 该范围在 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md:34,41`
+  被裁定「不做 / 需单独授权 + 专项方案」。
 - **#6 的原始假设需修正**：issue 正文写的是「替换 user.ini 与 RED4ext TOML/JSON 菜单配置」，但 `user.ini` 只存
   `key = value` 值、没有 label / tooltip 字段；菜单文案实际在 Lua（`mods/*/init.lua`、`modules/languages/*.lua`）。
-- #7 / #5 的真机验收清单待整理交付（部署落位 / 游戏内生效 / 卸载无残留 / 跨盘降级四项需用户实操）。
-- **未构建 exe / 未打 ZIP / 未发 Release**：按交付顺序等用户确认后再收尾。
+- **P1 覆盖包的 `localization.extend:` 字段**仍是待实测项：ArchiveXL 官方文档未出现该字段，
+  若无效应改按 `primaryKey` / `secondaryKey` 生成合并条目。
+- #7 / #5 的真机四项待用户实操：部署落位、游戏内生效、卸载无残留、跨盘降级。
 
 ## [1.8.4] - 2026-11-14（GitHub #10 + #11 五项缺陷 + 设置页排版统一）
 

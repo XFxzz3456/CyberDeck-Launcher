@@ -2,13 +2,13 @@
 
 # CyberDeck Launcher
 
-**v1.8.4 · 最新正式版（STABLE）**
+**v1.9.0 · 最新正式版（STABLE）**
 
 <p>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-1f6feb">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-3da639">
   <img alt="stack" src="https://img.shields.io/badge/Tauri%202%20%C2%B7%20React%2019%20%C2%B7%20Rust-24c8db">
-  <img alt="tests" src="https://img.shields.io/badge/cargo%20test-395%20passed-3da639">
+  <img alt="tests" src="https://img.shields.io/badge/cargo%20test-424%20passed-3da639">
   <a href="https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest"><img alt="download" src="https://img.shields.io/badge/download-%E4%BE%BF%E6%90%BA%E7%89%88%20ZIP-fcee0a?labelColor=111111"></a>
 </p>
 
@@ -25,13 +25,13 @@
 
 ![模组库](docs/screenshots/library.png)
 
-## 1.8.4 有什么变化
+## 1.9.0 有什么变化
 
-- **设置页排版统一**：卡片标题 / 设置项 / 说明 / 辅助小字收敛为五档（15 / 13 / 12 / 11 / 9.5px）；中文标签不再套等宽字体 + 字距（此前标签 9.5px 比它下面的说明 11px 还小），各行留白与分隔线统一。
-- **通知角标不再骗人**：铃铛角标只统计未读动态，点开即清零；面板内新旧动态可区分已读 / 未读，面板也不再被工具栏盖住。
-- **外链该开浏览器就开浏览器**：点「去获取」不再误弹文件资源管理器。
-- **存档快照不再刷屏**：环境级依赖缺口提为报告级只提示一次，默认折叠 3 条可展开。
-- **更新不再弄丢前置**：安装根判定改为「游戏根锚点优先」，并新增核心框架文件护栏 —— 新清单缺核心 DLL 时报错并保留旧版，修好此前更新把 ArchiveXL 的 DLL 排挤出部署清单、导致大量模组报缺前置的问题。
+- **AI 汉化不再把菜单翻坏**：模组代码里用来做判断的文本（`Equals(category, "Background")` 这类）整条跳过不翻——以前只翻显示侧、不翻判断侧，菜单会空白或选项串位。
+- **带格式符的文本现在也能翻**：`{int_0}`、`%d`、`%1$s` 这类占位符先识别再翻译，翻完逐条比对，对不上就丢弃这条译文——宁可不翻，也不写坏文件。
+- **模组更新后不用从头再翻**：译文按「英文原文」存，作者在上方插入新行照样命中；只有原文被改写的条目才需要重翻。
+- **一条命令发版**：打 `v*` tag 自动跑门禁、构建、签名、生成更新清单并发布。界面里的「检查更新」失败时不再静默，直接给发布页入口。自动安装会装进 `%LOCALAPPDATA%`、不会替换便携目录的 exe，所以主路径仍是「打开发布页」。
+- **老版本用户升级不丢数据**：新增 NightCity Loader 时期数据目录的识别与迁移。
 
 完整变更见 [CHANGELOG](CHANGELOG.md)。
 
@@ -522,7 +522,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 -
 
 ## 下载安装
 
-1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.8.4**，资产名 `CyberDeck.Launcher.1.8.4.zip`。
+1. 到 [GitHub Releases](https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest) 下载最新便携版 ZIP（免安装，解压即用）。当前版本 **1.9.0**，资产名 `CyberDeck.Launcher.1.9.0.zip`。
 2. 解压到任意可写目录，运行 `CyberDeck Launcher.exe`（`WebView2Loader.dll` 必须和它放在一起）。首次启动会引导你定位游戏目录。
 3. 数据保存在 exe 同级的 `cyberdeck-data`（便携模式，一旦存在就固定用它）；没有该目录时用 `%APPDATA%\com.arol.cyberdeck`。删掉这个目录即等于清空启动器数据，不动游戏文件。
 
