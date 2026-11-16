@@ -206,12 +206,19 @@ jobs:
           Remove-Item ".portable-build" -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path (Join-Path $stage "cyberdeck-data") | Out-Null
 
-          $exe = "src-tauri/target/release/CyberDeck Launcher.exe"
-          if (-not (Test-Path $exe)) {
-            Write-Error "找不到构建产物：$exe"
+          # Tauri 2.12 起主 exe 名是规范化的 "cyberdeck-launcher.exe"（小写+连字符），
+          # 不再是带空格的 productName。两种都试，兼容旧版 CLI。
+          $exeDir = "src-tauri/target/release"
+          $exeSrc = @(
+            (Join-Path $exeDir "cyberdeck-launcher.exe"),
+            (Join-Path $exeDir "CyberDeck Launcher.exe")
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exeSrc) {
+            Write-Error "找不到构建产物：$exeDir 下既无 cyberdeck-launcher.exe 也无 'CyberDeck Launcher.exe'"
             exit 1
           }
-          Copy-Item $exe (Join-Path $stage "CyberDeck Launcher.exe")
+          Write-Host "  主程序源 -> $exeSrc"
+          Copy-Item $exeSrc (Join-Path $stage "CyberDeck Launcher.exe")
 
           # WebView2Loader.dll 是运行时依赖，缺了应用直接起不来。正常构建会产在
           # exe 旁边；万一哪天换成静态链接，这里降级为警告而不是硬失败。
