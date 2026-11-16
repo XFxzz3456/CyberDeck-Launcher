@@ -327,18 +327,73 @@ static INI_DISPLAY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\b(label|name|title|text|description|tooltip|hint|category|option|display|caption|button)\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')"#).expect("静态 ini 正则应可编译")
 });
 
+/// 代码里把文本当判断键的位置：`== "x"` / `~= "x"` / `!= "x"` /
+/// `Equals(a, "x")` / `case "x"` / `StrCmp(a, "x")`。
+///
+/// 这类字面量一旦被翻成中文，比较就永远不成立 —— 菜单会空、选项会串。
+/// 所以同一文件里既是「显示文本」又是「比较键」的，宁可整条不翻（见 `display_strings`）。
+static COMPARE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r#"(?:==|~=|!=)\s*(?:"([^"\\]*)"|'([^'\\]*)')"#,
+        r#"|\bEquals\s*\(\s*[^,()]+,\s*(?:"([^"\\]*)"|'([^'\\]*)')"#,
+        r#"|\bcase\s+(?:"([^"\\]*)"|'([^'\\]*)')"#,
+        r#"|\bStrCmp\s*\(\s*[^,()]+,\s*(?:"([^"\\]*)"|'([^'\\]*)')"#,
+    ))
+    .expect("静态比较正则应可编译")
+});
+
+/// 格式化占位符：`{int_0}` 这类花括号占位、`%d` / `%1$s` 这类 printf 占位。
+static PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\{[^{}\s]*\}|%[0-9]+\$[sdif]|%[0-9]*[sdif]"#).expect("静态占位符正则应可编译")
+});
+
+/// 只取同一文件内「被当作比较键」的字面量。跨文件刻意不做：同一个词在不同文件里
+/// 常常毫无关系（一个是设置项标签，一个是游戏传来的地区名）。
+fn comparison_literals(content: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for caps in COMPARE_RE.captures_iter(content) {
+        for index in 1..caps.len() {
+            if let Some(matched) = caps.get(index) {
+                let text = matched.as_str();
+                if !text.is_empty() {
+                    out.insert(text.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// 占位符多重集（排序后），用于翻译前后比对。
+fn placeholder_tokens(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = PLACEHOLDER_RE
+        .find_iter(text)
+        .map(|item| item.as_str().to_string())
+        .collect();
+    out.sort();
+    out
+}
+
+/// 译文必须与原文携带完全相同的占位符多重集，重复次数也要一致。
+fn placeholders_preserved(source: &str, translated: &str) -> bool {
+    placeholder_tokens(source) == placeholder_tokens(translated)
+}
+
 fn usable_text(text: &str) -> bool {
     let trimmed = text.trim();
     if trimmed.chars().count() < 3 || trimmed.chars().count() > MAX_TEXT_CHARS {
         return false;
     }
-    if trimmed.contains('%')
-        || trimmed.contains('{')
-        || trimmed.contains('\\')
+    if trimmed.contains('\\')
         || trimmed.contains("..")
         || trimmed.contains('/')
         || trimmed.contains('\n')
     {
+        return false;
+    }
+    // 占位符本身可以翻，但必须能被识别出来：否则 `%APPDATA%`、孤立的 `{` 会被
+    // 当普通文字改坏（2026-11-16 借鉴 Cyberpunk-Mod-Translator 的占位符校验）。
+    if (trimmed.contains('%') || trimmed.contains('{')) && placeholder_tokens(trimmed).is_empty() {
         return false;
     }
     if trimmed.chars().any(|ch| matches!(ch, '\u{3400}'..='\u{9fff}')) {
@@ -349,6 +404,8 @@ fn usable_text(text: &str) -> bool {
 
 pub fn display_strings(content: &str, kind: CarrierKind) -> Vec<String> {
     let re = display_regex(kind);
+    // 同一文件里被代码用来比较的字面量：跳过不翻，避免判断失配（菜单空白 / 选项串位）。
+    let guarded = comparison_literals(content);
     let mut out = Vec::new();
     for caps in re.captures_iter(content) {
         let text = caps
@@ -356,7 +413,29 @@ pub fn display_strings(content: &str, kind: CarrierKind) -> Vec<String> {
             .or_else(|| caps.get(3))
             .map(|item| item.as_str())
             .unwrap_or("");
-        if usable_text(text) {
+        if usable_text(text) && !guarded.contains(text) {
+            out.push(text.to_string());
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// 因为同时出现在比较位置而被跳过的显示文本，按字典序去重。
+/// 供界面展示「这条为什么没翻」，也供单测锁定行为。
+#[allow(dead_code)]
+pub fn skipped_comparison_texts(content: &str, kind: CarrierKind) -> Vec<String> {
+    let re = display_regex(kind);
+    let guarded = comparison_literals(content);
+    let mut out: Vec<String> = Vec::new();
+    for caps in re.captures_iter(content) {
+        let text = caps
+            .get(2)
+            .or_else(|| caps.get(3))
+            .map(|item| item.as_str())
+            .unwrap_or("");
+        if usable_text(text) && guarded.contains(text) {
             out.push(text.to_string());
         }
     }
@@ -791,7 +870,20 @@ pub fn emit_overlays(
     }
 
     texts.truncate(MAX_TEXTS);
-    let (map, model, errors) = translate_all(store, &entry.id, &texts);
+    let (mut map, model, errors) = translate_all(store, &entry.id, &texts);
+    // 占位符保护：AI 把 {int_0} / %d 改坏的译文一律丢弃。宁可不翻，也不写坏文件。
+    let broken: Vec<String> = map
+        .iter()
+        .filter(|(source, translated)| !placeholders_preserved(source.as_str(), translated.as_str()))
+        .map(|(source, _)| source.clone())
+        .collect();
+    for source in broken {
+        outcome.warnings.push(format!(
+            "格式化占位符不一致，已跳过：{}",
+            source.chars().take(40).collect::<String>()
+        ));
+        map.remove(&source);
+    }
     outcome.model = model;
     outcome.errors = errors;
     outcome.translated = map.len();
@@ -991,6 +1083,60 @@ mod tests {
         assert!(rewritten.contains("label = \"显示小地图\""));
         assert!(rewritten.contains("tooltip = '切换覆盖层'"));
         assert!(rewritten.contains("if setting == \"show_minimap\" then"));
+    }
+
+    #[test]
+    fn lua_skips_text_used_as_comparison_key() {
+        let content = r#"
+            category = "Background"
+            label = "Loading screen"
+            if Equals(category, "Background") then return end
+            tooltip = 'Toggle the overlay'
+        "#;
+        let texts = display_strings(content, CarrierKind::Lua);
+        assert!(texts.contains(&"Loading screen".to_string()));
+        assert!(texts.contains(&"Toggle the overlay".to_string()));
+        assert!(!texts.contains(&"Background".to_string()));
+        assert_eq!(
+            skipped_comparison_texts(content, CarrierKind::Lua),
+            vec!["Background".to_string()]
+        );
+    }
+
+    #[test]
+    fn lua_skips_text_compared_with_equality_operator() {
+        let content = r#"
+            label = "Show Minimap"
+            if setting == "Show Minimap" then return end
+        "#;
+        assert!(!display_strings(content, CarrierKind::Lua).contains(&"Show Minimap".to_string()));
+        assert_eq!(
+            skipped_comparison_texts(content, CarrierKind::Lua),
+            vec!["Show Minimap".to_string()]
+        );
+    }
+
+    #[test]
+    fn placeholder_tokens_count_repeats_and_ignore_bare_percent() {
+        let tokens = placeholder_tokens("Deal {int_0} damage, {int_0} times, 30% chance");
+        assert_eq!(tokens.iter().filter(|item| *item == "{int_0}").count(), 2);
+        assert!(!tokens.iter().any(|item| item.contains('%')));
+    }
+
+    #[test]
+    fn placeholders_preserved_requires_same_multiset() {
+        assert!(placeholders_preserved("Hi {int_0}", "你好 {int_0}"));
+        assert!(!placeholders_preserved("Hi {int_0}", "你好"));
+        assert!(!placeholders_preserved("Hi %d", "你好 %s"));
+        assert!(!placeholders_preserved("Hi {int_0} {int_0}", "你好 {int_0}"));
+    }
+
+    #[test]
+    fn usable_text_allows_placeholders_but_rejects_env_vars() {
+        assert!(usable_text("Deal {int_0} damage"));
+        assert!(usable_text("You got %d items"));
+        assert!(!usable_text("%APPDATA% is missing"));
+        assert!(!usable_text("100% damage bonus"));
     }
 
     #[test]
