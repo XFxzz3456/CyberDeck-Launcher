@@ -4,154 +4,160 @@
 > 适用项目：`cyberdeck-launcher`  
 > 目标：把源码安全迁到另一台 Windows 开发机，并让新环境里的开发者（或 AI 助手）能直接跑起来。
 
+
 ## 0. 版本口径（先看这一条）
 
 **本仓库的实际版本是 `1.9.0`（2026-11-16）。** 三处 `version` + `Cargo.lock` 一致，tag `v1.9.0`。本版合并 1.8.4 之后的全部改动：#9 自动更新链路（tag 触发发版 + `latest.json` + 检查更新降级）、#12 汉化三项（判断键一致性 / 占位符保护 / 按原文复用）、#6 框架菜单只读盘点、#3 老数据迁移、#2/#4 清理与文案。
-> **历史澄清（别被旧记录绕进去）**：2026-11-13 曾短时打出过 `v1.8.4` tag 并随即删除、把内容并入 1.8.3；**本次是 1.8.4 第一次正式发布**，与那次临时 tag 无关。上一版 1.8.3 的产物（`11,176,960 B` / md5 `5906af219d4052e3193bc2e06266ed11` / PE 1.8.3）仍保留在 release 目录的 `.prev.exe` 备份里。便携版已按 1.8.4 重打并发布到 GitHub Release `v1.8.4`（哈希见下方 bullet 与本文件 §0 产物段）。
 
-- **2026-11-14 · 1.8.4 发布**（用户「全部收尾吧」= 授权升版 / 构建 / 替换 release）：本版合并 #10/#11 五项缺陷修复与设置页字号排版统一。
-  ① 铃铛角标只算未读活动、活动行补已读态；② 铃铛面板改 portal 到 body + fixed/70 并做视口夹取；
-  ③ `explorer.exe` 转交带 `?query` 的 URL 改为整条加双引号（`raw_arg`），修好「去获取」弹资源管理器；
-  ④ 存档风险改报告级 `globalRisks` + 前端默认折叠 3 条、`.save-grid` 不等高；
-  ⑤ `refine_payload_root` 加「游戏根锚点优先」两级判据 + `apply_update` 核心 DLL 护栏，并修复本机 ArchiveXL 部署数据；
-  ⑥ 设置页字号收敛为 `--sp-*` 五档（15/13/12/11/9.5px）、中文标签去 mono 字距、行式节奏统一（含小卡内边距回归修复）。
-  全量门禁 **39/39 全绿**（发版链路内再跑一次仍全绿）、`i18n:check` / `i18n:unused` 均 0、`cargo check` 0 warning。
-  **产物**：`release/CyberDeck Launcher.exe` **11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6`** /
-  mtime 2026-11-14 21:24:02 / PE `FileVersion`·`ProductVersion` 均 1.8.4；上一版 1.8.3 已自动备份为 `.prev.exe`。
-  **便携包已发布**（用户「打包吧」确认后）：`发布产物/CyberDeck Launcher 1.8.4 便携版.zip` **5,719,270 B（5.45 MiB）/**
-  **md5 `970f7f24f0c8ef1bdf88e6e820621bf8` / sha256 `d1db81ee60674d46fef3fe8eda9c6a5a5c0974366f65033841378535bbf5b518`**；
-  GitHub Release **`v1.8.4`**（ID `445314902`，latest）资产 `CyberDeck.Launcher.1.8.4.zip`（ID `747575937`），
-  API `digest` 与本地一致、资产端点回读**逐字节一致**。
-  复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md` 与 `docs/INCIDENT-2026-11-14-settings-typography.md`。
+> **历史澄清（别被旧记录绕进去）**：
+> ① 2026-11-13 曾短时打出过 `v1.8.4` tag 并随即删除、把内容并入 1.8.3；该临时 tag 与后来 1.8.4 的正式发布无关，1.8.4 已于 2026-11-14 正式发布（Release ID `445314902`）。
+> ② **当前已发布版本是 1.9.0**（2026-11-16，Release 由 tag `v1.9.0` 的流水线产出）；release 目录的 `.prev.exe` 现在是 **1.8.4**（`11,187,200 B` / PE 1.8.4），不再是 1.8.3。
+> ③ 更早的 1.8.3（`11,176,960 B` / md5 `5906af219d4052e3193bc2e06266ed11`）与 1.8.2 哈希仅存档于下方 bullet，已不在磁盘上。
+
+- **2026-11-16 · 1.9.0 发布**（用户「把这些待办全去做了」= 授权推进 #12 / #9 与积压待办）：本版把 1.8.4 之后的改动合并发布。  
+  ① **#12 汉化三项**（借鉴 Nexus 36745 `Cyberpunk-Mod-Translator`，MIT，**只借鉴不引入**）：判断键一致性 —— 同一文件内 `==` / `~=` / `!=` / `Equals(` / `case` / `StrCmp(` 后面的字面量整条跳过；占位符保护 —— `{int_0}` / `%d` / `%1$s` 先识别再翻译、翻完比对多重集、不一致即丢弃；按英文原文复用译文 —— 核实 `glossary` 已覆盖（主键 `mod_id + FNV-1a(原文)`，与行号无关），补端到端单测。  
+  ② **#9 自动更新链路**：`scripts/make-latest-json.mjs` + `.github/workflows/release.yml`（tag 触发全链）+ 前端「检查更新」降级为发布页入口。  
+  ③ **#6** `menu_loc.rs` 只读盘点；**#3** NightCity 老数据迁移；**#2/#4** 脚本与主题残留清理、文案去 AI 味。  
+  全量门禁 **39/39 全绿**（414s）、`cargo test --lib` **424 passed / 0 failed / 2 ignored**、`cargo check --lib` 无代码级 warning、`version_sync=1`。  
+  **产物**：`release/CyberDeck Launcher.exe` **11,181,056 B（10.66 MB）/ md5 `7db69e5442c7395d2bfb4cde3ffa94af`** /  
+  mtime 2026-11-16 20:58:28 / PE `FileVersion`·`ProductVersion` 均 1.9.0；上一版 1.8.4 已备份为 `.prev.exe`（11,187,200 B / PE 1.8.4）。  
+  **便携 ZIP 与 GitHub Release 改由 tag `v1.9.0` 触发的流水线产出**（`release.yml` 首次实跑，run `43871511868`）：  
+  资产含 `CyberDeck.Launcher.1.9.0.zip`、`…x64-setup.exe`、`…x64-setup.nsis.zip`、`latest.json`；Release ID 与各资产哈希待 CI 跑完后回填本节。  
+  提交：`5b63481`（P0/P1）、`623ade4`（P2 单测）、`11882f1`（升版）、`9f1ec6d`（README 校验值）。
+- **2026-11-14 · 1.8.4 发布**（用户「全部收尾吧」= 授权升版 / 构建 / 替换 release）：本版合并 #10/#11 五项缺陷修复与设置页字号排版统一。  
+  ① 铃铛角标只算未读活动、活动行补已读态；② 铃铛面板改 portal 到 body + fixed/70 并做视口夹取；  
+  ③ `explorer.exe` 转交带 `?query` 的 URL 改为整条加双引号（`raw_arg`），修好「去获取」弹资源管理器；  
+  ④ 存档风险改报告级 `globalRisks` + 前端默认折叠 3 条、`.save-grid` 不等高；  
+  ⑤ `refine_payload_root` 加「游戏根锚点优先」两级判据 + `apply_update` 核心 DLL 护栏，并修复本机 ArchiveXL 部署数据；  
+  ⑥ 设置页字号收敛为 `--sp-*` 五档（15/13/12/11/9.5px）、中文标签去 mono 字距、行式节奏统一（含小卡内边距回归修复）。  
+  全量门禁 **39/39 全绿**（发版链路内再跑一次仍全绿）、`i18n:check` / `i18n:unused` 均 0、`cargo check` 0 warning。  
+  **产物**：`release/CyberDeck Launcher.exe` **11,187,200 B（10.67 MB）/ md5 `e0aeb1bad89d03e14016341afee027c6`** /  
+  mtime 2026-11-14 21:24:02 / PE `FileVersion`·`ProductVersion` 均 1.8.4；该 exe 已于 1.9.0 构建时被覆盖，现备份为 `.prev.exe`（`11,187,200 B` / PE 1.8.4）。  
+  **便携包已发布**（用户「打包吧」确认后）：`发布产物/CyberDeck Launcher 1.8.4 便携版.zip` **5,719,270 B（5.45 MiB）/**  
+  **md5 `970f7f24f0c8ef1bdf88e6e820621bf8` / sha256 `d1db81ee60674d46fef3fe8eda9c6a5a5c0974366f65033841378535bbf5b518`**；  
+  GitHub Release **`v1.8.4`**（ID `445314902`，latest）资产 `CyberDeck.Launcher.1.8.4.zip`（ID `747575937`），  
+  API `digest` 与本地一致、资产端点回读**逐字节一致**。  
+  复盘见 `docs/INCIDENT-2026-11-14-batch-fixes.md` 与 `docs/INCIDENT-2026-11-14-settings-typography.md`。  
   GitHub **#10 / #11 已 `state=closed / completed` 并回填修复结论**（评论 `6877279706` / `6877280241`）；真机交互项若发现问题会 reopen。
-- **2026-11-13 23:24 便携版补发 1.8.3**（用户「需要」= 确认打 ZIP + 发 Release）：
-  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.3 便携版.zip`（5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`），
-  4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.3` Release（ID `444391436`，非 draft / 非预发布、设为 latest）并上传资产 `CyberDeck.Launcher.1.8.3.zip`（ID `744131201`），
-  API `digest` = 本地 sha256、size 一致，并经 API 资产端点直连回读 5,714,563 B 与本地**逐字节一致**。
-  **网络口径**：`api.github.com` / `uploads.github.com` 直连可用（Python 显式 `ProxyHandler({})` 关掉环境代理）；
+- **2026-11-13 23:24 便携版补发 1.8.3**（用户「需要」= 确认打 ZIP + 发 Release）：  
+  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.3 便携版.zip`（5,714,563 B（5.45 MiB）/ md5 `1a61d735ac45bdb111f7f34013187fbd` / sha256 `9d88d47765966e18cc4bd81d34948738cc91ebc31dd28bb160cd7b7930edf4c7`），  
+  4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.3` Release（ID `444391436`，非 draft / 非预发布、设为 latest）并上传资产 `CyberDeck.Launcher.1.8.3.zip`（ID `744131201`），  
+  API `digest` = 本地 sha256、size 一致，并经 API 资产端点直连回读 5,714,563 B 与本地**逐字节一致**。  
+  **网络口径**：`api.github.com` / `uploads.github.com` 直连可用（Python 显式 `ProxyHandler({})` 关掉环境代理）；  
   `github.com/releases/download/...` 走会话代理 70s 只拿到 2.4 MB，改用 API 资产端点（`Accept: application/octet-stream`）直连即可完整回读。
-
-- **2026-11-13 22:10– 1.8.3 第三批（三份审查报告核销）**：
-  H1 `nxm::percent_decode` 字节切片 panic 改 `get()` + 回归；M1 前置命令前后端二次确认与校验；
-  L1–L6 全部落地（LazyLock / file_name 兜底 / 定时器 cleanup / `where` 排除 CWD / main 启动失败日志+MessageBox / poison expect）。
-  Vortex 审计剩余 P2：ini 越界 panic、Archive 同名覆盖、清洗器口径、配置包原子导出、redMod 输出保序+超时+路径分隔符、禁用 REDmod 位置。
+- **2026-11-13 22:10– 1.8.3 第三批（三份审查报告核销）**：  
+  H1 `nxm::percent_decode` 字节切片 panic 改 `get()` + 回归；M1 前置命令前后端二次确认与校验；  
+  L1–L6 全部落地（LazyLock / file_name 兜底 / 定时器 cleanup / `where` 排除 CWD / main 启动失败日志+MessageBox / poison expect）。  
+  Vortex 审计剩余 P2：ini 越界 panic、Archive 同名覆盖、清洗器口径、配置包原子导出、redMod 输出保序+超时+路径分隔符、禁用 REDmod 位置。  
   `cargo test --lib` 399 passed / 0 failed / 2 ignored；发版链路二次全量门禁 39/39 全绿。**exe 已按 1.8.3 重构建并替换（哈希见 §0）**；本轮复盘见 `docs/INCIDENT-2026-11-13-text-select.md`（文本选择口径）与 `docs/AUDIT-2026-11-13-bug-quality-review.md` §8「复盘（得失）」（审查核销）。
-
-- **2026-11-13 21:55 · 1.8.3 第二批**（用户三连问：活动/通知重复、多版本缺删除、更新任务不能暂停取消且折叠）：
-  TaskCenter 去掉活动流（只留铃铛一处）；VersionChip 每行加「−」删除单版本（Vortex 条目不显示）；
-  批量更新新增 `update-apply-plan` 清单事件 + `download_gate()` 暂停闸 + 取消标志，下载中心摊开成逐项列表并加暂停/取消，速度统计计入更新字节。
+- **2026-11-13 21:55 · 1.8.3 第二批**（用户三连问：活动/通知重复、多版本缺删除、更新任务不能暂停取消且折叠）：  
+  TaskCenter 去掉活动流（只留铃铛一处）；VersionChip 每行加「−」删除单版本（Vortex 条目不显示）；  
+  批量更新新增 `update-apply-plan` 清单事件 + `download_gate()` 暂停闸 + 取消标志，下载中心摊开成逐项列表并加暂停/取消，速度统计计入更新字节。  
   exe 11,169,280 B（10.65 MB） / md5 `d033d82dd1088e5cf692a839469e203e`，PE 1.8.4；提交 4fd4f5d / 29dee8d / 断言修正；**便携 ZIP 未重打。**
-
-- **2026-11-13 21:22 · 1.8.3 第一批**（用户「更新中但下载中心不显示，且待更新应排前面」）：
-  `DownloadsView` 改为接收 `App` 的 `updateProgress`（原先自己 listen，切视图才挂载 → 事件稀疏时卡片长期空白）；
-  列表分组新增「待更新」置顶分组，平铺模式同样把更新项提前。
+- **2026-11-13 21:22 · 1.8.3 第一批**（用户「更新中但下载中心不显示，且待更新应排前面」）：  
+  `DownloadsView` 改为接收 `App` 的 `updateProgress`（原先自己 listen，切视图才挂载 → 事件稀疏时卡片长期空白）；  
+  列表分组新增「待更新」置顶分组，平铺模式同样把更新项提前。  
   exe 11,165,696 B（10.65 MB） / md5 `e671e059392fa3e4e64209a3bd37dc10`，PE 1.8.3；`check-library-view` 新增置顶断言。**便携 ZIP 未重打。**
-
-- **2026-11-13 00:30 便携版补发 1.8.2**（用户「全部收尾吧」）：
-  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.2 便携版.zip`（5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685` / sha256 `c403015abf87ea9dd74aff29d435a4652fe9b20d9407fa116dfa519471504f34`），
-  4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.2` Release 并上传同名资产，
-  回读 5,728,620 B 与本地逐字节一致。**本轮 api.github.com 直连可用**（环境代理 65505 未使用，显式 `ProxyHandler({})` 关闭），
+- **2026-11-13 00:30 便携版补发 1.8.2**（用户「全部收尾吧」）：  
+  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.2 便携版.zip`（5,728,620 B（5.46 MiB） / md5 `8d028e1b8a6bcf4141f59988c5123685` / sha256 `c403015abf87ea9dd74aff29d435a4652fe9b20d9407fa116dfa519471504f34`），  
+  4 条目、UTF-8 文件名、CRC 通过、包内 exe md5 与 release 一致；通过 REST API 创建 `v1.8.2` Release 并上传同名资产，  
+  回读 5,728,620 B 与本地逐字节一致。**本轮 api.github.com 直连可用**（环境代理 65505 未使用，显式 `ProxyHandler({})` 关闭），  
   不再需要 7897 那条链路。
-- **2026-11-13 00:22 发布 1.8.2**（用户「好，顺便升为新版本吧」）：
-  三处版本号 1.8.0 → **1.8.2**（含 Cargo.lock 与 README / SESSION-START / HANDOFF 三处横幅），
-  把 [未发布] 收编成 `[1.8.2]`：批量更新进度+断点续传、下载链路三态、大文件分片并发、Nexus 多镜像择优、
-  设置页分区重划 + 搜索 + 每页恢复默认。构建中发现并修掉两个自身回归：**存档三个设置随卡片被误删**
-  （已搬进存档管理页「存档偏好」卡）与**两张同名「外部工具」卡**（路径卡改名「工具路径」）。
-  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump --allow-no-tag`（门禁 43/43 + 编译 204s，总 377s）；
+- **2026-11-13 00:22 发布 1.8.2**（用户「好，顺便升为新版本吧」）：  
+  三处版本号 1.8.0 → **1.8.2**（含 Cargo.lock 与 README / SESSION-START / HANDOFF 三处横幅），  
+  把 [未发布] 收编成 `[1.8.2]`：批量更新进度+断点续传、下载链路三态、大文件分片并发、Nexus 多镜像择优、  
+  设置页分区重划 + 搜索 + 每页恢复默认。构建中发现并修掉两个自身回归：**存档三个设置随卡片被误删**  
+  （已搬进存档管理页「存档偏好」卡）与**两张同名「外部工具」卡**（路径卡改名「工具路径」）。  
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump --allow-no-tag`（门禁 43/43 + 编译 204s，总 377s）；  
   exe 11,165,696 B（10.65 MB） / md5 `11b32961281214f13ca4a7ccd0ee49bd`，PE 1.8.2。`cargo test --lib` **395 passed / 2 ignored**。**便携 ZIP 未重打。**
-- **2026-11-12 23:34 同版本重构建：Nexus 多镜像择优**（用户「Nexus 多镜像择优没做这条做一下吧」）：
-  `download_link.json` 返回数组，过去只取第一条。现在并发探测全部候选（`Range: bytes=0-0` / 6s 超时）取首字节延迟最低，全失败回退第一条，延迟相等保序；探测结果按 host 进程内缓存。
+- **2026-11-12 23:34 同版本重构建：Nexus 多镜像择优**（用户「Nexus 多镜像择优没做这条做一下吧」）：  
+  `download_link.json` 返回数组，过去只取第一条。现在并发探测全部候选（`Range: bytes=0-0` / 6s 超时）取首字节延迟最低，全失败回退第一条，延迟相等保序；探测结果按 host 进程内缓存。  
   新 exe 11,161,600 B / md5 `b5fab18af0af197522594cb99aa034aa`，PE 仍 1.8.0；`cargo test --lib` 395 passed。
-
-- **2026-11-12 23:18 同版本重构建：下载链路 + 分片并发 + 更新进度进下载中心**（用户「探索有没有别的下载路径可以加快速度…」）：
-  先做实验（直连 8 MB：单连接 107 KB/s、4 并发 451 KB/s）证明瓶颈是**按连接限速**，且当时的代理节点比直连慢十余倍。
-  新增 `multipart.rs`（Range 分片 + 段级续传）、`nexus::set_http_route`（auto/direct/proxy 三态进程级配置，队列与更新共用）、`DownloadQueueSettings.route|segments`、设置页链路与分片选择、`DownloadsView` 更新进度卡片。
+- **2026-11-12 23:18 同版本重构建：下载链路 + 分片并发 + 更新进度进下载中心**（用户「探索有没有别的下载路径可以加快速度…」）：  
+  先做实验（直连 8 MB：单连接 107 KB/s、4 并发 451 KB/s）证明瓶颈是**按连接限速**，且当时的代理节点比直连慢十余倍。  
+  |  |  |  
+  | --- | --- |  
+  新增 `multipart.rs`（Range 分片 + 段级续传）、`nexus::set_http_route`（auto/direct/proxy 三态进程级配置，队列与更新共用）、`DownloadQueueSettings.route|segments`、设置页链路与分片选择、`DownloadsView` 更新进度卡片。  
   新 exe 11,153,920 B / md5 `190669e047a1ff15e5011edee1d3ed9d`，PE 仍 1.8.0；`cargo test --lib` 391 passed。**便携 ZIP 未重打。**
-
-- **2026-11-12 22:58 同版本重构建（用户「mod更新一直卡着啊」→「构建吧」）**：
-  定位到不是死锁：批量更新串行下载，实测 34–37 KB/s（本机 `HTTPS_PROXY=127.0.0.1:56252`），19 个模组要十几小时；界面只有一粒转圈，无法区分「在下第 4 个」和「卡死」。
-  修三处：`apply_updates` 每项发 `update-apply-progress`（前端按钮显示 `4/19 · 37%`）、`nexus::download_file` 改 Range 断点续传（206 续写 / 200 重下 / 416 判定已下完）、进度事件改 250ms 时间节流。
+- **2026-11-12 22:58 同版本重构建（用户「mod更新一直卡着啊」→「构建吧」）**：  
+  定位到不是死锁：批量更新串行下载，实测 34–37 KB/s（本机 `HTTPS_PROXY=127.0.0.1:56252`），19 个模组要十几小时；界面只有一粒转圈，无法区分「在下第 4 个」和「卡死」。  
+  修三处：`apply_updates` 每项发 `update-apply-progress`（前端按钮显示 `4/19 · 37%`）、`nexus::download_file` 改 Range 断点续传（206 续写 / 200 重下 / 416 判定已下完）、进度事件改 250ms 时间节流。  
   `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 252s + 同步，总 454s）；新 exe 11,141,632 B / md5 `ea0df34be7b402537e3cd34464704387`，PE 仍 1.8.0。**便携 ZIP 未重打**。
-
-- **2026-11-12 00:4x 1.8.0 补发（用户「构建+收尾，同时这个改动也算是1.8版本的，把github上的便携版重新打包上传」）**：
-  用 `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（全量门禁 → **跳过升版** → 构建 → 同步 release），把「整合包入口收口」与「ico 微圆角」两批源码一起打进产物。
-  三处版本号、tag `v1.8.0` 全部保持不变；按 1.5.0 口径重打便携 ZIP 并**删除后重新上传**同名 Release 资产（不是新建 Release），同步更新 Release 说明里的哈希。
+- **2026-11-12 00:4x 1.8.0 补发（用户「构建+收尾，同时这个改动也算是1.8版本的，把github上的便携版重新打包上传」）**：  
+  用 `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（全量门禁 → **跳过升版** → 构建 → 同步 release），把「整合包入口收口」与「ico 微圆角」两批源码一起打进产物。  
+  三处版本号、tag `v1.8.0` 全部保持不变；按 1.5.0 口径重打便携 ZIP 并**删除后重新上传**同名 Release 资产（不是新建 Release），同步更新 Release 说明里的哈希。  
   详见 `CHANGELOG.md` `[1.8.0] 补发 - 2026-11-12`。
-
-- **2026-11-11 23:39 发布 1.8.0（用户「确定，不用 dev 验收你直接收尾」= 全流程授权）**：
-  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-gate`（门禁刚跑过 39/39 全绿 → 升版 → 构建 260s → 同步一条链，总 261s）。
-  1.8.0 内容 = **整合包导出/导入**（轻量 `.cdlist` 几十 KB / 完整 `.cdpack` zip64 内嵌每 Mod 独立 zip）+ **Nexus 编号回填**（Vortex LevelDB → GraphQL 名字检索）+ 此前的主题重构（Cyber/Modern 两大类 + 预设色块 + 全量自定义调色）、多版本切换、右键删除、收编重叠判定根因修复。
-  设计决策与四个踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`；门禁 39/39、`cargo test --lib` 382 passed。
+- **2026-11-11 23:39 发布 1.8.0（用户「确定，不用 dev 验收你直接收尾」= 全流程授权）**：  
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-gate`（门禁刚跑过 39/39 全绿 → 升版 → 构建 260s → 同步一条链，总 261s）。  
+  1.8.0 内容 = **整合包导出/导入**（轻量 `.cdlist` 几十 KB / 完整 `.cdpack` zip64 内嵌每 Mod 独立 zip）+ **Nexus 编号回填**（Vortex LevelDB → GraphQL 名字检索）+ 此前的主题重构（Cyber/Modern 两大类 + 预设色块 + 全量自定义调色）、多版本切换、右键删除、收编重叠判定根因修复。  
+  设计决策与四个踩坑复盘见 `docs/ARCH-MODPACK-2026-11-11.md`；门禁 39/39、`cargo test --lib` 382 passed。  
   **本轮显式跳过 dev 验收**（用户要求直接收尾）。`git push origin main --tags` 已成功（积压 33 个提交 + v1.6.0/v1.7.0/v1.7.1/v1.8.0 四个 tag 全部上云）。
-- **2026-11-11 23:53 便携版补发（用户「便携zip也打一下，然后上传github」）**：
-  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`（4 个条目：exe / WebView2Loader.dll / 使用说明.txt / cyberdeck-data/说明-数据目录.txt，UTF-8 文件名，包内 exe md5 与 release 一致）。
-  通过 GitHub REST API 创建 `v1.8.0` Release（沿用历史资产命名 `CyberDeck.Launcher.<版本>.zip`），上传后回读 5,713,404 B 与本地逐字节一致。
-  **网络口径补充**：`api.github.com` 与 `uploads.github.com` 走会话环境代理可通；`git` 走 `127.0.0.1:7897`，该代理对 uploads 域名做 MITM（证书不被系统信任），Python urllib 会报 SSL EOF —— 上传不要走 7897。
+- **2026-11-11 23:53 便携版补发（用户「便携zip也打一下，然后上传github」）**：  
+  按 1.5.0 口径打 `发布产物/CyberDeck Launcher 1.8.0 便携版.zip`（4 个条目：exe / WebView2Loader.dll / 使用说明.txt / cyberdeck-data/说明-数据目录.txt，UTF-8 文件名，包内 exe md5 与 release 一致）。  
+  通过 GitHub REST API 创建 `v1.8.0` Release（沿用历史资产命名 `CyberDeck.Launcher.<版本>.zip`），上传后回读 5,713,404 B 与本地逐字节一致。  
+  **网络口径补充**：`api.github.com` 与 `uploads.github.com` 走会话环境代理可通；`git` 走 `127.0.0.1:7897`，该代理对 uploads 域名做 MITM（证书不被系统信任），Python urllib 会报 SSL EOF —— 上传不要走 7897。  
   根目录 `https://uploads.github.com/` 返回 302，urllib 自动跟随到 `github.com` 会 502，那是根路径跳转的假象，不代表上传端点不可达。
-
-- **2026-11-12 00:0x（已并入 1.8.0 补发）**：用户反馈「整合包这个高频操作怎么被隐藏到更多里了，而且导入整合包的入口太多了」。
-  整合包提升为**顶部全局栏常驻按钮**（与「导入模组」并列），删掉「导入方式」下拉两个整合包项、「更多」里的整合包项、
-  以及左侧分类栏底部与顶部重复的 `.rail-import` 按钮；普通导入改名「导入模组」以区分。
-  **工具栏零改动**——先试过在库工具栏加常驻按钮，多占 80px 会让密度档从 full 掉到 compact、「补全」整组被收起，
-  `check-toolbar.mjs` 直接超时，故改放没有降档机制的顶部栏。复盘 `docs/INCIDENT-2026-11-12-pack-entry.md`，
+- **2026-11-12 00:0x（已并入 1.8.0 补发）**：用户反馈「整合包这个高频操作怎么被隐藏到更多里了，而且导入整合包的入口太多了」。  
+  整合包提升为**顶部全局栏常驻按钮**（与「导入模组」并列），删掉「导入方式」下拉两个整合包项、「更多」里的整合包项、  
+  以及左侧分类栏底部与顶部重复的 `.rail-import` 按钮；普通导入改名「导入模组」以区分。  
+  **工具栏零改动**——先试过在库工具栏加常驻按钮，多占 80px 会让密度档从 full 掉到 compact、「补全」整组被收起，  
+  `check-toolbar.mjs` 直接超时，故改放没有降档机制的顶部栏。复盘 `docs/INCIDENT-2026-11-12-pack-entry.md`，  
   见 `CHANGELOG.md` `[1.8.0] 补发 - 2026-11-12`。本批已随补发构建进 exe。
-
-- **2026-11-12 00:40（已并入 1.8.0 补发）**：用户放弃本轮绘制的新芯片图标方案，改为只要「现有桌面 ico 加一点微圆角」。
-  `src-tauri/icons/icon.ico` 六帧 + `icon.png` 源图按 256px→rx=12 等比裁出微圆角，保留右下斜切与黄底黑线图案；
+- **2026-11-12 00:40（已并入 1.8.0 补发）**：用户放弃本轮绘制的新芯片图标方案，改为只要「现有桌面 ico 加一点微圆角」。  
+  `src-tauri/icons/icon.ico` 六帧 + `icon.png` 源图按 256px→rx=12 等比裁出微圆角，保留右下斜切与黄底黑线图案；  
   新图标组件与「关于」页预览的未提交改动全部撤回。快捷方式指向 exe 内嵌图标，**圆角已随本次补发重构建生效**。
-
-- **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。
-  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），
-  `release/CyberDeck Launcher.exe` 已替换（旧包备份为 `.prev.exe`），PE 版本 1.7.1 已验证，冒烟启动正常。
-  同批修掉 **dev 窗口热更新失效**（`devCsp` 放行 HMR WebSocket + `import.meta.env.DEV` 下不拦刷新），
-  仅影响开发模式、不进产物。
+- **2026-11-11 21:45 发布 1.7.1**：修两个用户报障 —— 冲突矩阵弹窗在 UI 缩放下超出屏幕、冷启动约 1.2 秒白屏。  
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，353s，其中 release 编译 182s），  
+  `release/CyberDeck Launcher.exe` 已替换（旧包备份为 `.prev.exe`），PE 版本 1.7.1 已验证，冒烟启动正常。  
+  同批修掉 **dev 窗口热更新失效**（`devCsp` 放行 HMR WebSocket + `import.meta.env.DEV` 下不拦刷新），  
+  仅影响开发模式、不进产物。  
   **tag `v1.7.1` 本地已打；push 待代理可用。便携 ZIP 未打。**
-- **2026-11-11 20:55 发布 1.7.0（「收尾」= 全流程授权）**：用户说「收尾」即直接走完发版。三处版本号 1.6.0 → 1.7.0，
-  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，总耗时 444s，构建 221s），
-  `release/CyberDeck Launcher.exe` 已替换（旧包自动备份为 `.prev.exe`），PE 版本 1.7.0 已验证。
-  1.7.0 内容 = 加载顺序一键整理（规则 / AI / 锁定三层）+ 封面本地缓存与设置页缓存卡片 + 汉化包认父降噪 +
-  屏蔽 WebView2 右键菜单 + 保存 66s→175ms 性能修复 + 封面黑屏 scope 修复（详见 CHANGELOG 该段）。
+- **2026-11-11 20:55 发布 1.7.0（「收尾」= 全流程授权）**：用户说「收尾」即直接走完发版。三处版本号 1.6.0 → 1.7.0，  
+  `CARGO_TARGET_DIR=D:/cdbuild npm run release -- --skip-bump`（门禁 + 构建 + 同步一条链，总耗时 444s，构建 221s），  
+  `release/CyberDeck Launcher.exe` 已替换（旧包自动备份为 `.prev.exe`），PE 版本 1.7.0 已验证。  
+  1.7.0 内容 = 加载顺序一键整理（规则 / AI / 锁定三层）+ 封面本地缓存与设置页缓存卡片 + 汉化包认父降噪 +  
+  屏蔽 WebView2 右键菜单 + 保存 66s→175ms 性能修复 + 封面黑屏 scope 修复（详见 CHANGELOG 该段）。  
   **tag `v1.7.0` 已打；push 待代理可用。便携 ZIP 未打。**
-
-- **2026-11-10 23:07 发布 1.6.0（「收尾」= 全流程授权）**：用户「收尾吧」并明确「以后说收尾就包括所有后续流程，
-  包括升版本还有构建 exe」——此口径已写入长期记忆，后续说收尾即直接升版 + 构建 + 替换 release，不再回头问。
-  `npm run release -- --skip-gate --level=minor`（门禁刚跑过 38/38 全绿）→ 三处版本号 1.5.0 → 1.6.0、
-  `tauri build` 3m51s（`CARGO_TARGET_DIR=D:/cdbuild`）。构建后第 4 步「同步 release」被脚本拦下：它硬编码
-  `src-tauri/target/release`，读到 21:22 的旧 exe 并报「产物时间早于构建开始」。已改为跟随 `CARGO_TARGET_DIR`，
-  并按同逻辑手工完成同步（旧 exe → `.prev.exe`，新 exe md5 `a61beb73…`，PE 版本 1.6.0 已验证）。
-  1.6.0 内容 = 自检报告 P0/P1/P2 全量落地（见 CHANGELOG 该段）+ `vortex_coverage` 命令与覆盖率区块 +
+- **2026-11-10 23:07 发布 1.6.0（「收尾」= 全流程授权）**：用户「收尾吧」并明确「以后说收尾就包括所有后续流程，  
+  包括升版本还有构建 exe」——此口径已写入长期记忆，后续说收尾即直接升版 + 构建 + 替换 release，不再回头问。  
+  `npm run release -- --skip-gate --level=minor`（门禁刚跑过 38/38 全绿）→ 三处版本号 1.5.0 → 1.6.0、  
+  `tauri build` 3m51s（`CARGO_TARGET_DIR=D:/cdbuild`）。构建后第 4 步「同步 release」被脚本拦下：它硬编码  
+  `src-tauri/target/release`，读到 21:22 的旧 exe 并报「产物时间早于构建开始」。已改为跟随 `CARGO_TARGET_DIR`，  
+  并按同逻辑手工完成同步（旧 exe → `.prev.exe`，新 exe md5 `a61beb73…`，PE 版本 1.6.0 已验证）。  
+  1.6.0 内容 = 自检报告 P0/P1/P2 全量落地（见 CHANGELOG 该段）+ `vortex_coverage` 命令与覆盖率区块 +  
   此前未发布的右键菜单坐标修复、快捷任务分区调整。**`main` 领先 origin 6 个提交，需 push + tag `v1.6.0`。**
-
-- **2026-11-10 22:50（全方面自检报告 P0/P1/P2 全量落地，未升版、未构建）**：用户「好，全部修复」。
-  报告 `CyberDeck-全方面自检报告-2026-11-10.md`（313 行，只读）里 3 个 P0 + 7 个 P1 + 全部可落地 P2 已逐条改完：
-  换暂存盘内存回写（`change_staging_dir` 持锁改写 + 失败回滚）、浮层栈真正生效（`useOverlayLayer` 第 4 参，
-  `Ctrl+Enter` / `Ctrl+K` 不再穿透浮层）、配置包敏感项默认不写只登记（`ImportReport.sensitive` + `ai::validate_base_url`）、
-  rar 解压前条目白名单校验、内置 Nexus 浏览器去掉 `--no-sandbox` + 只外抛 http(s)、四个重命令 `spawn_blocking`、
-  首次部署备份移出状态锁、全库 `fs::write` → `write_atomic`、`find_conflicts` 不再吞路径错误、
-  新增 `vortex_coverage` 命令 + 设置页接管覆盖率区块（实测 176/251 = 70.1%）。
-  前端：`useDismissableMenu` 收掉 5 段重复 effect、`missingDepsById` / `conflictsById` 两张表消除卡片级全扫、
-  滚动锚点提到模块作用域（修「从设置页回来回到顶部」）、Sidebar Logo / NexusCard / CommandPalette / 右键菜单
-  （`ContextMenu` + `F10`）四处键盘可达、`aiPresets` 定位描述入词表 32 条、`hiddenView` 动态 key 改
-  `Record<HideableView, MessageKey>`、`MODE_OPTIONS` 改存 key。
-  清理：删 `src/styles.css.bak-uiscale`（git 跟踪，走 `git rm` 留历史）、`release/cyberdeck-data` 下 7 个历史状态
-  快照移入 `backups/incidents/`。
-  验证：`cargo test --lib` 346 passed / 2 ignored、`cargo check` 0 warning、`tsc` 0 错误、`check-i18n` 0 处、
-  `gate --fast` 全绿、命令契约 164/164。**未构建 exe、未打包**，等 localhost 验收。
-  结构性未做项（`App.tsx` 拆分、卡片 `memo` 需上游回调稳定、表单 `aria-invalid`、断点/裸 hex/小字号）已在
+- **2026-11-10 22:50（全方面自检报告 P0/P1/P2 全量落地，未升版、未构建）**：用户「好，全部修复」。  
+  报告 `CyberDeck-全方面自检报告-2026-11-10.md`（313 行，只读）里 3 个 P0 + 7 个 P1 + 全部可落地 P2 已逐条改完：  
+  换暂存盘内存回写（`change_staging_dir` 持锁改写 + 失败回滚）、浮层栈真正生效（`useOverlayLayer` 第 4 参，  
+  `Ctrl+Enter` / `Ctrl+K` 不再穿透浮层）、配置包敏感项默认不写只登记（`ImportReport.sensitive` + `ai::validate_base_url`）、  
+  rar 解压前条目白名单校验、内置 Nexus 浏览器去掉 `--no-sandbox` + 只外抛 http(s)、四个重命令 `spawn_blocking`、  
+  首次部署备份移出状态锁、全库 `fs::write` → `write_atomic`、`find_conflicts` 不再吞路径错误、  
+  新增 `vortex_coverage` 命令 + 设置页接管覆盖率区块（实测 176/251 = 70.1%）。  
+  前端：`useDismissableMenu` 收掉 5 段重复 effect、`missingDepsById` / `conflictsById` 两张表消除卡片级全扫、  
+  滚动锚点提到模块作用域（修「从设置页回来回到顶部」）、Sidebar Logo / NexusCard / CommandPalette / 右键菜单  
+  （`ContextMenu` + `F10`）四处键盘可达、`aiPresets` 定位描述入词表 32 条、`hiddenView` 动态 key 改  
+  `Record<HideableView, MessageKey>`、`MODE_OPTIONS` 改存 key。  
+  清理：删 `src/styles.css.bak-uiscale`（git 跟踪，走 `git rm` 留历史）、`release/cyberdeck-data` 下 7 个历史状态  
+  快照移入 `backups/incidents/`。  
+  验证：`cargo test --lib` 346 passed / 2 ignored、`cargo check` 0 warning、`tsc` 0 错误、`check-i18n` 0 处、  
+  `gate --fast` 全绿、命令契约 164/164。**未构建 exe、未打包**，等 localhost 验收。  
+  结构性未做项（`App.tsx` 拆分、卡片 `memo` 需上游回调稳定、表单 `aria-invalid`、断点/裸 hex/小字号）已在  
   CHANGELOG「本批次未做」登记原因。
 - **2026-11-10 发布 1.5.0**：用户先要求「UI/UX 全量调研 + 三期改造」，中途插入新任务「CyberDeck 内置 Nexus 浏览窗口」。两个提交：`e93d8a8`（UI/UX 一期：导入闭环、OverlayProvider、toast action/ARIA、任务中心停止与展开、跳转带 tab、侧栏快捷区、设计令牌）+ `2df5387`（`open_nexus_browser`：独立 WebView、导航白名单 `nexusmods.com` 及子域、`nxm://` 转 `intake_nxm`、发现页入口、4 条单测）。全量门禁 **38/38 全绿**（325s），`cargo test --lib` 285 passed / 2 ignored，命令契约 163/163。按用户一次性授权跳过逐项验收直接出包；**内置窗口端到端（登录 → Mod Manager Download → 任务条）需真机点一次**。方案 `docs/NEXUS-INAPP-BROWSER.md`、术语 `docs/UI-TERMS.md`。
-- **2026-11-10 21:35（右键菜单定位补丁，未升版、未构建）**：用户截图报「右击菜单和右键的位置不在一起」。
-  真因是 `body { zoom: var(--ui-scale) }` 会把 `position: fixed` 的 `left/top` 再放大一次，而 `contextmenu`
-  里的 `clientX/clientY` 已经是视觉坐标——实测 125% 档 `inlineLeft=765px` 渲染到 956px（Δ191px，与截图偏移量吻合）。
-  抽出 `src/lib/uiScale.ts` 的 `currentUiZoom()`（`ProfileMenu` 原实现改为引用），右键菜单夹取后统一除以缩放；
-  `max-height` 同步除以缩放，避免高缩放下底边出窗。`check-context-menu.mjs` 补 80 / 100 / 125% 三档「菜单左上角
-  贴住鼠标落点」断言并入 gate。验证：`gate --only=context`（三档 Δ=0）、`--only=profiles`、`gate --fast` 全绿。
+- **2026-11-10 21:35（右键菜单定位补丁，未升版、未构建）**：用户截图报「右击菜单和右键的位置不在一起」。  
+  真因是 `body { zoom: var(--ui-scale) }` 会把 `position: fixed` 的 `left/top` 再放大一次，而 `contextmenu`  
+  里的 `clientX/clientY` 已经是视觉坐标——实测 125% 档 `inlineLeft=765px` 渲染到 956px（Δ191px，与截图偏移量吻合）。  
+  抽出 `src/lib/uiScale.ts` 的 `currentUiZoom()`（`ProfileMenu` 原实现改为引用），右键菜单夹取后统一除以缩放；  
+  `max-height` 同步除以缩放，避免高缩放下底边出窗。`check-context-menu.mjs` 补 80 / 100 / 125% 三档「菜单左上角  
+  贴住鼠标落点」断言并入 gate。验证：`gate --only=context`（三档 Δ=0）、`--only=profiles`、`gate --fast` 全绿。  
   **未构建 exe、未打包**，等 localhost 验收。
 - **2026-11-07 发布 1.3.0**：#8 修复本地 Ollama「Key 留空」实际不可用（`ai.rs` 四条业务链路改可选 Key，仅回环地址放行匿名）；#6 按架构评审签字落地 M1（新增 `ailabel.rs` 启动器内配置项标签覆盖层：独立 JSON、源文件指纹、可撤销、不写游戏目录）。用户 localhost 验收确认「没问题」后跑 `npm run release`：二次门禁 42/42 全绿、release profile 3m45s、总耗时 439s。评审结论 `docs/ARCH-REVIEW-AI-LOCALIZATION-2026-11-07.md`，复盘 `docs/INCIDENT-2026-11-07-ollama-no-key.md`。**便携 ZIP 未打**（对外分发需单独确认）。用户明确**不装 Ollama** → 实机双端验收未做，#8 保持 open。
 - **2026-11-08（P0，未升版、未构建）**：用户确认**放宽 P1 红线**（允许覆盖型汉化层，**必须备份原文档**），并明确 AI 由用户自接 API、启动器不内置模型。全类型汉化方案定稿 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`（含 §5.1 备份规范、§5.2 AI 通道口径）。本轮只落 P0：`ailoc.rs` 按载体分类扫描 + 真实 `blocked` 原因（`RESOURCE_TEXT` / `SCRIPT_TEXT` / `CONFIG_TEXT` / `UNSUPPORTED_FORMAT`）+ 单测；**不写游戏目录、不做覆盖**。P1（归档解包）/ P2（覆盖 + 备份恢复）需真机样本，另起一轮。设计判断：能力平台化可做，但过程必须可审计，不做隐形 agent 平台。用户 22:55 确认「没问题」后跑 `npm run release`：判定 **PATCH**（只改既有文件）→ 1.3.1，二次门禁 42/42 全绿、总耗时 350s，exe 已构建并替换 release。**便携 ZIP 未打**（需单独确认）。
 - **2026-11-09（P1/P2，未升版、未构建）**：用户要求「把 p1 和 p2 做了」。新增 `ailoc_full.rs`：P1 `.archive` 内文本走 WolvenKit `unbundle → serialize → 翻译 → deserialize → pack → .xl → 部署`；P2 `.lua`/`.reds` 显示类字符串覆盖型汉化层，**写入前原子备份 + 独立 manifest 登记 + 按 size/mtime 校验恢复**。`ai_loc_apply` 支持纯载体 Mod（无本地化 JSON 也能汉化），`revert` 先恢复备份再删产物；计划页回显将被覆盖的文件清单。新增 3 条单测。**真机样本未提供，CLI 参数形态与游戏内效果待实机校准**；P3 全库批量未做。方案 `docs/ARCH-FULL-LOCALIZATION-2026-11-08.md`。
 - **2026-11-09（第三批次，未升版、未构建）**：用户「完成下一轮，然后帮我清理」。新增 `src-tauri/src/vortex_sync.rs` 双写层：接管开启后 `set_mod_enabled` / `set_mods_enabled` / `save_load_order` / `save_redmod_order` 先过守卫（Vortex 运行中或 profile 不符 → 本地零改动），本地成功后写 `modState` / `loadOrders`，写前快照备份 + 逐键回读校验 + pending 队列 + 一键还原；新增 4 个命令与设置页开关/同步状态/重试/还原 UI，`Settings.vortex_takeover` 默认 false。顺手修了 `staging_health` 孤儿判定口径（原先只按 mod id，会误报 18 个仍被 `deployedFiles[].source` 引用的旧 id 目录）。**清理**：严格口径复核后把 26 个真孤儿（12,478,128 B / 989 文件）分批**移动归档**到 `release/cyberdeck-data/backups/staging-orphans-20261109-2155/`（附 RESTORE.md，未删除任何文件），18 个在用目录与 1 条缺失记录（`adopt-2768f94e6857836a` The Nullifier）保持原状；报告见工作区 `CyberDeck-暂存清理报告-2026-11-09.md`。开发会话**未写真实 Vortex 状态库**；A1–A10 真机验收待做。
-- **2026-11-10 发布 1.4.0**：用户明确要求「任务完成后直接构建 exe、上传、打包」，本轮按此跳过「等用户回复没问题」的逐项确认（dev 窗口仍在最后挂起供随时检查）。`npm run release` 判定 **MINOR**（新增 14 个命令 / 2 个 Rust 模块 / 2 个前端组件）→ 1.4.0；内置二次门禁 42/42 全绿、总耗时 389s；exe 已替换 release，冒烟通过；便携版 5,532,603 B（5.28 MiB） 已生成；tag `v1.4.0`。**注意**：冒烟首轮被门禁遗留的 dev 实例挡住（`single_instance` 插件转发退出，exit 0 无日志），清掉 dev 实例后重跑通过，不是包的问题。
+- **2026-11-10 发布 1.4.0**：用户明确要求「任务完成后直接构建 exe、上传、打包」，本轮按此跳过「等用户回复没问题」的逐项确认（dev 窗口仍在最后挂起供随时检查）。`npm run release` 判定 **MINOR**（新增 14 个命令 / 2 个 Rust 模块 / 2 个前端组件）→ 1.4.0；内置二次门禁 42/42 全绿、总耗时 389s；exe 已替换 release，冒烟通过；便携版 5,532,603 B（5.28 MiB） 已生成；tag `v1.4.0`。**注意**：冒烟首轮被门禁遗留的 dev 实例挡住（`single_instance` 插件转发退出，exit 0 无日志），清掉 dev 实例后重跑通过，不是包的问题。  
+  |  |  |  |  |  
+  | --- | --- | --- | --- |
 - **2026-11-09（第六批次 P4）**：用户「做 1，因为我在游戏里实际用的就是那个 225 个 mod」→ 以 Vortex 安装目录为权威重建模组库。新增 `vortex_rebuild.rs`（只读 preview / 写前整库备份 / 只归档不删除 / 一键还原 / 迁移报告）与设置页 `VortexRebuildCard`；四个新命令 `vortex_rebuild_preview|apply|backups|restore`。**同时支持像 Vortex 一样读元数据**：中文名、版本、作者、描述（HTML 清洗）、封面、Nexus 引用、安装时间、分类（Nexus category id 映射）。实测三份数据源 225/225 对齐，预测描述 199 / 封面 225 / Nexus 225。修两个隐患：`Store::save` 不回写内存、`sanitize_loaded_state` 会把无部署清单的启用条目强制禁用（Vortex 托管条目已豁免）。**重建是显式操作，不会自动改库**：新 exe 进「设置 → 工具」点执行重建后当前实例才变 225 条，预览会显示改动的是哪份库（dev / release / AppData 三份不同）。方案 §12。验证 `cargo test --lib` 281 passed / 2 ignored、`cargo check`、`gate --fast`、tsc / i18n / 字重 / 命令契约 162/162。
 - **2026-11-09（第五批次 P3，未升版、未构建）**：用户问「能否直接用 Vortex 暂存区」并要求开工 P3。落地 `AppStateData.vortexModIds` 持久化映射 + `vortex_mapping_rebuild` 全库重配准（改为扫 Vortex 存储根全量文件 + 文件名唯一兜底）；`vortex_sync_full` 全库镜像并接入 `switch_profile`；`vortex_reconcile`（report/cyberdeck/vortex）与 `vortex_prelaunch_check` 切 Vortex 前预检；前端四个入口。**实测配准率 14/84（16.7%）**：70 个模组的 archive 文件名在 Vortex 225 个目录里根本不存在，两批数据不同来源，不是算法漏配 → 「直接把 stagingDir 指向 Vortex mod 根」等价于一次以 Vortex 为准重建启动器库的数据迁移（目录名契约不同 / 双写冲突 / Store 全局单根），需单独授权。方案 §11 记录完整结论。验证：`cargo test --lib` 275 passed / 2 ignored、`cargo check`、`gate --fast`、tsc / i18n / 字重 / 命令契约 158/158 全绿。
 - **2026-11-09（第二批次，未升版、未构建）**：用户两张截图报收编「未响应」+ `成功 45 / 失败 159`。排查确认三个缺陷：① `adopt_scan` 是同步命令跑主线程（扫 225 个 Vortex 目录 + 4076 文件），② 失败原因只放 tooltip、界面只见 `ADOPT_STAGING_FAILED`，③ `rollback_staging` 会删掉已登记模组的暂存目录。已全部修复（异步化 / 内联 message / `protected` 集合 + 已登记候选拦截）。现场留痕：44 个孤儿暂存目录、1 条已登记模组 `adopt-2768f94e6857836a` 缺暂存目录，**只列出未清理**。随后按用户「开工」拍板落地 **Vortex 接管 P0 只读取证层**：新增 `src-tauri/src/vortex_mirror.rs`，只读解析 Vortex 状态库（activeProfileId / modState / loadOrders）、算指纹、按游戏侧相对路径精确配准并列出启用状态漂移；两个只读命令 `vortex_takeover_preflight` / `adopt_staging_health`；设置页「工具」新增体检卡片。方案 `docs/ARCH-VORTEX-TAKEOVER-2026-11-09.md`，复盘 `docs/INCIDENT-2026-11-09-adopt-freeze.md`。**未写 Vortex 状态库、未新增持久化字段、未做 P1 双写**；P1 写入与孤儿目录清理均需单独授权。
@@ -162,37 +168,36 @@
 - `src-tauri/Cargo.toml` → `version = "1.8.0"`
 - `src-tauri/tauri.conf.json` → `"version": "1.8.0"`（**打包进 exe 的真实版本**，`app.getVersion()` 读它）
 - ⚠️ **构建产物目录必须放在仓库外**：`CARGO_TARGET_DIR=D:/cdbuild` 后再跑 `cargo build` / `npm run tauri:dev` / `npm run gate`。原因见 `docs/MEMORY-CANON.md` §2.5「`src-tauri/target` 会被会话级文件备份拖死」——备份进程持有 `.o` 句柄会让 `rustc` 报 `os error 5`，并把 C 盘吃到 0 字节。
-- **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。
+- **1.0.0 已构建部署（2026-10-31 深夜）**：exe 9,116,416 B / md5 `a03a56b124eaa0cb77fd7577f3e2c3f4`（release 已替换，旧版备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（4,563,698 B）。冒烟：`stage=frontend mods=186`、integrity=0x2000；P1 物理自同步首跑 `removed=7 repaired=112 deferred=72`。注意：首次启动曾一次静默退出且无日志，第二次启动完全正常，原因未明，后续关注。  
   之后 **2026-11-01 09:58 重建（含 P5）**：exe 11,168,256 B / md5 `bc1ef81eeb5e1a2e56c7392c0aa2bae0`，冒烟 `stage=frontend mods=186`；便携版 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,313,934 B，覆盖首发包）。版本号按用户要求保持 1.0.0，CHANGELOG 用「1.0.0 追加批次」区分。
 - **2026-11-01 11:38 再次重建（含毛玻璃补齐 / AI 汉化入口 / 分类重构）**：exe 11,172,352 B / md5 `b973dc58ff50565710e30557add9cf81`，冒烟 `2026-11-01T03:41:22Z stage=frontend mods=186`；零编译警告。便携版与网盘本轮未重做（等确认）。
 - **2026-11-01 13:59 第三次重建（L1/L2/L3 层级毛玻璃）**：exe 11,172,352 B / md5 `baa396ac752f2128fda9fd1ed9456b3b`，冒烟 `2026-11-01T05:59:22Z stage=frontend mods=186`；便携版与网盘仍未重做。
 - **2026-11-01 14:55 第四次重建（毛玻璃隔离 + 赛博纯黑）**：exe 11,172,352 B / md5 `c10feb39f63bc89f23e5504aa8fb26c3`，冒烟 `2026-11-01T06:55:24Z stage=frontend mods=186`。
-- **2026-11-01 17:23 第五次重建（赛博碳灰层次）**：exe 11,172,352 B / md5 `97f6da28fca0aceeef7bfa3723c99be5`，冒烟 `2026-11-01T09:23:06Z stage=frontend mods=186`。
+- **2026-11-01 17:23 第五次重建（赛博碳灰层次）**：exe 11,172,352 B / md5 `97f6da28fca0aceeef7bfa3723c99be5`，冒烟 `2026-11-01T09:23:06Z stage=frontend mods=186`。  
   便携版已重打包：`发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,319,062 B，内含 exe md5 校验一致 `97f6da28…`）。
 - **2026-11-01 20:09 回滚赛博主题颜色覆盖后重建**：exe md5 `7bc36f4f96997c23c298622e21048214`，冒烟 `2026-11-01T12:09:08Z stage=frontend mods=186`。此版删掉全部 `--cyber-*` 与元素覆盖，赛博四主题回到 `tokens.css` 各自调色板；玻璃只对「有背景图 且 非赛博主题」生效。
 - **2026-11-01 20:45 玻璃条件改为方案 A**：modern 永远玻璃、赛博四主题永不玻璃、其它主题有背景图才玻璃。exe md5 `c9d5950309f615e40ff1ff45918ae408`，冒烟 `2026-11-01T12:45:36Z stage=frontend mods=186`。
 - **2026-11-01 20:53 设置卡片底色统一**：删掉 `.settings-tab-panel .panel` 的 12% 白提亮，改吃基础 .panel 渐变。exe md5 `3df1bab9f8d5116daf1d87d46dbdfd99`，冒烟 `2026-11-01T12:53:24Z stage=frontend mods=186`。
 - **2026-11-01 21:21 工具栏两组重构**：左「视图与过滤」/ 右「动作与工具」，AI 汉化与翻译名称合并为「AI 工具▾」，三档容器查询收低频不换行。exe md5 `f34048c581e4b473571361fd75e474c8`，冒烟 `2026-11-01T13:21:03Z stage=frontend mods=186`。
 - **2026-11-02 00:55 批次 5 构建（播放集缩放对齐 / 毛玻璃质感 / 补全封面进工具栏 / 通知限时）**：exe 11,178,496 B / md5 `288567e268b825f75f274041260e0ef7`，冒烟 `2026-11-01T16:55:29Z stage=frontend mods=186`（sync removed=0 repaired=0 deferred=72）。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,303,788 B，包内 exe md5 一致；zip 改用 UTF-8 文件名，修掉旧包 GBK 乱码隐患），已同步网盘。
-- **2026-11-03 00:48 批次 8+9 构建并替换 release**：exe 11,262,976 B / md5 `acbe573c37bb9cd02d12245fea8d2aa0`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T16:48:41Z stage=frontend mods=119`、`integrity=0x2000`。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,357,550 B，包内 exe md5 一致）。
-  ⚠️ **冒烟发现数据异常（已查清）**：release 库现在是 **119 条、全部 enabled=false、deployedFiles 全空**，并且少了 71 条收编记录。这个组合正是「安全模式进入后批量断开所有链接」的结果，加上此前 23:24 那次 `deferred=72` 说明这 72 个模组的游戏侧文件本来就校验不到。**结论：不是本批次代码改坏的，是先发生过一次全量停用/清理**。
-  尝试手工补回 48 条（staging 仍有文件）= **失败**：`layout` 枚举实际序列化成小写 `archive`，写成 `Archive` 会让整个状态文件判为损坏并清空（复现两次，均已从 `launcher-state.pre-restore-backup.json` / `launcher-state.before-restore-*.json` 回滚）。**教训：不允许手工拼 state JSON，恢复必须走 Rust 侧既有写入路径。**
+- **2026-11-03 00:48 批次 8+9 构建并替换 release**：exe 11,262,976 B / md5 `acbe573c37bb9cd02d12245fea8d2aa0`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T16:48:41Z stage=frontend mods=119`、`integrity=0x2000`。便携版已重打包 `发布产物\CyberDeck Launcher 1.0.0 便携版.zip`（5,357,550 B，包内 exe md5 一致）。  
+  ⚠️ **冒烟发现数据异常（已查清）**：release 库现在是 **119 条、全部 enabled=false、deployedFiles 全空**，并且少了 71 条收编记录。这个组合正是「安全模式进入后批量断开所有链接」的结果，加上此前 23:24 那次 `deferred=72` 说明这 72 个模组的游戏侧文件本来就校验不到。**结论：不是本批次代码改坏的，是先发生过一次全量停用/清理**。  
+  尝试手工补回 48 条（staging 仍有文件）= **失败**：`layout` 枚举实际序列化成小写 `archive`，写成 `Archive` 会让整个状态文件判为损坏并清空（复现两次，均已从 `launcher-state.pre-restore-backup.json` / `launcher-state.before-restore-*.json` 回滚）。**教训：不允许手工拼 state JSON，恢复必须走 Rust 侧既有写入路径。**  
   ⚠️ **原始异常记录**：release 库从 186 条降到 119 条，缺失的 71 条**全部是 enable 状态的收编（adopt-）模组**，另有 4 条新收编。与 23:24 那次冒烟的 `deferred=72 warnings=72`（72 个模组的游戏侧文件校验不到）数量吻合，高度怀疑是一次"清理失效记录/库同步"批量删除了实体文件已不在游戏目录的收编项。已备份当前状态为 `launcher-state.before-restore-*.json`，**未擅自恢复**，等用户确认。
 - **2026-11-03 00:1x 批次 8+9 完成（未构建）**：AI 诊断可执行动作、AI 多套配置、退出确认弹窗、Nexus 401 出口。`cargo test` 262 通过；全量门禁 41/41 绿（新增「AI 可执行修复」「AI 多套配置」「关闭确认与 Nexus 401」）。等 localhost 验收后再构建。
 - **2026-11-03 21:50 批次 10 完成代码与门禁（未构建）**：Logo 改纯 SVG 图形徽章（`components/LogoMark.tsx` 新增，A/B/C 三方案并存，当前 `LOGO_VARIANT = "B"`；`.logo-mark` 43×43 占位与「CYBERDECK」文字排版未动，描边走 `currentColor` 随主题变色）、列表视图补「接管」标签（`.row-chip-adopt`）、`DownloadsView` 的鉴权正则加 `// i18n-ignore` 让 CI i18n 门禁归零。门禁：`node scripts/gate.mjs` **42/42 全绿**（命令契约 146/146/141 missing 0、core-tests 通过、`tsc` 0 错、`vite build` 通过、其余 38 项 UI 检查全过，含 `check-sidebar`）。已提交 `c8a83e3`（i18n）+ `c47eb9d`（logo 与接管标签）。**未构建 exe**——按交付顺序规则先在 localhost 验收。
-
-- **2026-11-04 01:10 发版链路落地（方案 B，提交 `32b6729`）**：新增 `scripts/release.mjs` + `npm run release`，把原先手工串联的五件事收成一条链——预检 → 门禁 → 升版（三处 + CHANGELOG）→ `tauri build --no-bundle` → 备份并替换 `release/CyberDeck Launcher.exe`（打印大小 / md5）→ 打印 commit / tag / push 命令。刻意不做：不自动 commit / tag / push、不打便携 ZIP。
+- **2026-11-04 01:10 发版链路落地（方案 B，提交 `32b6729`）**：新增 `scripts/release.mjs` + `npm run release`，把原先手工串联的五件事收成一条链——预检 → 门禁 → 升版（三处 + CHANGELOG）→ `tauri build --no-bundle` → 备份并替换 `release/CyberDeck Launcher.exe`（打印大小 / md5）→ 打印 commit / tag / push 命令。刻意不做：不自动 commit / tag / push、不打便携 ZIP。  
+  |  |  |  |  
+  | --- | --- | --- |
   - 分段开关：`--dry-run`（预检 + 预演升版判定，不动文件）、`--skip-gate`、`--skip-bump`、`--skip-build`、`--fast`、`--level=patch|minor|major`。
   - 两条防呆：① 产物 mtime 早于本次构建开始即报错，防 `tauri build` 命中缓存秒退被当成新包；② 目标 exe 被占用时自动 `taskkill` 启动器再重试（已授权的部署方式）。
   - CI `frontend` job 补 `node scripts/check-version-sync.mjs`——bump 脚本已保证同改，这一步卡的是「手工改版本号」和「合并冲突解错」。
   - 验证：`--dry-run` 预演 **1.0.0 → 1.1.0**（minor：v1.0.0 后新增 14 个 Tauri 命令、5 个 Rust 模块、`LogoMark.tsx`）；`gate --fast` 5/5 绿（命令契约 / tsc / vite build / 安全模式 / 收编 / 版本号，约 20s）。
   - ⚠️ 踩坑记录：验证时误用 `--skip-gate --skip-build` 跑了一遍，bump 真的落盘（三处版本号改 1.1.0 + CHANGELOG 插入自动摘要），已 `git checkout` 整体回退到 1.0.0。教训——`--skip-build` 的语义是「只升版不构建」，不是「什么都不做」；要空跑请用 `--dry-run`。
-
 - **2026-11-04 23:42 发布 1.1.1（前端缺陷审查 15 条）**：`npm run release` 走完 门禁 42/42（588s 工时）→ 升版判定 patch（5 提交 / 3 条 fix / 只动既有文件）→ `tauri build --no-bundle`（release profile 6m06s）→ 替换 release exe：**10,323,456 B / md5 `15ded55a497c9e1b6ba7a1c0b0dfd354`**（旧版 1.1.0 已备份为 `CyberDeck Launcher.prev.exe`，10,317,824 B / md5 `2e4fcda6…`）。
   - 便携 ZIP **未打**（对外分发需单独确认）；tag `v1.1.1` 待提交后打。
   - ⚠️ 构建第一次失败在最前面的 `beforeBuildCommand`：本机安全删除守卫拦下 vite 的 `emptyDir`（`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]`，同一回合里门禁删过一轮、构建再删一轮，累计 74 个文件 > 阈值 50）。处置：发版前手工 `rm -rf dist`，让 `emptyDir` 无文件可删，再用 `npm run release -- --skip-gate --skip-bump` 只跑构建段。**这不是项目缺陷**，但「同回合连跑门禁 + 构建」会稳定复现；以后发版先清 `dist`，或分两次命令跑。
   - 首次发版时 `bump-version` 自动插入的 `[1.1.1]` 段只是 5 条提交标题的堆叠，已与手写的详细段落合并（删掉自动段、把验证与产物数字补进手写段），并补 `发布产物记录` 两行（1.1.0 此前也漏记）。
-
 - **2026-11-04 01:38 发布 1.1.0（品牌全链路统一 + 发版链路 + 门禁加速）**：这是仓库第一次用 `npm run release` 出包。
   - 门禁 42/42 全绿 **211s**（38 个 UI 项并发 3 路；改造前串行 7m23s）。
   - 自动升版判定 minor（v1.0.0 后 +14 个 Tauri 命令、+5 个 Rust 模块、+`LogoMark.tsx`）：**1.0.0 → 1.1.0**，三处版本号 + CHANGELOG 同改。
@@ -202,7 +207,6 @@
   - ⚠️ 踩坑 2：`bump-version.mjs` 插入的 CHANGELOG 摘要是「v1.0.0..HEAD 全部提交标题」，会把已在 1.0.0 段记过的条目重复列出，**必须人工按版本线收敛**（本次已重写 1.1.0 段）。
   - ⚠️ 踩坑 3：门禁「排版层级」在 3 路并发下偶发 `toggleStateColor` 假红（单独跑必过），根因是外观 tab 只 `waitForTimeout(600)` 就读开关计算样式，已改为等真实渲染条件。
   - **本次未升版、未构建**：1.1.0 留给品牌批次验收提交之后执行 `npm run release`。
-
 - **2026-11-04 23:10 前端缺陷审查 15 条修复完成（未升版、未构建）**：起点是一份前端只读审查报告（2 条 P1 + 13 条 P2/P3）加多分辨率实测问题。四个提交：
   - `2b4694b` fix(rust)：`store.rs` 状态文件去掉「先删后改」的丢库窗口（改 `create/write_all/sync_all` + 原子 `rename`，`.bak` 缺失自动恢复，临时名带 pid+序号）；`installer.rs` 卸载删不掉的文件保留在 `deployed_files` 并逐个告警，重新部署先 `purge_links` 清残留、清不干净报 `DEPLOY_STALE_FILES`；新增 `share_mode(0)` 独占打开模拟占用的 Windows 单测。
   - `5f16d5c` fix(ui)：新增 `lib/escLayer.ts`（模块级栈，一次 Esc 只关栈顶）与 `lib/focusTrap.ts`（Tab 循环 + 归还焦点），Modal/抽屉/协议弹层统一接入；`api.ts` 新增 `snapshotCall()` 让 5 个返回快照的命令都过归一化；`mock.ts` 的 `attachModFromNexus` 补真实实现；`dependencies.ts` 忽略表加缓存 + 订阅。
@@ -211,18 +215,16 @@
   - 验证：`node scripts/gate.mjs` **42/42 全绿**（工时 574s）；`cargo test` src-tauri 265 passed / core-tests 1 passed；`tsc` 0 错；`check-i18n --fail` 0 处、`--unused` 0 条（清掉 13 条死文案，1895 → 1882）。
   - ⚠️ 待人工过一眼：依赖忽略面板没有任何门禁脚本覆盖（demo 数据里没有缺失前置），本轮只做了模块级逻辑验证 + 页面无 pageerror。
   - **未升版、未构建 exe**——按交付顺序规则等 localhost 验收。
-
 - **2026-11-02 23:24 批次 6+7 构建并替换 release**：exe 11,181,568 B / md5 `a2f360de70f7968bb572fde0cfea9c56`（旧版备份 `CyberDeck Launcher.prev.exe`）；冒烟 `2026-11-02T15:24:21Z stage=frontend mods=186`、`integrity=0x2000`、`sync removed=0 repaired=0 deferred=72`。本轮含：动画速度滑块 / AI 空响应重试 / 兼容性体检重写（版本号显示 2.5）/ 收编禁用只断链接 / 环境体检降噪。便携版与网盘尚未重做（等确认）。
 - **2026-11-02 22:0x 批次 6 完成代码与门禁（动效速度滑块 / AI 空响应容错 / 兼容性体检重写）**：`cargo test` 182 通过 / 2 ignored，全量门禁 37/37 绿（新增 `check-compat-health.mjs`）。**尚未构建 exe**——按交付顺序规则先在 localhost 验收，用户确认后再构建、替换 release、重打便携版并同步网盘。构建后在此行补 exe 大小 / md5 / 冒烟结果。
-
 - **2026-11-01 21:55 工具栏重叠修复**：`.toolbar-group` 改 `flex:0 0 auto`（不再收缩溢出），档位由 `useLayoutEffect` 按实测溢出逐级收紧（full/compact/tight/mini）。exe md5 `b4b983baa8c7022dc999ec94198663d1`，冒烟 `2026-11-01T13:55:25Z stage=frontend mods=186`。
 
-前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`
-（优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。
-`Sidebar`（侧栏底部）与 `SettingsView`（设置→关于）已改造；`i18n/zh-CN.ts` 的 `app.version` 键已删除。
+前端显示版本**不再硬编码**：统一走 `src/lib/appVersion.ts` 的 `useAppVersion()`  
+（优先级：Tauri `getVersion()` → vite 注入 `__APP_VERSION__` → `DEV`）。  
+`Sidebar`（侧栏底部）与 `SettingsView`（设置→关于）已改造；`i18n/zh-CN.ts` 的 `app.version` 键已删除。  
 版本发布流程见 **`AGENTS.md`《版本更新自动化规范》**（三处同步 / 禁硬编码 / 打包动态命名 / git tag / 收尾 checklist）。
 
-> 历史说明：0.7.0 长期处于「版本号没升但功能已大量迭代」的状态，对话里出现过的 `0.6.6` 与本仓库无关。
+> 历史说明：0.7.0 长期处于「版本号没升但功能已大量迭代」的状态，对话里出现过的 `0.6.6` 与本仓库无关。  
 > 标号撞号（`0.7.0-r4` 与 `0.8.0-r4`）见 `CHANGELOG.md` 头部说明，按实际时间排序、标号未改。
 
 ---
@@ -233,41 +235,41 @@
 
 **① 审计**
 
-- 新增 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`：对照 `Nexus-Mods/game-cyberpunk2077`（GPL-3.0）做五维静态比对，
+- 新增 `docs/AUDIT-VORTEX-DIFF-2026-11-06.md`：对照 `Nexus-Mods/game-cyberpunk2077`（GPL-3.0）做五维静态比对，  
   含 P0 3 条 / P1 15 条 / P2 若干 + 「已领先 10 条 + 不采纳 3 条」。第 9 节是修复进度对账表。
 
 **② 落地（3 条 P0 全修，15 条 P1 修 11 / 覆盖 1 / 顺延 3）**
 
-| 级别 | 条目 | 落地要点 |
-|---|---|---|
-| P0-1 | 换播放集不重部署 REDmod | `switch_profile` 阶段 5 调 `redmod::flush_into` |
-| P0-2 | `modlist.txt` 格式污染 | 纯文件名 + CRLF 无尾换行；托管标记移到旁挂 `.cyberdeck-modlist` |
-| P0-3 | 改配置切断硬链接 → 删不掉文件 | `hardlink_source_for` 比 inode，命中则**原地截断重写**；失败才退回换文件并把清单降级为 `Copy` |
-| P1-1 | 启动前不部署 REDmod | `launch_game` spawn 前 `sync_before_launch`，失败 `REDMOD_SYNC_FAILED` 拦启动 |
-| P1-2 | 清缓存失败仍写 modlist | 写前留原文，`clear_cache` 失败即回滚 |
-| P1-5 | FOMOD 零支持 | 不剥 `fomod/`，剥壳前拦截并报 `FOMOD_NOT_SUPPORTED`（不做完整向导） |
-| P1-6 | `LAYOUT_AMBIGUOUS` 误杀 | 同分候选剪掉「被其它候选包含」的，只剩互不包含才报错 |
-| P1-10 | 配置包缺字段即 false | 7 个字段改 `Option`，只覆盖包里显式存在的键 |
-| P1-11 | 读配置错误全吞 | `ConfigResolver` 加 problems 收集器，`resolve_for_mod` 返回 `(sources, warnings)` |
-| P1-12 | 部署与 redMod 无互斥 | `redmod::deploy_gate()` 给 `deploy_mod` / `undeploy_mod`，先闸门后 state |
-| P1-13 | `Copy` 删除无身份校验 | 二进制被改过→拒删并告警；文本配置照删 |
-| P1-14 | redscript 探针旧文件名 | `game`/`deps`/`diagnostics` 主判据改 `scc.exe` |
-| P1-15 | compat 框架表缺项 | 4 → 9 项，新增 `critical` 分级（只有四件必需品缺失才报风险） |
+| 级别    | 条目                    | 落地要点                                                                       |
+| ----- | --------------------- | -------------------------------------------------------------------------- |
+| P0-1  | 换播放集不重部署 REDmod       | `switch_profile` 阶段 5 调 `redmod::flush_into`                               |
+| P0-2  | `modlist.txt` 格式污染    | 纯文件名 + CRLF 无尾换行；托管标记移到旁挂 `.cyberdeck-modlist`                             |
+| P0-3  | 改配置切断硬链接 → 删不掉文件      | `hardlink_source_for` 比 inode，命中则**原地截断重写**；失败才退回换文件并把清单降级为 `Copy`         |
+| P1-1  | 启动前不部署 REDmod         | `launch_game` spawn 前 `sync_before_launch`，失败 `REDMOD_SYNC_FAILED` 拦启动     |
+| P1-2  | 清缓存失败仍写 modlist       | 写前留原文，`clear_cache` 失败即回滚                                                  |
+| P1-5  | FOMOD 零支持             | 不剥 `fomod/`，剥壳前拦截并报 `FOMOD_NOT_SUPPORTED`（不做完整向导）                          |
+| P1-6  | `LAYOUT_AMBIGUOUS` 误杀 | 同分候选剪掉「被其它候选包含」的，只剩互不包含才报错                                                 |
+| P1-10 | 配置包缺字段即 false         | 7 个字段改 `Option`，只覆盖包里显式存在的键                                                |
+| P1-11 | 读配置错误全吞               | `ConfigResolver` 加 problems 收集器，`resolve_for_mod` 返回 `(sources, warnings)` |
+| P1-12 | 部署与 redMod 无互斥        | `redmod::deploy_gate()` 给 `deploy_mod` / `undeploy_mod`，先闸门后 state         |
+| P1-13 | `Copy` 删除无身份校验        | 二进制被改过→拒删并告警；文本配置照删                                                        |
+| P1-14 | redscript 探针旧文件名      | `game`/`deps`/`diagnostics` 主判据改 `scc.exe`                                 |
+| P1-15 | compat 框架表缺项          | 4 → 9 项，新增 `critical` 分级（只有四件必需品缺失才报风险）                                    |
 
-顺延 4 条及原因见 CHANGELOG「已知边界」：P1-3 拍平改结构风险高、P1-4 MultiType 需重写 `plan_for`、
+顺延 4 条及原因见 CHANGELOG「已知边界」：P1-3 拍平改结构风险高、P1-4 MultiType 需重写 `plan_for`、  
 P1-9 关开关删文件属破坏性决策、P1-8 抽 `framework.rs` 属结构性重构。
 
 **③ 产物**
 
-- 重建：`npm run tauri:build`（release profile 3m06s），exe **10,359,808 B / md5 `b0aa89dc3977d203f690e954894221b7`**，
-  已替换 `release/CyberDeck Launcher.exe`；上一版（10,353,152 B / `edcb21a93d735a9362d9dc6bbccad570`）
+- 重建：`npm run tauri:build`（release profile 3m06s），exe **10,359,808 B / md5 `b0aa89dc3977d203f690e954894221b7`**，  
+  已替换 `release/CyberDeck Launcher.exe`；上一版（10,353,152 B / `edcb21a93d735a9362d9dc6bbccad570`）  
   在 `CyberDeck Launcher.prev.exe`。**便携 ZIP 未打**（对外分发需单独确认）。
-- 验证：`cargo test --lib` **297 passed / 0 failed / 2 ignored**；`npm run gate` **42/42 全绿（375s）**；
+- 验证：`cargo test --lib` **297 passed / 0 failed / 2 ignored**；`npm run gate` **42/42 全绿（375s）**；  
   `core-tests` 独立 crate 因漏 include `environment` 红过一次，已补声明并写进 `MEMORY-CANON §2.5`。
 
 **④ 下一批优先级**
 
-P1-3（需真实包样本量化）→ P1-4 MultiType → P1-8 单一框架注册表 → P1-9（需产品决策）；
+P1-3（需真实包样本量化）→ P1-4 MultiType → P1-8 单一框架注册表 → P1-9（需产品决策）；  
 P0 已清零，其余为报告 §6 的 P2 可维护性项。
 
 ## 1. 项目简介
@@ -284,88 +286,94 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 
 ---
 
-## 2. 当前进度（0.9.0）
+## 2. 模块能力快照（版本进度不在这里）
+
+> **版本进度 / 待办 / 真机验收状态不记在本节。** 历史上每次发版都来改这张表，既改不动也改不准（标题一度停在「0.9.0」）。
+> 权威入口：`docs/SESSION-START.md`（当前版本 + 待办提醒）、GitHub Issues（`XFxzz3456/CyberDeck-Launcher`）、`CHANGELOG.md`（逐版变更）、本文件 §0（最近三次产物）。
+> 本表只回答一个问题：**这个模块做到什么程度了**。最后核对：**1.9.0（2026-11-16）**。
 
 ### 已完成并验证
 
-| 模块 | 状态 |
-|---|---|
-| 模组库 / 分类 / 搜索 / 虚拟滚动 | 完成 |
-| ZIP / 7z / RAR 导入 | 完成；ZIP、7z 纯 Rust，RAR 依赖本机 7-Zip/WinRAR |
-| 暂存区与部署分离 | 完成；禁用只撤链接，卸载才删暂存 |
-| 硬链接部署 + 跨盘回退 | 完成；硬链接 → 符号链接 → 复制，部署失败整批回滚 |
-| 冲突预判中心 | 完成；已启用冲突 + 暂存模组「启用后会冲突」 |
-| 加载顺序 / `modlist.txt` | 完成；`.xl` 跟随所属 archive，不独立排序 |
-| 主题与缩放 | 完成；**6 套主题**（NCPD / Netrunner / Arasaka / Militech / Mono / Daylight）、自定义强调色、90/100/110% 缩放、侧栏折叠 |
-| 主题形态差异 | 完成；每套主题有独立按钮轮廓、标题装饰、导航标记、面板走线与封面配色，不只是换色 |
-| 硬件视觉层 | 完成；切角、工业噪点/网格、红黑警告带、虚线接收面板 |
-| 任务中心 / 命令面板 / 防误触 | 完成 |
-| 界面文案 | 完成；0.8.0-r7 全局去 AI 味（105 处）+ **0.8.0-r10 按《UI 文案编写规范》整改 66 条**（敬语 13 / 免责 4 / 按钮 ≤4 字 47 / 去主语 1 / 引用同步 1）；文案现全部在 `src/i18n/zh-CN.ts`，改文案只改词表 |
-| Mod Settings（CET `user.ini`） | 完成；行级修改、`.bak`、恢复 |
-| 多框架配置解析 | 完成；A 类绑定 Mod（Mod Settings INI / Native Interactions JSON），B 类全局（RED4ext TOML / CET JSON / AudioXL INI），C 类不生成表单 |
-| 日志查看器 | 完成；末尾读取、级别过滤、错误前后 5 行提取 |
-| Nexus 发现 / Premium 下载 | 完成；需要用户自己的 API Key |
-| Nexus 官方封面 | 完成；下载时缓存 `picture_url`，卡片优先渲染官方图，失败回退生成封面；设置页可批量补全已有条目 |
-| AI 诊断 | 完成；兼容任何标准 OpenAI 协议端点（OpenAI 优先的预设清单 + 「联网获取模型列表」实时拉取 `/v1/models` + 弃用模型名提示），界面口径为协议层（徽标「OPENAI 兼容」），逐次同意、脱敏、固定 `focus` 白名单 |
-| WolvenKit 深度扫描 | 完成；CLI 路径可手填，**留空自动检测**（`%USERPROFILE%\.dotnet\tools` → PATH），超时可配 10–600 秒默认 60 |
-| Mod 名 AI 翻译 | 完成；框架名黑名单免翻译、原名不被覆盖、只写 `translated_name` |
-| RED4ext / CET / redscript / ArchiveXL 诊断 | 完成，基于本地文件规则 |
-| 整合包导入 | 完成；多 Mod 拆包、包内 `modlist.txt` 转推荐顺序 |
-| 播放集（Profile） | 完成；快照 → 撤销 → 写状态 → 部署 四段切换，避免锁重入死锁 |
-| 右键菜单 / 打开文件夹 / 修复 | 完成；`open_in_explorer` 做路径白名单校验，`repair_mod` 先撤后装 |
-| 游戏更新熔断 | 完成；`lastGameVersion` 对比，锁定部署入口，顶栏横幅解除 |
-| 环境体检与自愈 | 完成；`deployedFiles` 记 size/mtime，`diagnose_environment` + `heal_environment` |
-| 多平台嗅探 | 完成；Steam 注册表 + `libraryfolders.vdf`、GOG 注册表、Epic `LauncherInstalled.dat`，可限定优先平台 |
-| 启动链路（直启） | 完成；`auto` 优先直跑 `bin\x64\Cyberpunk2077.exe` 跳过 REDprelauncher，按平台校验 DRM 前提（Steam/Epic 客户端必须在运行），直启 2 秒探测失败自动回退官方启动器，已在运行则不双开 |
-| 卡片错误边界 | 完成；单卡渲染异常只坏一格，显示 `// ERROR: DATA CORRUPTED` 与 mod_id；**另有最外层 `AppErrorBoundary`**，未捕获渲染错误显示可重试面板而不是白屏 |
-| NXM 协议接管 | 完成；设置页一键接管 `nxm://`（先备份 Vortex 命令行、可一键交还），N 网点「Mod manager download」直接进接收队列，Premium 可自动下载并走现有导入链路；**已在本机与真实 Vortex 做过接管→shell 直通→交还逐字还原的往返** |
-| 状态文件恢复提示 | 完成；状态文件解析失败时原文件改名为 `launcher-state.broken-<ts>.json` 保留，界面顶部出现 `STATE RECOVERY` 红条说明原件路径与「恢复前别动」，不再静默变空库 |
-| 核心测试 | **96 项通过**（`core-tests` 里 `cargo test` 全绿：含 game 14 项、nxm 9 项、状态恢复 2 项；另有 `probe_repeat` 1 项） |
-| 合入门禁 | 完成；`node scripts/gate.mjs` 一条命令跑 cargo test + `tsc --noEmit` + `vite build` + 9 个单点验收脚本，**真断言、非零退出**，报告落 `shots/gate/report.json` |
-| 无窗口自检 | 完成；`exe --self-check out.json` 输出提权状态/数据目录/状态往返/DPAPI 可解密性/游戏目录/nxm 归属，配套 `scripts/check-elevation.ps1` 做普通 vs 提权对照；另有 `--nxm-takeover` / `--nxm-release` 两个免界面修复入口 |
+| 模块                                       | 状态                                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 模组库 / 分类 / 搜索 / 虚拟滚动                     | 完成                                                                                                                                                                  |
+| ZIP / 7z / RAR 导入                        | 完成；ZIP、7z 纯 Rust，RAR 依赖本机 7-Zip/WinRAR                                                                                                                              |
+| 暂存区与部署分离                                 | 完成；禁用只撤链接，卸载才删暂存                                                                                                                                                    |
+| 硬链接部署 + 跨盘回退                             | 完成；硬链接 → 符号链接 → 复制，部署失败整批回滚                                                                                                                                         |
+| 冲突预判中心                                   | 完成；已启用冲突 + 暂存模组「启用后会冲突」                                                                                                                                             |
+| 加载顺序 / `modlist.txt`                     | 完成；`.xl` 跟随所属 archive，不独立排序                                                                                                                                         |
+| 主题与缩放                                    | 完成；**6 套主题**（NCPD / Netrunner / Arasaka / Militech / Mono / Daylight）、自定义强调色、90/100/110% 缩放、侧栏折叠                                                                    |
+| 主题形态差异                                   | 完成；每套主题有独立按钮轮廓、标题装饰、导航标记、面板走线与封面配色，不只是换色                                                                                                                            |
+| 硬件视觉层                                    | 完成；切角、工业噪点/网格、红黑警告带、虚线接收面板                                                                                                                                          |
+| 任务中心 / 命令面板 / 防误触                        | 完成                                                                                                                                                                  |
+| 界面文案                                     | 完成；0.8.0-r7 全局去 AI 味（105 处）+ **0.8.0-r10 按《UI 文案编写规范》整改 66 条**（敬语 13 / 免责 4 / 按钮 ≤4 字 47 / 去主语 1 / 引用同步 1）；文案现全部在 `src/i18n/zh-CN.ts`，改文案只改词表                       |
+| Mod Settings（CET `user.ini`）             | 完成；行级修改、`.bak`、恢复                                                                                                                                                   |
+| 多框架配置解析                                  | 完成；A 类绑定 Mod（Mod Settings INI / Native Interactions JSON），B 类全局（RED4ext TOML / CET JSON / AudioXL INI），C 类不生成表单                                                     |
+| 日志查看器                                    | 完成；末尾读取、级别过滤、错误前后 5 行提取                                                                                                                                             |
+| Nexus 发现 / Premium 下载                    | 完成；需要用户自己的 API Key                                                                                                                                                  |
+| Nexus 官方封面                               | 完成；下载时缓存 `picture_url`，卡片优先渲染官方图，失败回退生成封面；设置页可批量补全已有条目                                                                                                              |
+| AI 诊断                                    | 完成；兼容任何标准 OpenAI 协议端点（OpenAI 优先的预设清单 + 「联网获取模型列表」实时拉取 `/v1/models` + 弃用模型名提示），界面口径为协议层（徽标「OPENAI 兼容」），逐次同意、脱敏、固定 `focus` 白名单                                        |
+| WolvenKit 深度扫描                           | 完成；CLI 路径可手填，**留空自动检测**（`%USERPROFILE%\.dotnet\tools` → PATH），超时可配 10–600 秒默认 60                                                                                    |
+| Mod 名 AI 翻译                              | 完成；框架名黑名单免翻译、原名不被覆盖、只写 `translated_name`                                                                                                                            |
+| RED4ext / CET / redscript / ArchiveXL 诊断 | 完成，基于本地文件规则                                                                                                                                                         |
+| 整合包导入                                    | 完成；多 Mod 拆包、包内 `modlist.txt` 转推荐顺序                                                                                                                                  |
+| 播放集（Profile）                             | 完成；快照 → 撤销 → 写状态 → 部署 四段切换，避免锁重入死锁                                                                                                                                  |
+| 右键菜单 / 打开文件夹 / 修复                        | 完成；`open_in_explorer` 做路径白名单校验，`repair_mod` 先撤后装                                                                                                                    |
+| 游戏更新熔断                                   | 完成；`lastGameVersion` 对比，锁定部署入口，顶栏横幅解除                                                                                                                               |
+| 环境体检与自愈                                  | 完成；`deployedFiles` 记 size/mtime，`diagnose_environment` + `heal_environment`                                                                                         |
+| 多平台嗅探                                    | 完成；Steam 注册表 + `libraryfolders.vdf`、GOG 注册表、Epic `LauncherInstalled.dat`，可限定优先平台                                                                                    |
+| 启动链路（直启）                                 | 完成；`auto` 优先直跑 `bin\x64\Cyberpunk2077.exe` 跳过 REDprelauncher，按平台校验 DRM 前提（Steam/Epic 客户端必须在运行），直启 2 秒探测失败自动回退官方启动器，已在运行则不双开                                         |
+| 卡片错误边界                                   | 完成；单卡渲染异常只坏一格，显示 `// ERROR: DATA CORRUPTED` 与 mod_id；**另有最外层 `AppErrorBoundary`**，未捕获渲染错误显示可重试面板而不是白屏                                                               |
+| NXM 协议接管                                 | 完成；设置页一键接管 `nxm://`（先备份 Vortex 命令行、可一键交还），N 网点「Mod manager download」直接进接收队列，Premium 可自动下载并走现有导入链路；**已在本机与真实 Vortex 做过接管→shell 直通→交还逐字还原的往返**                        |
+| 状态文件恢复提示                                 | 完成；状态文件解析失败时原文件改名为 `launcher-state.broken-<ts>.json` 保留，界面顶部出现 `STATE RECOVERY` 红条说明原件路径与「恢复前别动」，不再静默变空库                                                            |
+| 核心测试                                     | **424 项通过**（`cargo test --lib`：424 passed / 0 failed / 2 ignored，1.9.0 实测；本行原记 0.9.0 期的 96 项，仅作历史对照）                                                                       |
+| 合入门禁                                     | 完成；`node scripts/gate.mjs` 一条命令跑 cargo test + `tsc --noEmit` + `vite build` + 9 个单点验收脚本，**真断言、非零退出**，报告落 `shots/gate/report.json`                                   |
+| 无窗口自检                                    | 完成；`exe --self-check out.json` 输出提权状态/数据目录/状态往返/DPAPI 可解密性/游戏目录/nxm 归属，配套 `scripts/check-elevation.ps1` 做普通 vs 提权对照；另有 `--nxm-takeover` / `--nxm-release` 两个免界面修复入口 |
 
 ### 0.7.1 批量升级（2026-10-25 · UI 审计 13 条意见 + Nexus 差距 7 项功能，全部落地）
 
 **UI 审计（报告：工作区 `CyberDeck-Launcher-UI评估与功能差距报告.md`）**
 
-| 项 | 内容 |
-|---|---|
-| A1 | 阅读型文本字号提升（page-sub/empty/confirm/drawer 等段落 12–12.5px；卡片内部不动，行高 328 保持） |
-| A2/A3/A4/D1/D3 | 批次1已完成（行高 1.6、warning 对比、中文回退、`--mono` 回退、主题缩略图脚本 `scripts/make-theme-thumbs.ps1`） |
-| B1 | 侧栏徽标推广：加载顺序/诊断=冲突数，发现=Nexus 未连接「!」，设置=游戏目录未链接「1」 |
-| B2 | 搜索框全局语义 placeholder + Ctrl+K 面板按钮（批次1已有按钮） |
-| B3 | 空状态动态引导：未绑游戏目录→「先绑定游戏目录」主按钮；已绑定→「导入第一个模组 / 去发现页看看」 |
-| B4 | 播放集切换确认卡：撤除/部署差量预览 + 三段步骤指示器（撤除→部署→刷新，无后端事件按耗时映射） |
-| C1 | 活动流：最近 10 条「时间+动作+文件数」，复用 TaskItem 结构（`lib/tasks.ts` ActivityItem），任务中心常驻降级视图 |
-| C2 | 全窗口拖拽导入落点层（Tauri `onDragDropEvent` + `.drop-overlay`），并清掉了重复监听 |
-| C3 | 虚拟网格按 `分类:排序` 锚点记忆/恢复滚动位置（去掉 key 重挂载） |
-| E1 | 按视图拆包：Nexus/诊断/设置/ModSettings 懒加载；主 bundle 457KB（<500K 警告线）；TitleBar 改静态导入消警告 |
-| E2 | styles.css 分层：`styles/tokens.css`（全部 `:root` 变量块，13 组）+ `styles.css`（组件层）+ `styles/index.css` 入口，级联顺序不变 |
-| E3 | mock 漂移防护：`api.ts` 导出 `ApiSurface = typeof api`，`mock.ts` 末尾编译期断言（当场抓到 mock 缺 `isDemo`） |
+| 项              | 内容                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| A1             | 阅读型文本字号提升（page-sub/empty/confirm/drawer 等段落 12–12.5px；卡片内部不动，行高 328 保持）                                 |
+| A2/A3/A4/D1/D3 | 批次1已完成（行高 1.6、warning 对比、中文回退、`--mono` 回退、主题缩略图脚本 `scripts/make-theme-thumbs.ps1`）                      |
+| B1             | 侧栏徽标推广：加载顺序/诊断=冲突数，发现=Nexus 未连接「!」，设置=游戏目录未链接「1」                                                        |
+| B2             | 搜索框全局语义 placeholder + Ctrl+K 面板按钮（批次1已有按钮）                                                              |
+| B3             | 空状态动态引导：未绑游戏目录→「先绑定游戏目录」主按钮；已绑定→「导入第一个模组 / 去发现页看看」                                                      |
+| B4             | 播放集切换确认卡：撤除/部署差量预览 + 三段步骤指示器（撤除→部署→刷新，无后端事件按耗时映射）                                                       |
+| C1             | 活动流：最近 10 条「时间+动作+文件数」，复用 TaskItem 结构（`lib/tasks.ts` ActivityItem），任务中心常驻降级视图                           |
+| C2             | 全窗口拖拽导入落点层（Tauri `onDragDropEvent` + `.drop-overlay`），并清掉了重复监听                                          |
+| C3             | 虚拟网格按 `分类:排序` 锚点记忆/恢复滚动位置（去掉 key 重挂载）                                                                   |
+| E1             | 按视图拆包：Nexus/诊断/设置/ModSettings 懒加载；主 bundle 457KB（<500K 警告线）；TitleBar 改静态导入消警告                           |
+| E2             | styles.css 分层：`styles/tokens.css`（全部 `:root` 变量块，13 组）+ `styles.css`（组件层）+ `styles/index.css` 入口，级联顺序不变 |
+| E3             | mock 漂移防护：`api.ts` 导出 `ApiSurface = typeof api`，`mock.ts` 末尾编译期断言（当场抓到 mock 缺 `isDemo`）                 |
 
 **Nexus 差距功能（报告第二部分 #1–#7）**
 
-| # | 内容 | 落点 |
-|---|---|---|
+| # | 内容                                                                                                                            | 落点                                                         |
+| - | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | 1 | 更新检查：`nexus_check_updates`（每模组 1 请求、250ms 节流、上限 40，比对 `NexusRef.version`，无版本号跳过不误报）；卡片 UPD 徽标 + 抽屉「打开下载页」+ 库页「检查更新」按钮。只发现不自动装 | `nexus.rs` `schema.rs` `lib.rs` ModCard/Drawer/LibraryView |
-| 2 | 集合报告：导入完成对话框对照现有库出「同名重复 / 目标重叠」提示（plannedFiles+deployedFiles 占用表） | `ImportDialog.tsx` |
-| 3 | 前置引导闭环：诊断页缺失框架卡加「官方发布页」按钮（7 个框架 URL 表，走 `open_url`，不代下载） | `DiagnosticsView.tsx` |
-| 4 | 依赖结构化列表：抽屉前置区升级为「推断前置 + 已安装/缺失状态」，缺失才有「去获取」；明确标注是推断不是作者依赖图 | `ModDetailDrawer.tsx` |
-| 5 | External Changes 沟通：未受管 archive 提升到诊断摘要第一屏，强调「永不会自动删除或覆盖」 | `DiagnosticsView.tsx` |
-| 6 | 启动参数：Settings `launchArgs`（`parse_launch_args` 白名单：字母数字+`-_=+.,:/\@%`，≤256 字符、引号分词、逐参传递不经 shell），设置页输入框 | `schema.rs` `game.rs` `lib.rs` SettingsView |
-| 7 | 通知中心：顶栏铃铛（活动流 12 条 + 更新数徽标），与任务中心同一数据源 | `TopBar.tsx` |
+| 2 | 集合报告：导入完成对话框对照现有库出「同名重复 / 目标重叠」提示（plannedFiles+deployedFiles 占用表）                                                             | `ImportDialog.tsx`                                         |
+| 3 | 前置引导闭环：诊断页缺失框架卡加「官方发布页」按钮（7 个框架 URL 表，走 `open_url`，不代下载）                                                                      | `DiagnosticsView.tsx`                                      |
+| 4 | 依赖结构化列表：抽屉前置区升级为「推断前置 + 已安装/缺失状态」，缺失才有「去获取」；明确标注是推断不是作者依赖图                                                                    | `ModDetailDrawer.tsx`                                      |
+| 5 | External Changes 沟通：未受管 archive 提升到诊断摘要第一屏，强调「永不会自动删除或覆盖」                                                                     | `DiagnosticsView.tsx`                                      |
+| 6 | 启动参数：Settings `launchArgs`（`parse_launch_args` 白名单：字母数字+`-_=+.,:/\@%`，≤256 字符、引号分词、逐参传递不经 shell），设置页输入框                       | `schema.rs` `game.rs` `lib.rs` SettingsView                |
+| 7 | 通知中心：顶栏铃铛（活动流 12 条 + 更新数徽标），与任务中心同一数据源                                                                                        | `TopBar.tsx`                                               |
 
 ### 0.7.0-r2 热修复（2026-10-26 凌晨 · 版本号未变，exe 已重新构建部署）
 
 **复盘全文**：`docs/PROJECT_HISTORY.md#incident-low-integrity`（最终定案）+ `docs/PROJECT_HISTORY.md#incident-webview-datadir`（误判过程记录）。
 
 **总根因（最终结论）：exe 所在目录带了 Low 完整性标签**
+
 - `D:\用户\工作区` 从旧电脑搬来时携带 `Mandatory Label\Low Mandatory Level:(OI)(CI)` 与孤儿 SID `S-1-4-…`；
 - 目录的 Low 标签向下继承到 exe，**并否决进程令牌** → 进程以 Low IL 运行（日志 `integrity=0x1000`）；
 - Low 进程写不了 Medium 目录（`%APPDATA%` os error 5 → 静默回退 → 双数据目录 → API Key「消失」），子进程继承 Low 令牌（`explorer.exe` 0xc0000142、`msedge --single-argument` 卡死无窗口）。
 - 修复：`icacls "D:\用户\工作区" /setintegritylevel "(OI)(CI)Medium"`；存量 release 目录改为「旧目录改名 `-old` 备份 + 新建同名目录 + 复制 exe/dll + 移动 cyberdeck-data」，新对象自动继承 Medium。验证：exe 标签 Medium，日志 `integrity=0x2000`，跳转恢复。
 
 **代码侧保留的改动（有效且有价值）**
+
 - `open_url`：一律经 `explorer.exe`（绝对路径、不加 `CREATE_NO_WINDOW`）转交外链，失败回退 ShellExecute；每次调用写 `startup.log`。
 - `Cargo.toml`：`open = { version = "5", features = ["shellexecute-on-windows"] }`（open 5.4 默认 launcher 链会假成功）。
 - `resolve_data_dir()`：exe 同级 `cyberdeck-data` 优先 → 可写探测通过的 `%APPDATA%` → exe 同级；`migrate_other_data()` 只补齐不覆盖。
@@ -380,6 +388,7 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 ### 0.8.0-r1（2026-10-26 · 品牌改名 + 主题解耦 + 设置页 Tabs + Nexus Collections）
 
 **一、品牌更名（NightCity Loader → CyberDeck Launcher / CDL）**
+
 - `package.json` name=`cyberdeck-launcher`；`Cargo.toml` name=`cyberdeck-launcher`、lib=`cyberdeck_launcher_lib`；`tauri.conf.json` productName=`CyberDeck Launcher`、**identifier=`com.arol.cyberdeck`**（发布后不再改）。
 - 数据目录整体迁移：exe 同级 `nightcity-data` → `cyberdeck-data`；`%APPDATA%\com.nightcity.loader` → `com.arol.cyberdeck`；`launcher-state.json` 内所有旧路径已同步改写（195 个模组、加载顺序、密钥全部保留）。
 - 源码目录 → `D://用户//工作区//src`；发布目录 → `D://用户//工作区//release`。（2026-10-28 由 `CyberDeck-Launcher-src-0.7.0` / `CyberDeck-Launcher-0.7.0-release` 重命名而来）
@@ -387,6 +396,7 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 - ⚠️ **目录改名会打断 pnpm 依赖**：pnpm 的 node_modules 软链是绝对路径，改名后全部悬空。处理办法：`rm -rf node_modules && pnpm install --offline` 重建（本次已验证）。
 
 **二、主题系统解耦（styleTheme × colorMode）**
+
 - 新增 `src/lib/theme.ts`：`useTheme()` 返回 `{ styleTheme, colorMode, resolvedMode, modeCapable, setStyleTheme, setColorMode }`；写 `documentElement.dataset.style / dataset.mode / dataset.modeCapable`。
 - 风格：ncpd / netrunner / arasaka / militech / mono / **modern（新增）**；**daylight 已删除**（迁移映射为 modern+light）。
 - 明暗：仅 **mono 与 modern** 可切 light/dark/system；其余强制暗色。system 用 `matchMedia('(prefers-color-scheme: dark)')` 实时监听。
@@ -394,10 +404,12 @@ CyberDeck Launcher 是一个只服务《赛博朋克 2077》的轻量 Mod 启动
 - 切换过渡：仅在切换瞬间挂 `data-theme-transition`（300ms），避免常驻 transition 拖慢滚动。首屏防闪脚本已支持新键 `ncl.ui.theme.v2` 并保留旧 `data-theme` 供赛博主题 CSS 使用。
 
 **三、设置页改为顶部水平 Tabs**
+
 - 六个 Tab：外观与主题 / 游戏与路径 / AI 配置 / 工具组件 / 安全与维护 / 关于；内容区独立滚动（`overflow-y: auto`），切 Tab 时滚动条回顶，**用隐藏/显示而非卸载**（避免未保存输入丢失）。
 - 新增 `src/components/SettingsTabs.tsx`；赛博主题用发光下划线，modern 用扁平灰底高亮。
 
 **四、Nexus Collections（废弃本地大 ZIP 整合包）**
+
 - 删除 `modpack.rs` 的递归扫描/剥嵌套/批量注册逻辑与 `import_modpack` 命令、前端「导入整合包」入口、`ModpackProgress`/`ImportedPack` 类型；**单 ZIP 导入（installer::install_archive）完整保留**。
 - 新增 `src-tauri/src/collection.rs`：`NexusCollectionManifest` / `CollectionInfo` / `CollectionMod` / `CollectionRule` / `CollectionPlan` / `CollectionPlanItem` / `CollectionDeployReport`。
 - 命令：`parse_collection_manifest(path)` → CollectionPlan（校验 domain=cyberpunk2077、按 modId→fileId 匹配本地、status=installed/version_mismatch/missing）；`apply_collection_order(ids)` → 按清单顺序重写 modlist.txt 并部署。
@@ -433,26 +445,31 @@ AI 接入早已改成「任何兼容 OpenAI 协议的端点」，但界面还留
 > 交付物：exe 9,115,136 B / md5 `88c8605d4f80710c001f7a540a74e650`（release 已替换，r34 备份 `.prev.exe`）；便携版 `发布产物\CyberDeck Launcher 0.9.0 便携版-r35.zip`（4,173,061 B）。门禁 26/26（`GATE_PORT=1427`）。
 
 **A. 存档管理页滚不动（新增页面漏登记滚动容器）**
+
 - 现象：存档管理页内容超出一屏，鼠标滚轮 / 触控板都没反应，页面底部被切掉。
 - 真因：滚动不是 `.page` 的默认行为。`.page { height:100% }` 而外层 `.content { overflow:hidden }`，只有被单独列进 `.loadorder-page, .diagnostics-page, .settings-page { overflow-y:auto }` 的页面才能滚。新增存档页时类名不同（`.saves-page`），没进这条规则 → 页面上根本没有滚动容器，不是滚轮失灵。
 - 修法：`.saves-page` 并入同一规则，附 `scrollbar-gutter: stable` + `overscroll-behavior: contain`。
 - **通用规则**：以后新增任何「纵向堆叠 panel、可能超一屏」的页面，必须同时改两处——`styles.css` 的这条规则、`scripts/check-layout-scroll.mjs` 的 `VISITS`。漏一处就是整页不可滚。
 
 **B. 切页文字横跳（滚动条占位不一致）**
+
 - 可滚页面（加载顺序 / 运行诊断 / 存档管理 / 发现）出现滚动条时占掉约 9px 内容宽度，`overflow:hidden` 的页面（模组库 / 设置）不占。切页时 `.page` 的 `clientWidth` 差 9px，视觉上是「文字横向飘一下」。
 - 修法：`.page` 统一 `scrollbar-gutter: stable`。实测各页 `clientWidth` 差值 9 → 0。
 
 **C. 文本行盒比字号还矮（中文上下沿被裁 / 换字体后浮动）**
+
 - 涉及：`.page-head h1` `line-height: 0.98`（33px 字号 / 32.34px 行盒）、`.nav-label` 与 `.nav-en` 未设行高被祖先 `line-height: 1` 压成「行盒=字号」、`.settings-tab` / `.env-metrics strong` / `.appearance-section-index` / logo 两处均为 `1`。
 - 为什么算「飘」：中文是满格字形，行盒不留余量时上下沿被切一丝；再叠加 T8 自定义字体（ascent/descent 与默认栈不同），同一组件在不同字体下视觉重心上下浮动 1~2px。
 - 修法：统一提到 1.12~1.35（见 CHANGELOG 明细），修正后 `tightText=0`。
 
 **D. 新增门禁**
+
 - `scripts/check-layout-scroll.mjs`：1280×800 遍历 5 页 → `stuck`（长内容滚不动）/ `tightText`（行高 < 字号×1.1）/ `widthSpread`（各页 clientWidth 差）三项必须为 0，`savesCanScroll` 必须为 1。
 - `check-window-drag.mjs` 正式进 `gate.mjs`；脚本成功时也必须输出 `checks_failed=0`（只打印 `ALL PASS` 会被门禁判成 key 缺失）。
 - 结论：UI 门禁 **26/26 全绿**（`GATE_PORT=1427`）。
 
 **E. 未验证边界**
+
 - 自动化能证明「页面能滚、行盒不裁字、各页宽度一致」，**不能判定「某个具体控件的文字位置偏了」这种主观观感**。已用 1600×1050 与 1280×800 逐页截图核对 7 个页面，未发现残留错位；若用户仍看到，需要具体页面 + 元素名才能定位。
 
 ---
@@ -460,6 +477,7 @@ AI 接入早已改成「任何兼容 OpenAI 协议的端点」，但界面还留
 ### 0.9.0-r34（2026-10-31 · 暂存恢复 + 触屏拖动 + T5 AI 汉化 + T6 AI 补丁，**已构建部署 + 便携版**）
 
 **A. 取消部署后无法再部署（真实 bug，根因与修法）**
+
 - 现象：撤除某个收编模组后再启用，报「暂存文件不见了」。
 - 真因：`Store::load()` 会在 `stagingDir` 失效时回落到 `data_dir/staging`，但**每条 Mod 的 `staging_path` 仍是旧绝对路径**；撤除时 `undeploy_mod` 又清空了 `deployed_files`，于是「路径失效 + 清单清空」双重断链，没有任何重建依据。
 - 修法：`installer.rs` 新增 `recover_staging()`——只按**原部署清单**恢复：目标文件必须仍存在、`size` 与 `modified_time` 必须与部署时一致、旧 source 必须落在该条目旧的 staging 根下；重建一律 `fs::copy`（不硬链回游戏文件），成功后重写 `staging_path` 与每条 `source`、`link_type=Copy`，再用 `plan_for()` 对齐清单，不一致就整体回退删目录。
@@ -468,21 +486,25 @@ AI 接入早已改成「任何兼容 OpenAI 协议的端点」，但界面还留
 - 回归：`adopt_tests.rs` 新增 3 条（断链→撤除→再部署、启用态原地修复、文件被改后拒绝）。
 
 **B. 触屏/手写笔不能拖动窗口**
+
 - `windowDrag.ts` 增 `beginWindowPointerDrag()`：`pointerType === "mouse"` 直接返回（避免与既有鼠标路径重复触发）、`preventDefault()` 阻断兼容鼠标事件、`INTERACTIVE` 选择器排除按钮/输入框；`.titlebar` / `.topbar` 加 `touch-action: none`。鼠标拖动与双击最大化保持原路径。`check-window-drag.mjs` 8 项断言纳入门禁。
 - ⚠️ **本条已被 r41 推翻**：JS 拖动通路与 `data-tauri-drag-region` 并存，同一次 `mousedown` 会各调一次 `start_dragging`，拖动时出现跟着鼠标跑的花白残影。r41 起 `windowDrag.ts` 整个删除，只留 `data-tauri-drag-region="deep"` / `"false"` 走 Tauri 原生路径（Tauri 2.12.5 的 `deep` 已覆盖「点在文字上」的场景），并给两条顶部栏补 `user-select: none` 消除选区白斑。详见 CHANGELOG `0.9.0-r41`。
 
 **C. T5 AI 汉化（`ailoc.rs`，新增）**
+
 - 流程：`ai_loc_plan`（只读，不联网）→ `ai_loc_apply`（词表命中优先 → 未命中走 `ai::translate_locale_strings` 真实 AI）→ 生成 WolvenKit 格式 JSON + `<id>-ai-loc.archive.xl` → **WolvenKit CLI 打包 `.archive`** → 只新增 `archive/pc/mod/<id>-ai-loc.archive(.xl)` → 登记 `ModEntry.ai_loc` → `ai_loc_revert` 按清单撕除。
 - 硬约束：原 Mod 目录只读；目标已存在则 `AI_LOC_TARGET_EXISTS` 不覆盖；撤销时大小或时间不符则跳过删除；作者意愿 `denied` 直接 `AI_LOC_POLICY_DENIED`（无强制继续入口），`uncertain` 需额外勾选。
 - 关键事实（外网核对）：ArchiveXL 的 `localization.onscreens` 只能指向**归档内部**路径，所以没有 WolvenKit 就**不可能**产出能生效的覆盖层——缺 CLI 时返回 `AI_LOC_WOLVENKIT_REQUIRED` 并保留 staging，不部署。
 - 单测 8 条：作者意愿三态、onscreens/扁平 JSON 解析、已中文跳过、YAML 反斜杠路径、补丁结构校验（含字符串内花括号）。
 
 **D. T6 AI 补丁（`aifix.rs`，新增）**
+
 - `ai_fix_propose`：收集最多 8 个 `.reds`、12k 字符上下文 + 用户意图 → `ai::propose_redscript_patch` → G1 结构校验（必须 `module` 开头、必须 `@wrapMethod/@replaceMethod`、括号配平、`FileSystem/Http/Process/Exec/import` 黑名单、≤400 行）。
 - `ai_fix_apply`：二次校验 + 确认位 → 写 `r6/scripts/cyberdeck-ai-fix/<safe_id>-AIFix.reds` → 登记 `ModEntry.ai_fix` → `ai_fix_revert` 单独撤销。
 - 明确边界：**未接编译校验**，报告 `compiled:false` 并提示看 REDscript 日志；不修改任何作者脚本。
 
 **E. 门禁与产物**
+
 - UI 脚本 35 个 / 47 处硬编码 `http://localhost:1420` 改为跟随 `GATE_PORT`；侧栏断言更新为 5 项（含「存档管理」）。门禁 24/24 全绿。
 - exe 9,115,136 B / md5 `96aeb0e90c1c28b124fae5d40eb7f4ff`；便携版 `CyberDeck Launcher 0.9.0 便携版-r34.zip`（包名已按要求去掉「可直接发人」后缀）。
 
@@ -491,21 +513,25 @@ AI 接入早已改成「任何兼容 OpenAI 协议的端点」，但界面还留
 覆盖 `deepseek_markdown_20261030_55c158.md` 与 `deepseek_markdown_20261030_bf7889.md` 两份报告的全部 P0/P1/P2 可落项，外加 27 号遗留任务 T3/T4：
 
 **A. 依赖检查系统（新子系统）**
+
 - `src-tauri/src/deps.rs`（新，~700 行）：`FILE_RULES`（.xl/.xlp→archivexl、.reds→redscript、.tweak→tweakxl、init.lua→cet）+ `CORE_FILES` + `ALIASES`；`parse_declared()` 兼容 `dependencies/requirements/requires`、数组/对象/Vortex `{mod:[{name}]}` 三种形态；`version_satisfies()`；三态 `healthy / missing / versionMismatch`。**守卫：未知框架不判缺失**（`is_known_framework`），防止把自定义依赖报成红色。
 - `diagnostics.rs` 挂 `dependencies` 字段 + `deps-missing` / `deps-version` 两条 issue；`DiagnosticsView` 新增「依赖检查」面板（chips + 去获取 + 忽略/恢复）；卡片缺依赖徽标 + 启用拦截（localStorage 忽略表 `ncl.ui.depIgnores.v1`）。
 - 大小写不敏感探测升级为**两档**：`eq_ignore_ascii_case` → `squash()`（去 `_ - . 空格` 后比较），`cyber_engine_tweaks` / `CyberEngineTweaks` / `Cyber Engine Tweaks` 互认。
 
 **B. 汉化包挂载（schema 变更，已用真实 195 条状态验证）**
+
 - `ModEntry` 增 `is_translation: bool` + `parent_mod_id: Option<String>`（`#[serde(default)]`，老状态文件零迁移成本）；`store.rs` 新增 `#[ignore] real_state_parses()` 实测真实数据解析通过。
 - `translation.rs`（新）：`looks_like_translation()`（长词包含 + 短词词边界，防 "translator" 误命中）、非文本资源警告（`.wav/.atlas` 等不判文本缺失）。
 - 安装/收编流程自动识别并弹绑定（`TranslationBindDialog`，候选带相似度与命中原因，默认「作为独立 Mod」）；**父子同名不算冲突**（`installer.rs` 两处豁免）；启用/禁用/卸载级联（App.tsx）。命令 `set_translation_parent`（防自绑、防环 16 跳）。
 
 **C. 55c158 报告**
+
 - P0 CET 探测：`game.rs` 改三候选 dll → init.lua → 目录兜底；`resolve_ci` 两档匹配（同 A）。
 - P0 收编后警告不消失：收编完成回调 `loadDiagnostics()`。
 - P1 顶部重复游戏胶囊删除；DPAPI 硬编码文案改词条（`aiSettings.storageDpapi/storageEmpty`）。
 
 **D. bf7889 报告**
+
 - P0 最大化图标：`TitleBar` 改 `onResized` + 120ms 防抖 + 初始态查询，最大化时显示向下还原（`Copy` 图标）。
 - P0 进程联动：后端 `game_process_running`（tasklist 5s 轮询）+ `stop_game`（温和 taskkill → 2s 轮询 → `/F`）；顶栏运行中显示红色「关闭游戏」。
 - P0 版本号社区化映射：`gameVersion.ts` `VERSION_MAP`（exe 3.0.80.51928 → 显示 2.5），原始号进 tooltip（`sidebar.gameVersionRaw`）。
@@ -579,7 +605,9 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 ### 0.9.0-r25（2026-10-29 23:10 → 23:25 · 侧栏纵向布局收口，**已随 23:47 构建部署**）
 
-- **现象 → 真因**：用户看到「侧栏只有三项」。三项没丢（`PRIMARY_NAV` 4 项 + `AUX_NAV` 2 项，门禁有断言），丢的是可视高度——中间 `.sidebar-scroll` 被上下固定块夹到 100 多 px。
+- **现象 → 真因**：用户看到「侧栏只有三项」。三项没丢（`PRIMARY_NAV` 4 项 + `AUX_NAV` 2 项，门禁有断言），丢的是可视高度——中间 `.sidebar-scroll` 被上下固定块夹到 100 多 px。  
+  |  |  |  |  
+  | --- | --- | --- |
 - **真因是缩放口径错位**：`body { zoom: var(--ui-scale) }` 等比放大界面，**媒体查询量不到 zoom**。1280×800 在 110% 下实际可用高度 ≈727 CSS px，`@media (max-height:…)` 仍按 800 判，永远差一档。→ 新增 `src/lib/viewportTier.ts`：按 `innerHeight ÷ scale` 分 `full/compact/tight/mini`，写 `:root[data-vh-compact|tight|mini]`，CSS 按档位逐级让位（STAGING → logo 副标题/游戏路径 → 版本号行）。
 - **滚动条可见化**：`.sidebar-scroll` 显式 6px 轨道 + 强调色滑块，`scrollbar-gutter: stable`（滚动条出现不挤动菜单）。此前用系统默认细条 ≈2px，滚得动但看不见。
 - **折叠**：`.sidebar` 加 `width/flex-basis/padding` 180ms 过渡，`data-motion="off"` 时瞬时（尊重用户动效开关）；补 `data-collapsed` / `aria-expanded`。状态仍在 `preferences.sidebarCollapsed`。
@@ -672,6 +700,9 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 ### 0.8.0-r15（2026-10-28 深夜 · 浅色对比度 + 抽屉专属配置 + 动效试点，已随 r18 构建发布）
 
+|   |   |
+| - | - |
+
 - **浅色对比度（P0，根因修复）**：新增 `--accent-text` 令牌族（`--accent-text` / `-rgb` / `-hover`）。全站 79 处 `color: var(--yellow|--accent)` + 2 处 rgba 文字色迁过去；强调色当填充仍走 `--accent`。Modern 浅色 `#1e40af`（8.7:1）、mono 浅色 `#1a1a1a`、深色主题不变。自定义强调色在 preferences.ts 做 WCAG 钳制：浅色文字 ≥7:1、深色 ≥4.5:1，切换明暗自动重算。浅色下 `.eyebrow/.panel-eyebrow/.page-sub` 的 opacity 压暗取消（会把对比度打到 3.8~5.6），`--muted-2` 加深。验证：`scripts/check-contrast.mjs` 26 项（含「自定义亮黄 + 浅色」复现场景）。
 - **Mod 设置收进抽屉**：`ModSettingsView.tsx` 已删除；侧栏/命令面板/App 分支摘除，命令面板原位换「下载中心」。新增 `ModSettingsPanel.tsx`（抽屉内折叠面板，打开即按 modId 加载；空状态「该 Mod 无独立配置项」/「未检测到配置文件」平静显示；保存只提交当前模组动过的字段）。
 - **后端多框架解析**：`config_resolver::resolve_for_mod` 五类来源按优先级：user.ini（RED4ext 优先）→ 模组目录 config/settings json（部署清单反查路径）→ nativeInteractions（只读）→ AudioXL ini → CET 全局 config.json（只读兜底，仅 has_cet 且无自有配置）。纯内容层仍返回空。
@@ -744,69 +775,71 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 **计划【1】：把回归测试变成门禁，并修掉门禁暴露的缺陷。**
 
-- **统一门禁** `scripts/gate.mjs`：cargo test → `tsc --noEmit` → `vite build` → 9 个单点脚本，
-  自动起/停预览服务，按脚本 stdout 的 `key=value` 断言（支持 `a<b`、`a!=b` 这类 key 间比较），
+- **统一门禁** `scripts/gate.mjs`：cargo test → `tsc --noEmit` → `vite build` → 9 个单点脚本，  
+  自动起/停预览服务，按脚本 stdout 的 `key=value` 断言（支持 `a<b`、`a!=b` 这类 key 间比较），  
   失败非零退出并写 `shots/gate/report.json`。`--skip-ui` 供无浏览器环境用。
 - **门禁第一次跑就抓到 4 个真问题**（全部已修）：
   1. `adopt_tests.rs` 4 处直接读 `Store.staging_dir` 私有字段 → **`cargo test` 根本编译不过**；
   2. 文档里写的 `check-scroll.mjs` **文件不存在**，所谓"6 个脚本"实际跑不全；
-  3. 设置页改成 Tabs 后，`check-platform.mjs` 与 `check-profiles.mjs` 的选择器全失效
-     （chip 在 `display:none` 的未激活标签页里、播放集面板已挪到「工具组件」）；
+  3. 设置页改成 Tabs 后，`check-platform.mjs` 与 `check-profiles.mjs` 的选择器全失效  
+     （chip 在 `display:none` 的未激活标签页里、播放集面板已挪到「工具组件」）；  
+     |  |  |  
+     | --- | --- |
   4. 播放集确认按钮文案是「开始切换」，脚本按 `/^(切换|确认)/` 匹配，永远超时。
-- **P0：脏数据白屏**。注入一条 `translatedName: 12345` 的模组后 `#root` 子节点数为 0：
-  `LibraryView` 的排序里 `(x ?? "").trim()` 抛异常，抛点在卡片之外，卡片错误边界接不住，
+- **P0：脏数据白屏**。注入一条 `translatedName: 12345` 的模组后 `#root` 子节点数为 0：  
+  `LibraryView` 的排序里 `(x ?? "").trim()` 抛异常，抛点在卡片之外，卡片错误边界接不住，  
   React 把整棵树卸载。修法两层：
-  - `src/lib/normalize.ts`：**状态入口**统一降级（字符串/布尔/数字/数组 + Settings），
+  - `src/lib/normalize.ts`：**状态入口**统一降级（字符串/布尔/数字/数组 + Settings），  
     在 `api.bootstrap()` 里对 Tauri 与 mock 两条路都生效——不再指望每个组件自己防御；
   - `src/components/AppErrorBoundary.tsx`：最外层兜底，真崩了给「重新加载 + 复制错误」面板。
-- **提权 / DPAPI 回归可脚本化**：新增 `--self-check <out.json>`（`selfcheck.rs`）与
-  `scripts/check-elevation.ps1`。实测本机：普通权限 `dataDirProbe=ok / mods=195 / nexusKey=readable`，
+- **提权 / DPAPI 回归可脚本化**：新增 `--self-check <out.json>`（`selfcheck.rs`）与  
+  `scripts/check-elevation.ps1`。实测本机：普通权限 `dataDirProbe=ok / mods=195 / nexusKey=readable`，  
   提权后 `elevated=true / dataDir 不变 / mods=195 / nexusKey 仍 readable`，**0 failure**。
-- **真实环境预检**：本机已装 CP2077（`D://steam//steamapps//common//Cyberpunk 2077`），
+- **真实环境预检**：本机已装 CP2077（`D://steam//steamapps//common//Cyberpunk 2077`），  
   `real-env-check.ps1 -ProbeWrite -ProbeHardlink` 全 PASS（写探针、同卷硬链接都成功）。
-- **新坑（已写进脚本注释）**：PS 5.1 里 `Start-Process` 遇到 `HTTPS_PROXY` 与 `https_proxy`
-  同时存在会抛「字典中的关键字重复」；`Get-Content` 默认按 ANSI 读 UTF-8 JSON 会报
+- **新坑（已写进脚本注释）**：PS 5.1 里 `Start-Process` 遇到 `HTTPS_PROXY` 与 `https_proxy`  
+  同时存在会抛「字典中的关键字重复」；`Get-Content` 默认按 ANSI 读 UTF-8 JSON 会报  
   「无法识别的转义序列」。脚本里分别用"删小写变体"和 `-Encoding UTF8` 处理。
 
 **计划【3】：NXM 协议接管。**
 
-- `src-tauri/src/nxm.rs`：`parse_link`（域名白名单 + id 范围 + `%xx` 解码）、
-  `status/takeover/release`（只写 HKCU、先备份别人的命令、无备份时只删自己建的子树，
+- `src-tauri/src/nxm.rs`：`parse_link`（域名白名单 + id 范围 + `%xx` 解码）、  
+  `status/takeover/release`（只写 HKCU、先备份别人的命令、无备份时只删自己建的子树，  
   命令不指向本 exe 时报 `NXM_NOT_OURS` 拒绝动手）。
-- 注册表根参数化（`*_at(root, …)`）：单测用一次性 `Software\Classes\nxm-test-<uuid>` 沙箱键
-  做**真实读写**，跑完即删，不碰用户真实绑定。2 项集成测试覆盖"备份→接管→交还写回"
+- 注册表根参数化（`*_at(root, …)`）：单测用一次性 `Software\Classes\nxm-test-<uuid>` 沙箱键  
+  做**真实读写**，跑完即删，不碰用户真实绑定。2 项集成测试覆盖"备份→接管→交还写回"  
   与"无备份→接管→交还删干净"。
-- `lib.rs`：`NxmInbox` 收件箱 + `intake_nxm`；`setup` 先收 argv 再建窗，
+- `lib.rs`：`NxmInbox` 收件箱 + `intake_nxm`；`setup` 先收 argv 再建窗，  
   单实例回调先入队再唤窗；新增 `nxm_status / nxm_takeover / nxm_release / nxm_pending / nxm_dismiss`。
-- 前端：`NxmIntake` 右下角接收条（下载并导入 / 打开页面 / 忽略 / 全部忽略，带进度条）；
-  设置页「工具组件 → Nexus」新增 `// NXM PROTOCOL` 区块（归属、实际命令行、备份、
+- 前端：`NxmIntake` 右下角接收条（下载并导入 / 打开页面 / 忽略 / 全部忽略，带进度条）；  
+  设置页「工具组件 → Nexus」新增 `// NXM PROTOCOL` 区块（归属、实际命令行、备份、  
   接管/交还按钮、`nxmAutoDownload` 开关）。
-- **顺序与安全**：下载复用 `nexus_download`（API 直链 → `.part` → `install_archive`），
-  免费账号没有直链只能「打开页面」；收到链接在 `startup.log` 留
+- **顺序与安全**：下载复用 `nexus_download`（API 直链 → `.part` → `install_archive`），  
+  免费账号没有直链只能「打开页面」；收到链接在 `startup.log` 留  
   `stage=nxm links=N mod=… file=…`，不写链接里的 key。
-- **真机验收（2026-10-26 23:41 已完成，非模拟）**：本机装了 Vortex（`D:\Vortex\Vortex.exe`），
+- **真机验收（2026-10-26 23:41 已完成，非模拟）**：本机装了 Vortex（`D:\Vortex\Vortex.exe`），  
   实际执行了一轮完整往返，结论如下：
-  - 起始：`HKCU\Software\Classes\nxm\shell\open\command` = `"D:\Vortex\Vortex.exe" -d "%1"`，
+  - 起始：`HKCU\Software\Classes\nxm\shell\open\command` = `"D:\Vortex\Vortex.exe" -d "%1"`，  
     自检 `registered=true / ours=false / owner=other`；
-  - `--nxm-takeover` → 注册表改指向本 exe，`nxm-handler.json` 备份原命令，
+  - `--nxm-takeover` → 注册表改指向本 exe，`nxm-handler.json` 备份原命令，  
     自检 `ours=true / owner=us`；
-  - 系统 shell 打开 `nxm://cyberpunk2077/mods/107/files/999999999` →
+  - 系统 shell 打开 `nxm://cyberpunk2077/mods/107/files/999999999` →  
     `startup.log` 出现 `stage=nxm links=1 mod=107 file=Some(999999999)`，**协议直通成立**；
   - `--nxm-release` → 注册表**逐字**还原成 `"D:\Vortex\Vortex.exe" -d "%1"`，备份文件自动清除。
-- **两个布尔别混用**：`ours` = 命令指向本 exe；`registered` = 协议本身可用（键在且有命令）。
-  Vortex 占着时是 `registered=true / ours=false / owner=other`——判断归属看 `ours`，
+- **两个布尔别混用**：`ours` = 命令指向本 exe；`registered` = 协议本身可用（键在且有命令）。  
+  Vortex 占着时是 `registered=true / ours=false / owner=other`——判断归属看 `ours`，  
   判断"双击链接有没有程序接"看 `registered`。
-- **免界面的修复入口**：`CyberDeck Launcher.exe --nxm-takeover` / `--nxm-release`，
+- **免界面的修复入口**：`CyberDeck Launcher.exe --nxm-takeover` / `--nxm-release`，  
   输出 JSON 后退出。界面点不到时（比如启动器被另一实例占着、或要写脚本）用它。
 
 ### 0.8.0-r4 补充：状态恢复不能静默（同日 23:45）
 
-真机验收时用脚本对 `launcher-state.json` 做了整文件 JSON 往返，写出一个 566KB 但非法的文件；
+真机验收时用脚本对 `launcher-state.json` 做了整文件 JSON 往返，写出一个 566KB 但非法的文件；  
 重启后 `mods=0` 而界面**没有任何提示**——用户视角就是"195 个模组被删了"。
 
 - 事实：`store.rs` 早就会把坏文件改名成 `launcher-state.broken-<ts>.json` 再建空状态，**数据没丢**；
 - 缺陷：这一步只写了 `eprintln!`，而打包后的 exe 是 `windows_subsystem="windows"`，没有控制台；
-- 修复：`Store.recovered_from` → `Snapshot.state_recovered_from` → 界面顶部 `STATE RECOVERY` 红条，
+- 修复：`Store.recovered_from` → `Snapshot.state_recovered_from` → 界面顶部 `STATE RECOVERY` 红条，  
   写明原文件路径与"恢复前别动"；回归测试 `store.rs::recovery_tests` 两项（坏文件必须保留并上报、正常文件不得误报）；
 - 复盘追加在 `docs/PROJECT_HISTORY.md#incident-state-parse` 第 8 节。
 
@@ -814,91 +847,95 @@ deepseek 任务书四模块全量落地（任务文件已归档 `_已完成归�
 
 **目标**：消掉每局一次「REDprelauncher 点 Play」。默认启动方式 `auto` 现在优先直启。
 
-- **平台判定**：`platform_of(root, source)`。已绑定目录在快照里来源恒为 `manual`，
-  所以加了路径兜底：含 `steamapps` → Steam、根目录有 `goggame-*.info` → GOG、
+- **平台判定**：`platform_of(root, source)`。已绑定目录在快照里来源恒为 `manual`，  
+  所以加了路径兜底：含 `steamapps` → Steam、根目录有 `goggame-*.info` → GOG、  
   有 `.egstore` → Epic，否则 Manual。**没有兜底就判断不出 DRM 前提**（踩过这个坑）。
 - **直启前提**（`inspect_launch` / `LaunchCheck`）：按平台判定 DRM 前提，见下表。
 
-| 平台 | 直启前提 | 不满足时 |
-|---|---|---|
+| 平台    | 直启前提                            | 不满足时                                                  |
+| ----- | ------------------------------- | ----------------------------------------------------- |
 | Steam | `steam.exe` 在运行（Steamworks DRM） | `auto` 自动改走 `steam -applaunch`（会先拉起客户端）；`direct` 明确报错 |
-| Epic | `EpicGamesLauncher.exe` 在运行 | 报 `LAUNCH_CLIENT_REQUIRED`，不偷偷改道 |
-| GOG | 无（DRM-free） | — |
-| 手动目录 | 无 | — |
-- **探测进程**：`tasklist /FI "IMAGENAME eq <x>" /NH /FO CSV`，只读、不注入、不枚举句柄；
+| Epic  | `EpicGamesLauncher.exe` 在运行     | 报 `LAUNCH_CLIENT_REQUIRED`，不偷偷改道                      |
+| GOG   | 无（DRM-free）                     | —                                                     |
+| 手动目录  | 无                               | —                                                     |
+
+- **探测进程**：`tasklist /FI "IMAGENAME eq <x>" /NH /FO CSV`，只读、不注入、不枚举句柄；  
   查询失败一律按「没在运行」，偏保守。
-- **路由**：`plan_launch` 是纯函数（可单测）。`auto` 前提满足→直启；`direct` 只直启；
+- **路由**：`plan_launch` 是纯函数（可单测）。`auto` 前提满足→直启；`direct` 只直启；  
   `steam` 强制 `steam.exe -applaunch 1091500 --launcher-skip`。
-- **失败自愈**：直启后观察 2 秒，提前退出/创建失败 → `fallback_routes` 依次试
-  Steam → `REDprelauncher.exe`；成功即 `LaunchResult.fallbackFrom="direct"`，
+- **失败自愈**：直启后观察 2 秒，提前退出/创建失败 → `fallback_routes` 依次试  
+  Steam → `REDprelauncher.exe`；成功即 `LaunchResult.fallbackFrom="direct"`，  
   前端 warn toast 说明「已回退官方启动器」；全失败才报错并提示从平台客户端启动。
-- **顺序**：熔断校验（`update_lock_active`）在 `lib.rs::launch_game` 里**先于**任何 spawn，
+- **顺序**：熔断校验（`update_lock_active`）在 `lib.rs::launch_game` 里**先于**任何 spawn，  
   激活时返回 `GAME_UPDATE_LOCKED`；进程探测与 spawn 全在状态锁外（不破坏「Mutex 内不做 IO」）。
 - **不双开**：`Cyberpunk2077.exe` 已在运行时返回 `method=already-running`，不再起第二个实例。
-- **设置页**：启动方式三项文案重写；新增「启动能力状态卡」（`inspect_launch` 只读命令）：
+- **设置页**：启动方式三项文案重写；新增「启动能力状态卡」（`inspect_launch` 只读命令）：  
   绿色=直启就绪，橙色=直启受限并给出第一条原因 + 两条说明。
-- **测试**：新增 `src-tauri/src/game_tests.rs`（14 项，纯函数 + 假目录），
+- **测试**：新增 `src-tauri/src/game_tests.rs`（14 项，纯函数 + 假目录），  
   `core-tests` 85 项 + 1 项探针全绿，`src-tauri::cargo check` 通过。
-- **已知边界**：本机没有真实 CP2077 安装，直启/回退的真机验收（Steam 版 DRM、Epic 版客户端）
-  仍需在有游戏的机器上跑；`--launcher-skip` 只对走 REDprelauncher 的路径有意义，
+- **已知边界**：本机没有真实 CP2077 安装，直启/回退的真机验收（Steam 版 DRM、Epic 版客户端）  
+  仍需在有游戏的机器上跑；`--launcher-skip` 只对走 REDprelauncher 的路径有意义，  
   直启路径本身就已经绕过启动器。
 
 ### 0.7.0-r3（2026-10-26 · 单实例 / 系统托盘 / 关闭到托盘 / 退出确认）
 
-- **单实例**：`tauri-plugin-single-instance = "2"`（实际 2.5.4，要求 tauri ^2.12），
-  在 `run()` 的 builder 里**第一个注册**。第二次启动 exe 不建窗口，只 `show + unminimize + set_focus`
+- **单实例**：`tauri-plugin-single-instance = "2"`（实际 2.5.4，要求 tauri ^2.12），  
+  在 `run()` 的 builder 里**第一个注册**。第二次启动 exe 不建窗口，只 `show + unminimize + set_focus`  
   把已有窗口叫到前面；首个实例还在 setup 中（窗口未建）时，回调会重试 20×150ms，避免"点了没反应"。
-- **系统托盘**：`Cargo.toml` 给 tauri 加 `tray-icon` feature；`setup_tray()` 用
-  `app.default_window_icon()`（不依赖外部资源路径，取不到就退化为无图标）建托盘，
+- **系统托盘**：`Cargo.toml` 给 tauri 加 `tray-icon` feature；`setup_tray()` 用  
+  `app.default_window_icon()`（不依赖外部资源路径，取不到就退化为无图标）建托盘，  
   菜单两项「显示主界面」「彻底退出」，`show_menu_on_left_click(false)` 把左键留给显隐切换。
-- **关闭到托盘**：`window.on_window_event` 拦 `CloseRequested` → `api.prevent_close()` →
-  按持久化偏好 `settings.close_behavior`（`tray` | `exit`）决定 `hide()` 还是走退出流程。
+- **关闭到托盘**：`window.on_window_event` 拦 `CloseRequested` → `api.prevent_close()` →  
+  |  |  |  
+  | --- | --- |  
+  按持久化偏好 `settings.close_behavior`（`tray` | `exit`）决定 `hide()` 还是走退出流程。  
   偏好存 Rust `Settings`（写 `launcher-state.json`），由 `set_settings` 单一入口维护并校验取值。
-- **退出前安全检查**：`BusyTasks`（RAII `BusyGuard`，Drop 自动注销）登记长任务；
-  `request_exit()` 发现有待办任务时弹**原生**确认框（`MessageDialogButtons::OkCancelCustom`），
-  确认才 `app.exit(0)`。已接线：install_mods / uninstall_mod / update_mod / repair_mod /
+- **退出前安全检查**：`BusyTasks`（RAII `BusyGuard`，Drop 自动注销）登记长任务；  
+  `request_exit()` 发现有待办任务时弹**原生**确认框（`MessageDialogButtons::OkCancelCustom`），  
+  确认才 `app.exit(0)`。已接线：install_mods / uninstall_mod / update_mod / repair_mod /  
   apply_collection_order / adopt_execute / nexus_download / mods_translate。
-- **可观测**：关闭与退出分支都写 `startup.log`（`stage=close action=hide-to-tray` /
+- **可观测**：关闭与退出分支都写 `startup.log`（`stage=close action=hide-to-tray` /  
+  |  |  |  
+  | --- | --- |  
   `action=exit` / `stage=exit action=immediate|confirm busy=…`），真机排障不用猜。
-- **便携版**：发布包内含空的 `cyberdeck-data/`（+ 标记文件），利用 `resolve_data_dir` 的
+- **便携版**：发布包内含空的 `cyberdeck-data/`（+ 标记文件），利用 `resolve_data_dir` 的  
   "exe 同级目录优先"规则锁定便携模式，不再落到 `%APPDATA%\com.arol.cyberdeck`。
-- 🔴 **构建铁律（2026-10-26 踩坑）**：正式产物**必须**用
-  `tauri build --no-bundle`；如果非要直接 `cargo build --release`，**必须加 `--features custom-protocol`**
-  （`Cargo.toml` 里已定义该 feature 并注明用途）。原因是 `tauri/build.rs` 的判定是
-  `let dev = !has_feature("custom-protocol")`——缺这个 feature 就是 dev 模式：**不内嵌前端资源、改为连
-  `http://localhost:1420` 的 vite 服务器**，发给用户后界面就是「localhost 拒绝连接 / ERR_CONNECTION_REFUSED」。
-  判定产物对不对，别看 exe 里有没有 `localhost:1420`（配置文本本来就会被内嵌，好包也有），要看：
-  ① 体积（正式 ≈8.3MB，dev 形态 ≈6.8MB）；② 有没有内嵌资源清单；③ 最硬的一条——真机启动后
+- 🔴 **构建铁律（2026-10-26 踩坑）**：正式产物**必须**用  
+  `tauri build --no-bundle`；如果非要直接 `cargo build --release`，**必须加 `--features custom-protocol`**  
+  （`Cargo.toml` 里已定义该 feature 并注明用途）。原因是 `tauri/build.rs` 的判定是  
+  `let dev = !has_feature("custom-protocol")`——缺这个 feature 就是 dev 模式：**不内嵌前端资源、改为连  
+  `http://localhost:1420` 的 vite 服务器**，发给用户后界面就是「localhost 拒绝连接 / ERR_CONNECTION_REFUSED」。  
+  判定产物对不对，别看 exe 里有没有 `localhost:1420`（配置文本本来就会被内嵌，好包也有），要看：  
+  ① 体积（正式 ≈8.3MB，dev 形态 ≈6.8MB）；② 有没有内嵌资源清单；③ 最硬的一条——真机启动后  
   `startup.log` 里有没有 `stage=frontend`（前端挂载心跳）。
-
-- ⚠️ **交接提醒**：本轮发现 `schema.rs::deserialize_always_empty` 曾被回退成"不消费输入"的版本
-  （症状是三处状态文件回归测试立刻变红）。该函数**必须** `IgnoredAny::deserialize(deserializer)?`，
+- ⚠️ **交接提醒**：本轮发现 `schema.rs::deserialize_always_empty` 曾被回退成"不消费输入"的版本  
+  （症状是三处状态文件回归测试立刻变红）。该函数**必须** `IgnoredAny::deserialize(deserializer)?`，  
   详见 `docs/PROJECT_HISTORY.md#incident-state-parse` 与 ARCHITECTURE「状态文件与序列化」。
 
 ### 0.7.0-r4（2026-10-26 晚 · 浮层重叠 / 暂存区可迁移 / 自动查找 / 设置分类）
 
-- **浮层重叠（结构级修复）**：原本 toast(`z-index:90`)、任务队列(`68`)、详情抽屉(`60`) 三层各自
-  `position: fixed`，靠 `.has-tasks .toast-host { right: 382px }` 这种魔法数字互相躲让——
-  抽屉宽 470px 时 toast 正好落在抽屉里，任务队列又压住抽屉内的告警框。
+- **浮层重叠（结构级修复）**：原本 toast(`z-index:90`)、任务队列(`68`)、详情抽屉(`60`) 三层各自  
+  `position: fixed`，靠 `.has-tasks .toast-host { right: 382px }` 这种魔法数字互相躲让——  
+  抽屉宽 470px 时 toast 正好落在抽屉里，任务队列又压住抽屉内的告警框。  
   改为**统一层级变量 + 单一浮层栈**：
   - `styles.css` 顶部定义 `--z-drawer:60 / --z-floating:70 / --z-modal:80 / --z-command:95 / --drawer-w:470px`；
-  - `App.tsx` 把 `<ToastHost/>` 与 `<TaskCenter/>` 包进 `.floating-stack`（右下角列布局），
+  - `App.tsx` 把 `<ToastHost/>` 与 `<TaskCenter/>` 包进 `.floating-stack`（右下角列布局），  
     两者不再自己定位 ⇒ 结构上**不可能互相遮挡**；
-  - 打开详情抽屉时 `app-shell` 加 `has-drawer`，浮层栈整体让位到抽屉左侧
+  - 打开详情抽屉时 `app-shell` 加 `has-drawer`，浮层栈整体让位到抽屉左侧  
     （`right: calc(var(--drawer-w) + 18px)`）；窗口 <1320px 时改为左下角贴边。
   - 回归脚本 `scripts/check-floating.mjs`：断言 `has-drawer` 生效、且浮层栈与抽屉矩形**不相交**。
-- **暂存区可自由改位置**：原来是写死的——`Store::load` 每次都把 `staging_dir` 覆盖成
+- **暂存区可自由改位置**：原来是写死的——`Store::load` 每次都把 `staging_dir` 覆盖成  
   `<dataDir>/staging`，状态文件里的值等于装饰品。改动：
   - `Store.staging_dir` 改为 `Arc<RwLock<PathBuf>>` + `staging_dir()` / `set_staging_dir()`；
   - `Store::load` 尊重持久化值（目录不可用则回退默认并写日志）；
-  - 新命令 `change_staging_dir(newDir)`：校验（非空/非同一目录/**不得落在游戏目录或数据目录内**/可写探测）
-    → 逐项搬迁（跨盘退回复制+删除）→ 重写每个 mod 的 `stagingPath` 与（若在暂存区内的）`sourceZip`
+  - 新命令 `change_staging_dir(newDir)`：校验（非空/非同一目录/**不得落在游戏目录或数据目录内**/可写探测）  
+    → 逐项搬迁（跨盘退回复制+删除）→ 重写每个 mod 的 `stagingPath` 与（若在暂存区内的）`sourceZip`  
     → 落盘 + 切换运行时路径。**搬迁失败的项留在原处**并在返回报告里列出，绝不静默删除。
   - 前端：存储与路径卡片「暂存区」行右侧加「更改位置」，结果就地回显（搬了几项、哪些没搬）。
-- **「自动搜索文件位置」变成独立按钮**：以前只能靠输入框占位符「留空自动检测」的隐式约定。
-  新增命令 `detect_tool(tool)`（复用 `installer::find_archive_tool` / `wolvenkit::detect_cli`），
+- **「自动搜索文件位置」变成独立按钮**：以前只能靠输入框占位符「留空自动检测」的隐式约定。  
+  新增命令 `detect_tool(tool)`（复用 `installer::find_archive_tool` / `wolvenkit::detect_cli`），  
   设置页两个工具字段各加「自动查找」按钮：找到就填入并保存、结果就地显示；找不到回显原因。
-- **设置分类重排**：「点击关闭按钮时」从「安全与维护」移到「外观与行为」（原「外观与主题」）下的
+- **设置分类重排**：「点击关闭按钮时」从「安全与维护」移到「外观与行为」（原「外观与主题」）下的  
   「窗口行为」卡片——它属于窗口/进程行为，不是安全策略；「安全与维护」只保留数据安全相关项。
 
 ### 已知边界 / 尚未完成
@@ -960,31 +997,31 @@ cyberdeck-launcher/
 
 ### 3.2 前端重点
 
-| 文件 | 作用 |
-|---|---|
-| `src/App.tsx` | 唯一的页面级状态编排：快照、导航、导入、部署、冲突弹窗、任务队列、命令面板 |
-| `src/components/LibraryView.tsx` | 模组库、筛选、虚拟滚动 |
-| `src/components/ModCard.tsx` | 卡片状态机：DEPLOYED / STAGED / CONFLICT；悬停操作区 |
-| `src/components/ConflictCenter.tsx` | 冲突列表、覆盖链、禁用一方、跳转排序 |
-| `src/components/LoadOrderView.tsx` | archive 指针拖拽、冲突提示、写 modlist |
-| `src/components/ImportDialog.tsx` | 导入结果确认、分类选择 |
-| `src/components/ModDetailDrawer.tsx` | 详情抽屉、缺失前置提示 |
-| `src/components/DiagnosticsView.tsx` | 诊断、日志入口、AI 诊断入口 |
-| `src/components/LogViewerDialog.tsx` | 日志过滤、错误高亮、关键错误提取 |
-| `src/lib/api.ts` | 所有 Tauri 命令的唯一前端入口 |
-| `src/lib/mock.ts` | 仅 `!isTauri` 时使用，给浏览器开发/UI 测试提供假数据 |
+| 文件                                   | 作用                                       |
+| ------------------------------------ | ---------------------------------------- |
+| `src/App.tsx`                        | 唯一的页面级状态编排：快照、导航、导入、部署、冲突弹窗、任务队列、命令面板    |
+| `src/components/LibraryView.tsx`     | 模组库、筛选、虚拟滚动                              |
+| `src/components/ModCard.tsx`         | 卡片状态机：DEPLOYED / STAGED / CONFLICT；悬停操作区 |
+| `src/components/ConflictCenter.tsx`  | 冲突列表、覆盖链、禁用一方、跳转排序                       |
+| `src/components/LoadOrderView.tsx`   | archive 指针拖拽、冲突提示、写 modlist              |
+| `src/components/ImportDialog.tsx`    | 导入结果确认、分类选择                              |
+| `src/components/ModDetailDrawer.tsx` | 详情抽屉、缺失前置提示                              |
+| `src/components/DiagnosticsView.tsx` | 诊断、日志入口、AI 诊断入口                          |
+| `src/components/LogViewerDialog.tsx` | 日志过滤、错误高亮、关键错误提取                         |
+| `src/lib/api.ts`                     | 所有 Tauri 命令的唯一前端入口                       |
+| `src/lib/mock.ts`                    | 仅 `!isTauri` 时使用，给浏览器开发/UI 测试提供假数据       |
 
 > **不要删 `src/lib/mock.ts`。** 它不是假游戏目录，而是浏览器开发模式和 Playwright 测试的数据层。
 
 ### 3.3 Rust 后端重点（接手先看这五个）
 
-| 文件 | 关键函数 / 行号 | 说明 |
-|---|---|---|
-| `src-tauri/src/installer.rs` | `install_archive`（56）、`deploy_mod`（1064）、`find_conflicts`（1265）、`collect_conflicts`（1387）、`undeploy_mod`（1410） | **部署逻辑、冲突检测、卸载逻辑都在这里** |
-| `src-tauri/src/game.rs` | `detect_game`（42）、`launch_game`（443） | Steam/GOG/Epic/常见路径检测、版本、卷、启动 |
-| `src-tauri/src/store.rs` | `Store::load`、`save`、`safe_join` | 状态文件 `launcher-state.json`、暂存/备份目录、路径安全 |
-| `src-tauri/src/loadorder.rs` | `build_view`（54）、`write_modlist`（141） | archive 排序、`modlist.txt` 接管 |
-| `src-tauri/src/lib.rs` | `run()`（715）、`generate_handler!`（799） | Tauri 命令注册、窗口、AppData/便携回退 |
+| 文件                           | 关键函数 / 行号                                                                                                      | 说明                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `src-tauri/src/installer.rs` | `install_archive`（56）、`deploy_mod`（1064）、`find_conflicts`（1265）、`collect_conflicts`（1387）、`undeploy_mod`（1410） | **部署逻辑、冲突检测、卸载逻辑都在这里**                  |
+| `src-tauri/src/game.rs`      | `detect_game`（42）、`launch_game`（443）                                                                           | Steam/GOG/Epic/常见路径检测、版本、卷、启动           |
+| `src-tauri/src/store.rs`     | `Store::load`、`save`、`safe_join`                                                                               | 状态文件 `launcher-state.json`、暂存/备份目录、路径安全 |
+| `src-tauri/src/loadorder.rs` | `build_view`（54）、`write_modlist`（141）                                                                          | archive 排序、`modlist.txt` 接管             |
+| `src-tauri/src/lib.rs`       | `run()`（715）、`generate_handler!`（799）                                                                          | Tauri 命令注册、窗口、AppData/便携回退              |
 
 ### 3.4 数据流
 
@@ -1029,13 +1066,11 @@ ZIP/7z/RAR
 ### P0：先做真实环境验收
 
 - 在一台装有 CP2077 的 Windows 机器上运行：
-
   ```powershell
   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\real-env-check.ps1 `
     -GameDir "D:\SteamLibrary\steamapps\common\Cyberpunk 2077" `
     -ProbeWrite -ProbeHardlink
   ```
-
 - 重点验证：
   - 游戏在 `C:\Program Files` / 受保护 Steam 库时的 UAC 与硬链接失败降级；
   - CET 的 `bin\x64\plugins\cyber_engine_tweaks` 散装布局；
@@ -1072,9 +1107,9 @@ ZIP/7z/RAR
 - 代码签名未做（exe 未签名，SmartScreen 会提示）；
 - 便携包固定 `WebView2Loader.dll` 同目录约定。
 
-> 🔴 **固定流程（用户 2026-10-26 立规，长期有效）：打包便携版必须先问再做。**
-> 每当项目进度更新的工作完成后，**禁止直接打包便携版 ZIP**；必须先主动询问用户是否要打包，**等用户明确确认后**才可执行。例外仅限用户在本次任务中明确要求"顺手打包"（不做跨任务推定）。
-> 边界：替换 release 目录 exe 属开发自测闭环（已授权，直接结束进程替换）；**对外分发的便携 ZIP 是外发物，必须等确认**。
+> 🔴 **固定流程（用户 2026-10-26 立规，长期有效）：打包便携版必须先问再做。**  
+> 每当项目进度更新的工作完成后，**禁止直接打包便携版 ZIP**；必须先主动询问用户是否要打包，**等用户明确确认后**才可执行。例外仅限用户在本次任务中明确要求"顺手打包"（不做跨任务推定）。  
+> 边界：替换 release 目录 exe 属开发自测闭环（已授权，直接结束进程替换）；**对外分发的便携 ZIP 是外发物，必须等确认**。  
 > 相关路径：打包目录 `D:/用户/工作区/CyberDeck-便携版打包目录-可删`（可随时重建）；成品 `D:/用户/工作区/CyberDeck Launcher 0.7.0 便携版-可直接发人.zip`（勿用旧 `_portable_x64` 命名）。
 
 ### P5：下一步值得做的
@@ -1092,25 +1127,24 @@ ZIP/7z/RAR
 
 `src/` **已是 git 仓库并开源于 GitHub**（`main` 分支，309 文件，tag `v0.9.0-r35`）。
 
-- 公开地址：**https://github.com/XFxzz3456/CyberDeck-Launcher** （public / MIT / 默认分支 `main`）
+- 公开地址：**<https://github.com/XFxzz3456/CyberDeck-Launcher>** （public / MIT / 默认分支 `main`）
 - 首提交 `939fe80`「初始化仓库，纳入 0.9.0-r35 源码基线」。2026-10-31 用 `git filter-branch --env-filter` 改写提交者为 `XFxzz3456`，**哈希由 `fbce883` 变为 `939fe80`**；查旧文档看到 `fbce883` 属正常，不要误判成仓库被重置。
 
-| 项 | 值 | 说明 |
-|---|---|---|
-| 仓库根 | `D:\用户\CyberDeck-Launcher\src` | **不含** `release/`、`发布产物/`、`归档/`——这些在同级 `..` 下，属产物不进库 |
-| `core.autocrlf` | `false` | 源码 CRLF/LF 混存（`core-tests/src/lib.rs` 是 CRLF）。设 true 会让首提交后满屏假变更 |
-| `core.quotepath` | `false` | 中文文件名正常显示，不转成 `\344\275\240` |
-| `core.longpaths` | `true` | `src-tauri/target` 深路径超 260 字符 |
-| 身份 | `user.name=XFxzz3456` / `user.email=mc2364694314@163.com` | **必须与 GitHub 账号一致**，否则提交不计入贡献 |
-| 远端 | `origin` = `https://github.com/XFxzz3456/CyberDeck-Launcher.git` | URL 内**不含** token |
-| 代理 | `http.proxy` / `https.proxy` = `http://127.0.0.1:7897` | 仅本仓库局部配置，见下方 DNS 污染说明 |
+| 项                | 值                                                                | 说明                                                               |
+| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 仓库根              | `D:\用户\CyberDeck-Launcher\src`                                   | **不含** `release/`、`发布产物/`、`归档/`——这些在同级 `..` 下，属产物不进库             |
+| `core.autocrlf`  | `false`                                                          | 源码 CRLF/LF 混存（`core-tests/src/lib.rs` 是 CRLF）。设 true 会让首提交后满屏假变更 |
+| `core.quotepath` | `false`                                                          | 中文文件名正常显示，不转成 `\344\275\240`                                     |
+| `core.longpaths` | `true`                                                           | `src-tauri/target` 深路径超 260 字符                                   |
+| 身份               | `user.name=XFxzz3456` / `user.email=mc2364694314@163.com`        | **必须与 GitHub 账号一致**，否则提交不计入贡献                                    |
+| 远端               | `origin` = `https://github.com/XFxzz3456/CyberDeck-Launcher.git` | URL 内**不含** token                                                |
+| 代理               | `http.proxy` / `https.proxy` = `http://127.0.0.1:7897`           | 仅本仓库局部配置，见下方 DNS 污染说明                                            |
 
-**网络坑（2026-10-31 实测，重装或换网络后必查）**：本机对 `github.com` 存在 **DNS 污染**——路由器 `192.168.0.1`、阿里 `223.5.5.5`、腾讯 `119.29.29.29` 全部把 `github.com` 解析成 `::1` / `127.0.0.1`，直连等于打自己。真实 A 记录（DoH 查到）是 `20.205.243.166`。本机 `127.0.0.1:7897`（verge-mihomo / Clash Verge）可正常出网，故 git 走代理。**不要**去改 hosts 或系统 DNS，换 IP 就会失效；也不要认定「代理坏了」——`api.github.com` 一直是通的，只有 `github.com` 被污染。
-**补记（2026-11-11 23:55，便携版上传时实测）**：`git` **只认 `http.proxy`**，仓库/全局里那条 `https.proxy=http://127.0.0.1:7897` 是**无效键**——平时 push 能通靠的是会话环境变量 `HTTPS_PROXY=http://127.0.0.1:60083`（WorkBuddy 会话代理）。本次该环境变量对 `github.com` 返回 `CONNECT tunnel failed, 502`，`api.github.com` 却正常。
-可行组合：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy git -c http.proxy=http://127.0.0.1:7897 push origin main`。
-分工记牢：**REST API（`api.github.com` / `uploads.github.com`）走会话环境代理 60083；git push 走 Clash 7897 且必须写成 `http.proxy`**。7897 对 uploads 域名做 MITM，证书不被系统信任（curl 需 `-k`、Python urllib 报 SSL EOF），所以 API 上传别走它。
+**网络坑（2026-10-31 实测，重装或换网络后必查）**：本机对 `github.com` 存在 **DNS 污染**——路由器 `192.168.0.1`、阿里 `223.5.5.5`、腾讯 `119.29.29.29` 全部把 `github.com` 解析成 `::1` / `127.0.0.1`，直连等于打自己。真实 A 记录（DoH 查到）是 `20.205.243.166`。本机 `127.0.0.1:7897`（verge-mihomo / Clash Verge）可正常出网，故 git 走代理。**不要**去改 hosts 或系统 DNS，换 IP 就会失效；也不要认定「代理坏了」——`api.github.com` 一直是通的，只有 `github.com` 被污染。  
+**补记（2026-11-11 23:55，便携版上传时实测）**：`git` **只认 `http.proxy`**，仓库/全局里那条 `https.proxy=http://127.0.0.1:7897` 是**无效键**——平时 push 能通靠的是会话环境变量 `HTTPS_PROXY=http://127.0.0.1:60083`（WorkBuddy 会话代理）。本次该环境变量对 `github.com` 返回 `CONNECT tunnel failed, 502`，`api.github.com` 却正常。  
+可行组合：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy git -c http.proxy=http://127.0.0.1:7897 push origin main`。  
+分工记牢：**REST API（`api.github.com` / `uploads.github.com`）走会话环境代理 60083；git push 走 Clash 7897 且必须写成 `http.proxy`**。7897 对 uploads 域名做 MITM，证书不被系统信任（curl 需 `-k`、Python urllib 报 SSL EOF），所以 API 上传别走它。  
 另一个假象：`https://uploads.github.com/` 根路径返回 302，urllib 自动跟到 `github.com` 会拿到 502，不代表上传端点不可达。
-
 
 **推送凭据约定**：不要把 PAT 写进 remote URL 或 `.git/config`。用一次性请求头：
 
@@ -1131,27 +1165,27 @@ git -c credential.helper= -c http.extraHeader="AUTHORIZATION: basic $B64" push -
 
 ### 5.1 前端
 
-| 项 | 要求 | 本机实际 |
-|---|---|---|
-| 包管理器 | **pnpm**（仓库只有 `pnpm-lock.yaml`，没有 npm/yarn/bun lock） | `pnpm 11.28.5` |
-| Node.js | Vite 8 要求 `^20.19.0 \|\| >=22.12.0`；README 要求 22+ | `v24.21.0` |
-| lockfile | `pnpm-lock.yaml`，`lockfileVersion: '9.0'` | 随源码提供 |
-| 安装命令 | `pnpm install --frozen-lockfile` | — |
+| 项        | 要求                                                   | 本机实际           |
+| -------- | ---------------------------------------------------- | -------------- |
+| 包管理器     | **pnpm**（仓库只有 `pnpm-lock.yaml`，没有 npm/yarn/bun lock） | `pnpm 11.28.5` |
+| Node.js  | Vite 8 要求 `^20.19.0 \|\| >=22.12.0`；README 要求 22+    | `v24.21.0`     |
+| lockfile | `pnpm-lock.yaml`，`lockfileVersion: '9.0'`            | 随源码提供          |
+| 安装命令     | `pnpm install --frozen-lockfile`                     | —              |
 
 `package.json` 目前没有 `packageManager` 字段，也没有 `.nvmrc`；新电脑请手动使用 **pnpm 11.28.5 + Node 22.12+**。不要用 npm/yarn 重新生成 lockfile。
 
 ### 5.2 Rust / Tauri
 
-| 项 | 要求 |
-|---|---|
-| Rust | `rust-version = 1.77.2`（`src-tauri/Cargo.toml`），建议 stable |
-| edition | 2021 |
-| Tauri | 2.x；CLI `@tauri-apps/cli 2.12.4`（devDependency） |
-| `rust-toolchain.toml` | **不存在**，不强制固定具体 stable 版本 |
-| 当前构建 target | 现有 `src-tauri/target` 下有 `x86_64-pc-windows-gnu` 产物；仓库也保留了 `WebView2Loader.dll` |
-| 推荐新机 target | `x86_64-pc-windows-msvc`（Tauri 官方推荐，VS Build Tools 更省事） |
-| GNU 构建 | 若必须复现当前工具链：安装 MinGW-w64、`rustup target add x86_64-pc-windows-gnu`，并保证 `WebView2Loader.dll` 在 exe 同目录 |
-| Cargo lock | `src-tauri/Cargo.lock` 与 `core-tests/Cargo.lock` 都随源码提供 |
+| 项                     | 要求                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| Rust                  | `rust-version = 1.77.2`（`src-tauri/Cargo.toml`），建议 stable                                            |
+| edition               | 2021                                                                                                 |
+| Tauri                 | 2.x；CLI `@tauri-apps/cli 2.12.4`（devDependency）                                                      |
+| `rust-toolchain.toml` | **不存在**，不强制固定具体 stable 版本                                                                            |
+| 当前构建 target           | 现有 `src-tauri/target` 下有 `x86_64-pc-windows-gnu` 产物；仓库也保留了 `WebView2Loader.dll`                      |
+| 推荐新机 target           | `x86_64-pc-windows-msvc`（Tauri 官方推荐，VS Build Tools 更省事）                                              |
+| GNU 构建                | 若必须复现当前工具链：安装 MinGW-w64、`rustup target add x86_64-pc-windows-gnu`，并保证 `WebView2Loader.dll` 在 exe 同目录 |
+| Cargo lock            | `src-tauri/Cargo.lock` 与 `core-tests/Cargo.lock` 都随源码提供                                              |
 
 ### 5.3 Windows 系统依赖
 
@@ -1327,20 +1361,20 @@ if ($LASTEXITCODE -eq 0) { "CHECK DONE（没有输出 FORBIDDEN 即通过）" }
 
 ### 排除项说明
 
-| 排除项 | 原因 |
-|---|---|
-| `node_modules/` | 150 MB 依赖，新机重新 `pnpm install` |
-| `src-tauri/target/` | 3.8 GB Rust 编译缓存 |
-| `core-tests/target/` | 2.0 GB 测试编译缓存 |
-| `core-tests/.test-tmp/` | 测试临时夹具/假目录 |
-| `dist/` | Vite 生成物 |
-| `release/` | 已构建 exe、DLL、旧说明 |
-| `shots/` | UI 测试截图，19 MB |
-| `src-tauri/gen/` | Tauri 生成的 schema，构建时重建 |
-| `cyberdeck-data/`、`EBWebView/` | 本地运行数据/缓存 |
-| 根目录 `CyberDeck-Launcher-*.zip` | 旧版本便携包，约 20 MB |
-| `.env*`、`*.log`、`*.bak` | 本地配置、日志、备份 |
-| `docs/screenshots/` | **保留**（7.1 MB，README 需要）；如果你只想要代码，可再加 `--exclude=docs/screenshots` |
+| 排除项                            | 原因                                                                 |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `node_modules/`                | 150 MB 依赖，新机重新 `pnpm install`                                      |
+| `src-tauri/target/`            | 3.8 GB Rust 编译缓存                                                   |
+| `core-tests/target/`           | 2.0 GB 测试编译缓存                                                      |
+| `core-tests/.test-tmp/`        | 测试临时夹具/假目录                                                         |
+| `dist/`                        | Vite 生成物                                                           |
+| `release/`                     | 已构建 exe、DLL、旧说明                                                    |
+| `shots/`                       | UI 测试截图，19 MB                                                      |
+| `src-tauri/gen/`               | Tauri 生成的 schema，构建时重建                                             |
+| `cyberdeck-data/`、`EBWebView/` | 本地运行数据/缓存                                                          |
+| 根目录 `CyberDeck-Launcher-*.zip` | 旧版本便携包，约 20 MB                                                     |
+| `.env*`、`*.log`、`*.bak`        | 本地配置、日志、备份                                                         |
+| `docs/screenshots/`            | **保留**（7.1 MB，README 需要）；如果你只想要代码，可再加 `--exclude=docs/screenshots` |
 
 > **不要排除 `src/lib/mock.ts`。** 它是浏览器开发模式的数据层，不是 `mock/` 假游戏目录。项目里当前也没有 `test-game/` 或 `mock/` 目录。
 
@@ -1359,34 +1393,34 @@ if ($LASTEXITCODE -eq 0) { "CHECK DONE（没有输出 FORBIDDEN 即通过）" }
 
 ### 8.1 迁移后建议修改
 
-| 文件 | 行 | 硬编码值 | 性质 / 迁移动作 |
-|---|---:|---|---|
-| `src/lib/mock.ts` | 30 | `D:\Games\Cyberpunk 2077` | 浏览器演示数据的假游戏目录；改新机路径，或保留（仅 UI 展示） |
-| `src/lib/mock.ts` | 31 | `C:\Users\Administrator\AppData\Roaming\com.arol.cyberdeck` | 演示数据目录；新机用户名不同，建议改成通用字符串或新机路径 |
-| `src/App.tsx` | 764 | `D:\Games\Cyberpunk 2077` | 浏览器模式的 `window.prompt` 默认值；改成空字符串或新机示例路径 |
-| `scripts/make_demo_state.py` | 8 | `D:\ncl` | **测试夹具生成器**：会写 `D:\ncl\TestGame` 和 `src-tauri\target\debug\cyberdeck-data`。新机要么改 `ROOT`，要么不要运行 |
-| `scripts/ui-check.mjs` | 5 | `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` | UI 测试用的 Edge 路径；按新机实际安装位置改 |
-| `scripts/ui-test.mjs` | 5 | 同上 | 同上 |
-| `scripts/ui-polish-test.mjs` | 5 | 同上 | 同上 |
-| `scripts/ui-theme-test.mjs` | 5 | 同上 | 同上 |
-| `scripts/ui-hardware-test.mjs` | 5 | 同上 | 同上 |
-| `docs/REAL-ENV-TEST.md` | 8、26 | `D:\SteamLibrary\...`、`C:\Program Files` | 文档示例命令/说明；按新机游戏路径改，不影响代码 |
+| 文件                             |    行 | 硬编码值                                                           | 性质 / 迁移动作                                                                                      |
+| ------------------------------ | ---: | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/lib/mock.ts`              |   30 | `D:\Games\Cyberpunk 2077`                                      | 浏览器演示数据的假游戏目录；改新机路径，或保留（仅 UI 展示）                                                               |
+| `src/lib/mock.ts`              |   31 | `C:\Users\Administrator\AppData\Roaming\com.arol.cyberdeck`    | 演示数据目录；新机用户名不同，建议改成通用字符串或新机路径                                                                  |
+| `src/App.tsx`                  |  764 | `D:\Games\Cyberpunk 2077`                                      | 浏览器模式的 `window.prompt` 默认值；改成空字符串或新机示例路径                                                       |
+| `scripts/make_demo_state.py`   |    8 | `D:\ncl`                                                       | **测试夹具生成器**：会写 `D:\ncl\TestGame` 和 `src-tauri\target\debug\cyberdeck-data`。新机要么改 `ROOT`，要么不要运行 |
+| `scripts/ui-check.mjs`         |    5 | `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` | UI 测试用的 Edge 路径；按新机实际安装位置改                                                                     |
+| `scripts/ui-test.mjs`          |    5 | 同上                                                             | 同上                                                                                             |
+| `scripts/ui-polish-test.mjs`   |    5 | 同上                                                             | 同上                                                                                             |
+| `scripts/ui-theme-test.mjs`    |    5 | 同上                                                             | 同上                                                                                             |
+| `scripts/ui-hardware-test.mjs` |    5 | 同上                                                             | 同上                                                                                             |
+| `docs/REAL-ENV-TEST.md`        | 8、26 | `D:\SteamLibrary\...`、`C:\Program Files`                       | 文档示例命令/说明；按新机游戏路径改，不影响代码                                                                       |
 
 ### 8.2 系统标准路径（不要为了迁移而改）
 
-| 文件 | 行 | 路径 | 说明 |
-|---|---:|---|---|
-| `src-tauri/src/installer.rs` | 380–385 | `C:\Program Files\7-Zip\7z.exe`、`WinRAR\UnRAR.exe`、NVIDIA `7z.exe` | 外部解压器候选路径；另有环境变量与 `where` 兜底 |
-| `src-tauri/src/game.rs` | 144 | `C:\ProgramData\Epic\...` | Epic manifest 标准位置 |
-| `src-tauri/src/game.rs` | 433–434 | `C:\Program Files (x86)\Steam\steam.exe`、`C:\Program Files\Steam\steam.exe` | Steam 默认安装候选；注册表优先 |
+| 文件                           |       行 | 路径                                                                          | 说明                           |
+| ---------------------------- | ------: | --------------------------------------------------------------------------- | ---------------------------- |
+| `src-tauri/src/installer.rs` | 380–385 | `C:\Program Files\7-Zip\7z.exe`、`WinRAR\UnRAR.exe`、NVIDIA `7z.exe`          | 外部解压器候选路径；另有环境变量与 `where` 兜底 |
+| `src-tauri/src/game.rs`      |     144 | `C:\ProgramData\Epic\...`                                                   | Epic manifest 标准位置           |
+| `src-tauri/src/game.rs`      | 433–434 | `C:\Program Files (x86)\Steam\steam.exe`、`C:\Program Files\Steam\steam.exe` | Steam 默认安装候选；注册表优先           |
 
 ### 8.3 测试夹具（不影响生产）
 
-| 文件 | 行 | 说明 |
-|---|---:|---|
-| `src-tauri/src/ai.rs` | 616–746 | `C:\Users\Alice\...`、`D:\Games\...`，仅测试脱敏/诊断 |
-| `src-tauri/src/logs.rs` | 340 | `C:\Windows\notepad.exe`，仅测试越界拒绝 |
-| `src-tauri/src/installer_tests.rs` | 365 | `C:\Program Files\WinRAR\Rar.exe`，仅 RAR 测试 |
+| 文件                                 |       行 | 说明                                           |
+| ---------------------------------- | ------: | -------------------------------------------- |
+| `src-tauri/src/ai.rs`              | 616–746 | `C:\Users\Alice\...`、`D:\Games\...`，仅测试脱敏/诊断 |
+| `src-tauri/src/logs.rs`            |     340 | `C:\Windows\notepad.exe`，仅测试越界拒绝             |
+| `src-tauri/src/installer_tests.rs` |     365 | `C:\Program Files\WinRAR\Rar.exe`，仅 RAR 测试   |
 
 ### 8.4 生成物/缓存（已从迁移包排除）
 
@@ -1505,4 +1539,3 @@ D:\DS worker\CyberDeck-Launcher-src-0.7.0.zip
 - 下次遇到同类问题，**第一步该查什么**？
 
 复盘模板与示例：`docs/PROJECT_HISTORY.md#incident-webview-datadir`。
-
