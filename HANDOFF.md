@@ -21,8 +21,12 @@
   全量门禁 **39/39 全绿**（414s）、`cargo test --lib` **424 passed / 0 failed / 2 ignored**、`cargo check --lib` 无代码级 warning、`version_sync=1`。  
   **产物**：`release/CyberDeck Launcher.exe` **11,181,056 B（10.66 MB）/ md5 `7db69e5442c7395d2bfb4cde3ffa94af`** /  
   mtime 2026-11-16 20:58:28 / PE `FileVersion`·`ProductVersion` 均 1.9.0；上一版 1.8.4 已备份为 `.prev.exe`（11,187,200 B / PE 1.8.4）。  
-  **便携 ZIP 与 GitHub Release 改由 tag `v1.9.0` 触发的流水线产出**（`release.yml` 首次实跑，run `43871511868`）：  
-  资产含 `CyberDeck.Launcher.1.9.0.zip`、`…x64-setup.exe`、`…x64-setup.nsis.zip`、`latest.json`；Release ID 与各资产哈希待 CI 跑完后回填本节。  
+  **便携 ZIP 与 GitHub Release 由 tag `v1.9.0` 触发的流水线产出**：GitHub Release **`v1.9.0`**（ID `447247883`，非 draft / 非预发布 / latest，链接 `github.com/XFxzz3456/CyberDeck-Launcher/releases/tag/v1.9.0`），三个资产：  
+  - `CyberDeck.Launcher.1.9.0.zip` **5,773,463 B** / sha256 `0d262441a6b75c835e1b0f92b4fbd3b90a43bf9adbb0bb69aa6ad5bfcc96c23f`（便携包，供手动下载）  
+  - `CyberDeck.Launcher.1.9.0.x64-setup.exe` **4,566,283 B** / sha256 `4ad61dc4ff71413f22c20d0261a84c2f9bd4cbbb6fc9aac38718f5dafef58fe9`（NSIS 安装器，**同时是自更新包**）  
+  - `latest.json` **1,126 B** / sha256 `631dbbbf5274409a19f113027562e485842db4ab2ebf872d1cb215299122e7e5`（`version=1.9.0`、`url` 指向上述 setup.exe、`signature` 452 字节，API 回读校验通过）  
+  **注意 Tauri 2.12 机制**：NSIS 更新包 = 安装器 `.exe` 本体（配 `.exe.sig`），**没有 `*-setup.nsis.zip`**；latest.json 的 `url` 指向 `.exe`。  
+  **`release.yml` 首次实跑踩了 4 个坑才全绿**（run `43871511868` → `43873121404` → `43888113351` → `43891779757` → `43894670476` → **`43897505670` 15/15 全绿**）：① `--config` 的 JSON 被 shell 剥双引号 → 改传临时 JSON 文件；② pubkey 多套了一层 base64 → 改回 `.pub` 原文（单层 base64，Tauri 解析链 base64→utf8 明文→RW 行→42 字节 Ed）；③ 旧版按 `*-setup.nsis.zip` 定位更新包 → 2.12 改为 setup.exe 本体；④ 便携包主 exe 名从 `CyberDeck Launcher.exe` 变为 `cyberdeck-launcher.exe`（规范化命名）。每步修复均本地验证后才推，复盘见 `2026-11-16` 工作日志。  
   提交：`5b63481`（P0/P1）、`623ade4`（P2 单测）、`11882f1`（升版）、`9f1ec6d`（README 校验值）。
 - **2026-11-14 · 1.8.4 发布**（用户「全部收尾吧」= 授权升版 / 构建 / 替换 release）：本版合并 #10/#11 五项缺陷修复与设置页字号排版统一。  
   ① 铃铛角标只算未读活动、活动行补已读态；② 铃铛面板改 portal 到 body + fixed/70 并做视口夹取；  
