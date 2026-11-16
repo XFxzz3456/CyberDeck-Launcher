@@ -11,7 +11,8 @@
 #    tauri-plugin-updater 的 extract_zip 只读 zip 的第一层、且只认 .exe/.msi；
 #    便携包是「CyberDeck Launcher <版本>/」套一层目录，喂进去必然报
 #    BinaryNotFoundInArchive（签名能过，装不上）。便携包照样上传，供人手动下载。
-#    CI 里用 --config 临时打开 bundle.createUpdaterArtifacts，不改仓库里的配置。
+#    CI 里用一个临时 JSON 文件 + --config <路径> 打开 bundle.createUpdaterArtifacts，不改仓库里的配置。
+#    （不能直接传 JSON 串：PowerShell 调原生 exe 会剥掉内层双引号，2026-11-16 实测踩过。）
 #
 # 2) latest.json 的资产名必须**精确**是这个，一个字都不能改：它被写死在
 #    tauri.conf.json 的 plugins.updater.endpoints 里
@@ -135,7 +136,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          pnpm exec tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          # 不要直接把 JSON 串塞进 --config：PowerShell（5.1 与 pwsh 都一样）调用原生 exe 时
+          # 会把参数里的双引号剥掉，`'{"bundle":{...}}'` 到 tauri 手里就变成 `{bundle:{...}}`，
+          # 直接报 `key must be a string at line 1 column 2`（2026-11-16 run 43871511868 实测）。
+          # 因此落一个临时 JSON 文件、传路径，--config 支持「路径 + 与默认配置合并」。
+          $ciConfig = Join-Path $env:RUNNER_TEMP 'tauri.ci.bundle.json'
+          Set-Content -Path $ciConfig -Value '{"bundle":{"createUpdaterArtifacts":true}}' -Encoding Ascii
+          Write-Host "CI 覆盖配置：$ciConfig -> $(Get-Content $ciConfig -Raw)"
+          pnpm exec tauri build --bundles nsis --config $ciConfig
           if ($LASTEXITCODE -ne 0) {
             Write-Error "构建失败（若报缺少签名私钥，检查 TAURI_SIGNING_PRIVATE_KEY 这两个 secrets）"
             exit 1
