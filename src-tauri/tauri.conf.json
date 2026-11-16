@@ -45,7 +45,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "RWSpw/ZIl1mAGAXre+1u+OUdagHbWMSG6ENc2ZCtnSX68oqLtCKqOZhW",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4ODA1OTk3NDhGNkMzQTkKUldTcHcvWklsMW1BR0FYcmUrMXUrT1VkYWdIYldNU0c2RU5jMlpDdG5TWDY4b3FMdENLcU9aaFcK",
       "endpoints": [
         "https://github.com/XFxzz3456/CyberDeck-Launcher/releases/latest/download/latest.json"
       ],
