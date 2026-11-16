@@ -7,10 +7,11 @@
 #
 # 三个刻意的设计决定，改之前先看：
 #
-# 1) 更新源用的是 Tauri 自己产出的 NSIS 更新包（*-setup.nsis.zip），**不是**便携包。
-#    tauri-plugin-updater 的 extract_zip 只读 zip 的第一层、且只认 .exe/.msi；
-#    便携包是「CyberDeck Launcher <版本>/」套一层目录，喂进去必然报
-#    BinaryNotFoundInArchive（签名能过，装不上）。便携包照样上传，供人手动下载。
+# 1) 更新源用的是 Tauri 自己产出的 NSIS 安装器（*-setup.exe），**不是**便携包。
+#    Tauri 2.12 起 NSIS 的更新包就是安装器 exe 本体（配一份 .exe.sig），没有
+#    *-setup.nsis.zip；latest.json 的 url 指向该 .exe、signature 填 .sig 内容。
+#    便携包（套一层 "CyberDeck Launcher <版本>/" 目录）是给人手动下载的，不能当更新源。
+#    便携包照样上传，供不想安装的用户下载。
 #    CI 里用一个临时 JSON 文件 + --config <路径> 打开 bundle.createUpdaterArtifacts，不改仓库里的配置。
 #    （不能直接传 JSON 串：PowerShell 调原生 exe 会剥掉内层双引号，2026-11-16 实测踩过。）
 #
@@ -125,11 +126,16 @@ jobs:
           pnpm run gate
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      # 一次构建同时产出 exe（便携包用）、NSIS 安装器与更新包（自更新用）。
+      # 一次构建同时产出 exe（便携包用）、NSIS 安装器（= 更新包，自更新用）。
       # createUpdaterArtifacts 只在 CI 里通过 --config 打开，仓库里的 tauri.conf.json
-      # 保持原样（本机 `tauri build --no-bundle` 的链路不受影响）。打开之后 bundler
-      # 会顺手给更新包签一份 .sig；latest.json 由 make-latest-json.mjs 重新签，
-      # 两条路互不依赖（签名里有时间戳，重签出来的串不同，但都验得过）。
+      # 保持原样（本机 `tauri build --no-bundle` 的链路不受影响）。
+      #
+      # ★ Tauri 2.12 的 NSIS 更新机制（2026-11-16 实跑确认，官方文档同）：
+      #   更新包 = 安装器本体 setup.exe，bundler 另产出 setup.exe.sig；
+      #   **没有 *-setup.nsis.zip**（那是旧版认知，早期 workflow 在这里卡过）。
+      #   latest.json 的 url 指向 .exe，signature 填 .sig 内容。
+      #   latest.json 由 make-latest-json.mjs 对 .exe 重新签（带 --app-version），
+      #   与 bundler 那份 .sig 时间戳不同但都验得过。
       - name: 8. 构建 exe + NSIS 更新包
         timeout-minutes: 40
         env:
@@ -164,26 +170,24 @@ jobs:
           }
           Get-ChildItem $bundleDir | ForEach-Object { Write-Host "  原始产物: $($_.Name)  $($_.Length) B" }
 
-          $updater = Get-ChildItem $bundleDir -Filter "*.zip" -File | Where-Object { $_.Name -like "*setup*" } | Select-Object -First 1
-          if (-not $updater) {
-            Write-Error "在 $bundleDir 下找不到 *-setup*.zip 更新包（createUpdaterArtifacts 没生效？）"
-            exit 1
-          }
+          # Tauri 2.12：NSIS 更新包就是安装器 .exe 本体（另有 .exe.sig），没有 zip。
           $installer = Get-ChildItem $bundleDir -Filter "*-setup.exe" -File | Select-Object -First 1
           if (-not $installer) {
-            Write-Error "在 $bundleDir 下找不到 *-setup.exe 安装器"
+            Write-Error "在 $bundleDir 下找不到 *-setup.exe 安装器（第 8 步没有真正打包？）"
             exit 1
+          }
+          $sig = Get-ChildItem $bundleDir -Filter "*-setup.exe.sig" -File | Select-Object -First 1
+          if (-not $sig) {
+            Write-Host "::warning::没找到 bundler 的 .sig；latest.json 会由 make-latest-json.mjs 自行签名"
           }
 
           New-Item -ItemType Directory -Force -Path "dist-release" | Out-Null
-          $updaterOut = "dist-release/CyberDeck.Launcher.$ver.x64-setup.nsis.zip"
-          $installerOut = "dist-release/CyberDeck.Launcher.$ver.x64-setup.exe"
-          Copy-Item $updater.FullName $updaterOut -Force
-          Copy-Item $installer.FullName $installerOut -Force
-          Write-Host "  更新包 -> $updaterOut"
-          Write-Host "  安装包 -> $installerOut"
+          # 更新包与安装包是同一个文件，统一成无空格稳定名；latest.json 的 url 指向它。
+          $updaterOut = "dist-release/CyberDeck.Launcher.$ver.x64-setup.exe"
+          Copy-Item $installer.FullName $updaterOut -Force
+          Write-Host "  更新包/安装包 -> $updaterOut"
           "updater=$updaterOut" >> $env:GITHUB_OUTPUT
-          "installer=$installerOut" >> $env:GITHUB_OUTPUT
+          "installer=$updaterOut" >> $env:GITHUB_OUTPUT
 
       # 便携包结构固定四条（本项目对外的形态，别改）：
       #   CyberDeck Launcher <版本>/
@@ -364,8 +368,8 @@ jobs:
             Write-Error "latest.json 版本 $($manifest.version) 与 tag 版本 ${{ steps.ver.outputs.version }} 不一致"
             exit 1
           }
-          if ($platform.url -notmatch [regex]::Escape("CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.nsis.zip")) {
-            Write-Error "latest.json 的 url 没指向本次的更新包：$($platform.url)"
+          if ($platform.url -notmatch [regex]::Escape("CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.exe")) {
+            Write-Error "latest.json 的 url 没指向本次的更新包（Tauri 2.12 NSIS 更新包是 setup.exe）：$($platform.url)"
             exit 1
           }
           Write-Host "latest.json OK：v$($manifest.version) -> $($platform.url)"
@@ -381,7 +385,6 @@ jobs:
           files: |
             dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.zip
             dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.exe
-            dist-release/CyberDeck.Launcher.${{ steps.ver.outputs.version }}.x64-setup.nsis.zip
             dist-release/latest.json
           fail_on_unmatched_files: true
           make_latest: true
