@@ -377,6 +377,32 @@ mod tests {
         assert_ne!(first, second, "Mod 更新导致原文变化后必须失配");
     }
 
+    /// #12 P2：Mod 更新后按「英文原文」复用旧译文。
+    /// 作者在上方插入新行不影响命中（主键是原文哈希，不是行号）；
+    /// 原文被改写的条目必须失配，绝不能套用旧译文。
+    #[test]
+    fn mod_update_reuses_unchanged_texts_by_source() {
+        let (root, store) = temp_store("mod-update");
+        record(&store, "mod-a", "Loading screen", "载入画面", "ai").unwrap();
+        record(&store, "mod-a", "Main menu", "主菜单", "ai").unwrap();
+        record(&store, "mod-a", "Old option", "旧选项", "ai").unwrap();
+
+        let new_texts = vec![
+            ("mod-a".to_string(), "Inserted line".to_string()),
+            ("mod-a".to_string(), "Loading screen".to_string()),
+            ("mod-a".to_string(), "Main menu".to_string()),
+            ("mod-a".to_string(), "New option".to_string()),
+        ];
+        let hits = lookup(&store, &new_texts).unwrap();
+        assert_eq!(hits.len(), 4);
+        assert_eq!(hits[1].as_deref(), Some("载入画面"), "原文未变必须复用");
+        assert_eq!(hits[2].as_deref(), Some("主菜单"), "原文未变必须复用");
+        assert!(hits[0].is_none(), "新插入的原文没有旧译文");
+        assert!(hits[3].is_none(), "原文改写后必须失配");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn export_skips_empty_targets_and_round_trips() {
         let (root, store) = temp_store("export");
